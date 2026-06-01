@@ -531,6 +531,20 @@ function writeCaseManifest(caze) {
   fs.writeFileSync(path.join(caze.localCaseDir, 'case.json'), JSON.stringify(caze, null, 2));
 }
 
+function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
+  const p = caze.persona || {};
+  return [
+    `账号人设：${personaLine(p)}`,
+    `内容类型：${slot?.contentKind || purpose}`,
+    `当前阶段：${slot?.stage || caze.stage}`,
+    '发布平台：抖音图文/封面',
+    `图片用途：${purpose}`,
+    `参考素材路径：${sourceMaterials.length ? sourceMaterials.join('；') : '暂无，按账号人设和内容阶段生成'}`,
+    '风格要求：自然生活感，手机拍摄质感，画面干净，适合微信发给兼职后直接保存使用。',
+    '输出要求：生成后保存到指定 outputDir，并回到系统标记 review / approved / rejected。'
+  ].join('\n');
+}
+
 function parseBulkCaseText(text) {
   return String(text || '')
     .split(/\r?\n/)
@@ -1074,16 +1088,38 @@ app.post('/api/slots/:id/delivery', (req, res) => {
   fs.mkdirSync(deliveryDir, { recursive: true });
   fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);
-  fs.writeFileSync(path.join(deliveryDir, '06-发布要求.txt'), `类型：${slot.contentKind}\n形式：${candidate.format}\n日期：${slot.date}\n时间窗：${slot.timeWindow || ''}\n发完后回传作品链接或截图。`);
   const assets = all('SELECT * FROM assets WHERE case_id = ? AND review_status IN (?, ?) ORDER BY created_at DESC LIMIT 9', [caze.id, '可用', '待处理']).map(rowAsset);
+  const copied = [];
   assets.forEach((asset, index) => {
     if (!fs.existsSync(asset.path)) return;
     const ext = path.extname(asset.path);
     const label = asset.kind === '视频' ? '视频' : '图片';
-    fs.copyFileSync(asset.path, path.join(deliveryDir, `${String(index + 3).padStart(2, '0')}-${label}${index + 1}${ext}`));
+    const fileName = `${String(index + 3).padStart(2, '0')}-${label}${index + 1}${ext}`;
+    fs.copyFileSync(asset.path, path.join(deliveryDir, fileName));
+    copied.push({ order: index + 1, fileName, kind: asset.kind, stage: asset.stage, source: asset.source, originalPath: asset.path });
   });
+  const assetLines = copied.length
+    ? copied.map((item) => `${item.order}. ${item.fileName}｜${item.kind}｜${item.stage}｜${item.source}\n   原路径：${item.originalPath}`).join('\n')
+    : '本次未复制素材，请先在案例详情扫描并标记可用素材，或创建 Image/剪辑任务补齐。';
+  fs.writeFileSync(path.join(deliveryDir, '05-素材顺序清单.txt'), assetLines);
+  fs.writeFileSync(path.join(deliveryDir, '06-发布要求.txt'), [
+    `类型：${slot.contentKind}`,
+    `形式：${candidate.format}`,
+    `日期：${slot.date}`,
+    `时间窗：${slot.timeWindow || ''}`,
+    `标题：${candidate.title}`,
+    '',
+    '发送给兼职顺序：',
+    '1. 先发 01-发给兼职文案.txt',
+    '2. 再发 02-抖音发布文案.txt',
+    '3. 按 05-素材顺序清单.txt 的顺序发送图片或视频',
+    '4. 发完后让兼职回传作品链接或截图',
+    '',
+    '素材顺序：',
+    assetLines
+  ].join('\n'));
   run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['可交付', deliveryDir, now(), slot.id]);
-  res.json({ deliveryDir, slot: slotById(slot.id) });
+  res.json({ deliveryDir, copiedAssets: copied, slot: slotById(slot.id) });
 });
 
 app.post('/api/image-tasks', (req, res) => {
@@ -1094,10 +1130,9 @@ app.post('/api/image-tasks', (req, res) => {
   const purpose = body.purpose || slot?.contentKind || '日常养号';
   const outputDir = path.join(caze.localCaseDir, '02-生成补充', safeSegment(purpose));
   fs.mkdirSync(outputDir, { recursive: true });
-  const p = caze.persona || {};
-  const prompt =
-    body.prompt ||
-    `为${personaLine(p)}生成一张适合抖音${purpose}的图，场景贴近日常真实感，适合${slot?.stage || caze.stage}阶段，画面自然，手机拍摄质感。`;
+  const sourceMaterials = body.sourceMaterials || [];
+  const prompt = body.prompt || imagePromptFor(caze, slot, purpose, sourceMaterials);
+  const negativePrompt = body.negativePrompt || '过度精修，夸张效果，水印，低清晰度，错误文字，变形肢体，不符合账号人设的场景';
   const status = process.env.IMAGE_API_KEY ? 'draft' : 'waiting_key';
   const id = uid('image');
   run(
@@ -1110,14 +1145,26 @@ app.post('/api/image-tasks', (req, res) => {
       body.planSlotId || null,
       purpose,
       prompt,
-      body.negativePrompt || '过度精修，夸张效果，水印，低清晰度',
-      JSON.stringify(body.sourceMaterials || []),
+      negativePrompt,
+      JSON.stringify(sourceMaterials),
       outputDir,
       status,
       now(),
       now()
     ]
   );
+  fs.writeFileSync(path.join(outputDir, `${id}-图片任务说明.txt`), [
+    `任务ID：${id}`,
+    `状态：${status}`,
+    `用途：${purpose}`,
+    `保存目录：${outputDir}`,
+    '',
+    'Prompt:',
+    prompt,
+    '',
+    'Negative prompt:',
+    negativePrompt
+  ].join('\n'));
   res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [id])));
 });
 

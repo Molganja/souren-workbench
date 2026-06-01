@@ -127,6 +127,7 @@ async function main() {
       body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label, prompt: `补${withGaps.materialGaps[0].label}` })
     });
     assert(gapImage.purpose === withGaps.materialGaps[0].label, 'gap image task failed');
+    assert(fs.existsSync(path.join(gapImage.outputDir, `${gapImage.id}-图片任务说明.txt`)), 'image task brief missing');
 
     const manualSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -161,6 +162,8 @@ async function main() {
     assert(reviewedClip.status === 'approved', 'clip status update failed');
     const delivery = await api(`/slots/${slot.id}/delivery`, { method: 'POST' });
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
+    assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');
+    assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');
     const deliveryDashboard = await api('/dashboard');
     const deliveryDashboardSlot = deliveryDashboard.readyDelivery.find((item) => item.id === slot.id)
       || deliveryDashboard.todaySlots.find((item) => item.id === slot.id);
