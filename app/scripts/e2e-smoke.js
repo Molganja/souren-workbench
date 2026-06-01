@@ -175,6 +175,10 @@ async function main() {
     assert(exported.metrics.length === 1, 'export missing metrics');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
+    const manualBackup = await api('/backups', { method: 'POST', body: JSON.stringify({ reason: 'smoke-test' }) });
+    assert(fs.existsSync(manualBackup.backup.path), 'manual backup file missing');
+    const importResult = await api('/import', { method: 'POST', body: JSON.stringify(exported) });
+    assert(fs.existsSync(importResult.preImportBackup.path), 'pre-import backup file missing');
     const review = await api('/review');
     assert(review.totals.cases === 2, 'review case total invalid');
     assert(review.totals.metrics === 1, 'review metrics total invalid');
@@ -183,6 +187,7 @@ async function main() {
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');
+    assert(config.backups.length >= 2, 'config backup list missing');
 
     const finalDetail = await api(`/cases/${caze.id}`);
     assert(finalDetail.metrics.length === 1, 'case metrics missing');

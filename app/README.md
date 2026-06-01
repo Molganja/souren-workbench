@@ -38,6 +38,7 @@ npm run start
 
 ```text
 /Users/licc/Desktop/素人系统/data/souren.sqlite
+/Users/licc/Desktop/素人系统/data/backups/
 /Users/licc/Desktop/素人系统/素材库/真实案例/
 ```
 
@@ -108,6 +109,7 @@ npm run test:e2e
 ## 新增实用操作
 
 - 顶部「导出备份 / 导入备份」用于迁移和恢复结构化数据。
+- 顶部「创建本地备份」会把结构化数据保存为本地 JSON；导入备份前也会自动生成 `before-import` 备份。
 - 案例库支持批量导入兼职/账号，适合一次录入 40+ 账号。
 - 案例库支持按关键词、阶段、健康状态搜索筛选，也可以删除误建案例。
 - 案例详情里可以直接「打开素材目录」。

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import {
+  DATA_DIR,
   MATERIAL_ROOT,
   ROOT_DIR,
   all,
@@ -19,6 +20,7 @@ import {
 
 const app = express();
 const PORT = Number(process.env.PORT || 5174);
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -625,6 +627,48 @@ function walkFiles(dir) {
   });
 }
 
+function backupList() {
+  if (!fs.existsSync(BACKUP_DIR)) return [];
+  return fs.readdirSync(BACKUP_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+    .map((entry) => {
+      const full = path.join(BACKUP_DIR, entry.name);
+      const stat = fs.statSync(full);
+      return {
+        name: entry.name,
+        path: full,
+        size: stat.size,
+        createdAt: stat.birthtime.toISOString(),
+        updatedAt: stat.mtime.toISOString()
+      };
+    })
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function exportData() {
+  return {
+    exportedAt: now(),
+    cases: all('SELECT * FROM cases').map(rowCase),
+    planSlots: all('SELECT * FROM plan_slots').map(rowSlot),
+    candidateDrafts: all('SELECT * FROM candidate_drafts').map(rowCandidate),
+    viralTemplates: all('SELECT * FROM viral_templates').map(rowViral),
+    contentSeeds: all('SELECT * FROM content_seeds').map(rowContentSeed),
+    assets: all('SELECT * FROM assets').map(rowAsset),
+    imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
+    clipTasks: all('SELECT * FROM clip_tasks').map(rowClipTask),
+    verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify),
+    metrics: all('SELECT * FROM metrics').map(rowMetric)
+  };
+}
+
+function writeLocalBackup(reason = 'manual') {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const file = path.join(BACKUP_DIR, `${stamp}_${safeSegment(reason)}.json`);
+  fs.writeFileSync(file, JSON.stringify({ ...exportData(), reason }, null, 2));
+  return backupList().find((item) => item.path === file);
+}
+
 function groupCount(items, keyFn) {
   return items.reduce((acc, item) => {
     const key = keyFn(item) || '未分类';
@@ -849,7 +893,9 @@ app.get('/api/config', (_req, res) => {
     materialTemplates: MATERIAL_TEMPLATES,
     imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
     llmKeyReady: Boolean(process.env.LLM_API_KEY),
-    materialRoot: MATERIAL_ROOT
+    materialRoot: MATERIAL_ROOT,
+    backupDir: BACKUP_DIR,
+    backups: backupList().slice(0, 10)
   });
 });
 
@@ -1251,25 +1297,22 @@ app.patch('/api/verify-tasks/:id', (req, res) => {
 });
 
 app.get('/api/export', (_req, res) => {
-  res.json({
-    exportedAt: now(),
-    cases: all('SELECT * FROM cases').map(rowCase),
-    planSlots: all('SELECT * FROM plan_slots').map(rowSlot),
-    candidateDrafts: all('SELECT * FROM candidate_drafts').map(rowCandidate),
-    viralTemplates: all('SELECT * FROM viral_templates').map(rowViral),
-    contentSeeds: all('SELECT * FROM content_seeds').map(rowContentSeed),
-    assets: all('SELECT * FROM assets').map(rowAsset),
-    imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
-    clipTasks: all('SELECT * FROM clip_tasks').map(rowClipTask),
-    verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify),
-    metrics: all('SELECT * FROM metrics').map(rowMetric)
-  });
+  res.json(exportData());
+});
+
+app.get('/api/backups', (_req, res) => {
+  res.json({ backupDir: BACKUP_DIR, backups: backupList() });
+});
+
+app.post('/api/backups', (req, res) => {
+  res.json({ backup: writeLocalBackup(req.body?.reason || 'manual') });
 });
 
 app.post('/api/import', (req, res) => {
   const data = req.body || {};
   if (!Array.isArray(data.cases)) return res.status(400).json({ error: 'invalid backup: cases missing' });
   const importedAt = now();
+  const preImportBackup = writeLocalBackup('before-import');
   run('DELETE FROM metrics');
   run('DELETE FROM verify_tasks');
   run('DELETE FROM clip_tasks');
@@ -1493,7 +1536,7 @@ app.post('/api/import', (req, res) => {
     );
   });
 
-  res.json({ imported: true, cases: data.cases.length });
+  res.json({ imported: true, cases: data.cases.length, preImportBackup });
 });
 
 app.patch('/api/assets/:id', (req, res) => {

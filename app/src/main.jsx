@@ -141,6 +141,7 @@ function App() {
         {nav}
         <div className="topActions">
           <a className="button ghost" href="/api/export" target="_blank">导出备份</a>
+          <button className="button ghost" onClick={() => act(() => request('/backups', { method: 'POST', body: JSON.stringify({ reason: 'manual' }) }), '本地备份已创建')}>创建本地备份</button>
           <label className="button ghost fileButton">
             导入备份
             <input type="file" accept="application/json" onChange={(e) => importBackup(e.target.files?.[0])} />
@@ -879,6 +880,21 @@ function SettingsView({ config }) {
       <section className="panel">
         <div className="sectionHead"><h2>本地素材根目录</h2></div>
         <div className="path">{config.materialRoot}</div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead"><h2>本地备份</h2><span>{config.backups?.length || 0} 个最近备份</span></div>
+        <div className="path">{config.backupDir}</div>
+        {!config.backups?.length ? <div className="empty">暂无本地备份。顶部可以手动创建，导入备份前也会自动创建一份。</div> : (
+          <div className="templateList">
+            {config.backups.map((item) => (
+              <div className="templateRow" key={item.path}>
+                <strong>{item.name}</strong>
+                <span>{Math.ceil(item.size / 1024)} KB · {item.updatedAt}</span>
+                <small>{item.path}</small>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
       <section className="twoCol">
         <div className="panel">
