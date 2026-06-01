@@ -85,6 +85,7 @@ async function verifyRuntime() {
   fs.mkdirSync(VERIFY_ROOT, { recursive: true });
   const env = { ...process.env, PORT: String(PORT), SOUREN_ROOT_DIR: VERIFY_ROOT };
   if (!WITH_CONSULT) env.SOUREN_LOCAL_AI_DISABLED = '1';
+  env.SOUREN_GITHUB_SYNC_CHECK_DISABLED = '1';
   const child = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
     cwd: APP_DIR,
     env,

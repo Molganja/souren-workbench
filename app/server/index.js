@@ -1238,6 +1238,19 @@ function gitSnapshot() {
   };
 }
 
+function gitSyncStatus() {
+  if (process.env.SOUREN_GITHUB_SYNC_CHECK_DISABLED === '1') {
+    return { status: 'waiting', detail: 'GitHub 同步检查已在当前环境禁用' };
+  }
+  const remote = gitOutput(['remote', 'get-url', 'origin']);
+  if (!remote) return { status: 'warning', detail: 'GitHub remote 未配置' };
+  const local = gitOutput(['rev-parse', 'HEAD']);
+  const remoteHead = gitOutput(['ls-remote', '--heads', 'origin', 'main']).split(/\s+/)[0] || '';
+  if (!local || !remoteHead) return { status: 'warning', detail: `无法读取 GitHub main，同步状态未知：${remote}` };
+  if (local === remoteHead) return { status: 'ready', detail: `GitHub main 已同步 ${local.slice(0, 7)}` };
+  return { status: 'warning', detail: `GitHub main 未同步，本地 ${local.slice(0, 7)}，远端 ${remoteHead.slice(0, 7)}；需要认证后 push` };
+}
+
 function operatorPacketMarkdown(data) {
   const git = gitSnapshot();
   const flowGroups = OPERATOR_FLOW
@@ -1413,6 +1426,7 @@ function systemReadiness() {
   const dbPath = path.join(DATA_DIR, 'souren.sqlite');
   const imageReady = Boolean(process.env.IMAGE_API_KEY);
   const ai = localAiStatus();
+  const github = gitSyncStatus();
   const checks = [
     { key: 'local-web', label: '本地网页工作台', status: 'ready', detail: `http://127.0.0.1:${PORT}` },
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
@@ -1424,6 +1438,7 @@ function systemReadiness() {
     { key: 'viral-qingdou', label: '爆款链接与青豆任务', status: 'ready', detail: '链接先入库，复制青豆提取任务后回填结构' },
     { key: 'image-key', label: 'Image v2 Key', status: imageReady ? 'ready' : 'waiting', detail: imageReady ? 'IMAGE_API_KEY 已配置' : 'IMAGE_API_KEY 为空，图片任务进入 waiting_key' },
     { key: 'local-ai', label: '本地 clude/Claude 顾问', status: ai.ready ? 'ready' : 'waiting', detail: ai.ready ? ai.command : ai.message },
+    { key: 'github-sync', label: 'GitHub main 同步', status: github.status, detail: github.detail },
     { key: 'operator-packet', label: 'AI 工作包和顾问记录', status: 'ready', detail: `${OPERATOR_PACKET_DIR} / ${AI_CONSULT_DIR}` }
   ];
   return {

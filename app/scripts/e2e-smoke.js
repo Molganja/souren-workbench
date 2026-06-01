@@ -54,7 +54,7 @@ async function localAiSuccessSmoke() {
   const aiBase = `http://127.0.0.1:${TEST_AI_PORT}/api`;
   const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
     cwd: APP_DIR,
-    env: { ...process.env, PORT: String(TEST_AI_PORT), SOUREN_ROOT_DIR: AI_ROOT_DIR, LOCAL_CLAUDE_COMMAND: localCommand },
+    env: { ...process.env, PORT: String(TEST_AI_PORT), SOUREN_ROOT_DIR: AI_ROOT_DIR, LOCAL_CLAUDE_COMMAND: localCommand, SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   server.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -85,7 +85,7 @@ async function main() {
 
   const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
     cwd: APP_DIR,
-    env: { ...process.env, PORT: String(TEST_PORT), SOUREN_ROOT_DIR: ROOT_DIR, SOUREN_LOCAL_AI_DISABLED: '1' },
+    env: { ...process.env, PORT: String(TEST_PORT), SOUREN_ROOT_DIR: ROOT_DIR, SOUREN_LOCAL_AI_DISABLED: '1', SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   server.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -442,6 +442,7 @@ async function main() {
     assert(config.readiness?.summary?.total >= 10, 'config readiness summary missing');
     assert(config.readiness.checks.some((item) => item.key === 'delivery-package' && item.status === 'ready'), 'readiness delivery package missing');
     assert(config.readiness.checks.some((item) => item.key === 'local-ai' && item.status === 'waiting'), 'readiness local AI waiting missing');
+    assert(config.readiness.checks.some((item) => item.key === 'github-sync'), 'readiness github sync missing');
     const health = await api('/health');
     assert(health.localAi && health.localAi.ready === false, 'health local AI status missing');
     assert(health.readiness?.total >= 10, 'health readiness summary missing');
