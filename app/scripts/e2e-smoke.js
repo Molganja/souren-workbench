@@ -134,6 +134,13 @@ async function main() {
     const drafts = await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' });
     assert(drafts.length === 3, 'candidate count is not 3');
     await api(`/candidates/${drafts[0].id}/select`, { method: 'POST' });
+    let lockedRejected = false;
+    try {
+      await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' });
+    } catch (error) {
+      lockedRejected = /409/.test(error.message) || /锁定/.test(error.message);
+    }
+    assert(lockedRejected, 'locked slot allowed candidate regeneration');
     const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
     assert(fs.existsSync(path.join(clip.outputDir, '剪辑任务单.txt')), 'clip brief file missing');
     const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });

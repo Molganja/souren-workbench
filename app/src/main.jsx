@@ -710,7 +710,9 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy }) {
       </div>
       <p>{slot.goal}</p>
       <div className="inlineActions">
-        <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
+        {!selected && ['待生成', '候选待选', '素材阻塞', '异常'].includes(slot.status) && (
+          <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
+        )}
         {selected && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
         {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}

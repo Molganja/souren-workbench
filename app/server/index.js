@@ -919,6 +919,9 @@ app.post('/api/cases/:id/slots', (req, res) => {
 app.post('/api/slots/:id/generate-candidates', (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
+  if (slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
+    return res.status(409).json({ error: '该槽位已锁定，不能重新生成候选' });
+  }
   const caze = caseById(slot.caseId);
   const viral = rowViral(get('SELECT * FROM viral_templates ORDER BY created_at DESC LIMIT 1'));
   const seed = slot.contentKind === '爆款提权' ? null : pickContentSeed(slot, caze);
