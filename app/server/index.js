@@ -1431,7 +1431,7 @@ function systemReadiness() {
     { key: 'local-web', label: '本地网页工作台', status: 'ready', detail: `http://127.0.0.1:${PORT}` },
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
-    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、待核对、AI顾问记录' },
+    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已汇报、已核对、AI顾问记录' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '对接人 + 抖音链接即可先建链路' },
     { key: 'delivery-package', label: '微信交付包', status: 'ready', detail: '写入收件人、对接人、发布文案、素材顺序和回传要求' },
     { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '记录作品链接、核对清单、播放/点赞/评论/粉丝' },

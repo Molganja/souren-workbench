@@ -265,8 +265,8 @@ async function main() {
     const schedule = await api('/schedule');
     assert(schedule.counts.total >= 1, 'schedule total missing');
     assert(schedule.days.some((day) => day.items.some((item) => item.case?.id === caze.id)), 'schedule case slot missing');
-    const slot = slots.created[0];
-    const drafts = await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' });
+    const slot = manualSlot;
+    const drafts = seededDrafts;
     assert(drafts.length === 3, 'candidate count is not 3');
     await api(`/candidates/${drafts[0].id}/select`, { method: 'POST' });
     const selectedSchedule = await api('/schedule');
@@ -363,6 +363,8 @@ async function main() {
     const verifyDashboard = await api('/dashboard');
     const verifyDashboardSlot = verifyDashboard.pendingVerify.find((item) => item.id === slot.id);
     assert(verifyDashboardSlot?.verifyTask?.douyinUrl === 'https://www.douyin.com/video/smoke-published', 'dashboard missing reported douyin url');
+    const verifyDashboardTodaySlot = verifyDashboard.todaySlots.find((item) => item.id === slot.id);
+    assert(verifyDashboardTodaySlot?.status === '已汇报', 'dashboard today chain dropped reported slot');
     await api(`/verify-tasks/${detailBeforeVerify.verifyTasks[0].id}`, {
       method: 'PATCH',
       body: JSON.stringify({
@@ -371,6 +373,8 @@ async function main() {
         metricsSnapshot: { fans: '100', plays: '2000', likes: '88', comments: '9' }
       })
     });
+    const afterVerifyDashboard = await api('/dashboard');
+    assert(afterVerifyDashboard.todaySlots.some((item) => item.id === slot.id && item.status === '已核对'), 'dashboard today chain dropped verified slot');
     const abnormalSlot = await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
     assert(abnormalSlot.status === '异常', 'manual abnormal status failed');
 
