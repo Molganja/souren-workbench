@@ -169,6 +169,10 @@ button.primary, .button.primary {
   gap: 10px;
 }
 
+.reviewStats {
+  grid-template-columns: repeat(5, 104px);
+}
+
 .metric {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -504,6 +508,47 @@ button.primary, .button.primary {
   font-style: normal;
   font-size: 12px;
   margin-left: 4px;
+}
+
+.reviewGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.reviewCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: #fff;
+}
+
+.reviewCard.compact {
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+}
+
+.reviewCard small {
+  color: var(--muted);
+}
+
+.progressBar {
+  height: 8px;
+  border-radius: 999px;
+  background: #eef1f4;
+  overflow: hidden;
+}
+
+.progressBar span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+}
+
+.reviewMetricHeader,
+.reviewMetricLine {
+  grid-template-columns: 1.2fr .8fr .7fr .7fr .7fr .7fr 1.5fr;
 }
 
 .assetRow span, .templateRow span, .assetRow small, .templateRow small {

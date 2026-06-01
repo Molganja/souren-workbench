@@ -168,6 +168,11 @@ async function main() {
     assert(exported.metrics.length === 1, 'export missing metrics');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
+    const review = await api('/review');
+    assert(review.totals.cases === 2, 'review case total invalid');
+    assert(review.totals.metrics === 1, 'review metrics total invalid');
+    assert(review.contentKindStats.some((item) => item.kind === '爆款提权' && item.total >= 1), 'review content kind stats missing');
+    assert(review.topAccounts.length === 1, 'review top account missing');
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');

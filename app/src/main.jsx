@@ -33,6 +33,7 @@ function statusClass(status) {
 function App() {
   const [view, setView] = useState('dashboard');
   const [dashboard, setDashboard] = useState(null);
+  const [review, setReview] = useState(null);
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseDetail, setCaseDetail] = useState(null);
@@ -47,14 +48,16 @@ function App() {
   const [seedFormOpen, setSeedFormOpen] = useState(false);
 
   async function refresh() {
-    const [dash, caseRows, viralRows, seedRows, configData] = await Promise.all([
+    const [dash, reviewData, caseRows, viralRows, seedRows, configData] = await Promise.all([
       request('/dashboard'),
+      request('/review'),
       request('/cases'),
       request('/viral-templates'),
       request('/content-seeds'),
       request('/config')
     ]);
     setDashboard(dash);
+    setReview(reviewData);
     setCases(caseRows);
     setViralTemplates(viralRows);
     setContentSeeds(seedRows);
@@ -123,6 +126,7 @@ function App() {
   const nav = (
     <div className="nav">
       <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>今日中控台</button>
+      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}>数据复盘</button>
       <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
       <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款模板</button>
       <button className={view === 'seeds' ? 'active' : ''} onClick={() => setView('seeds')}>内容种子</button>
@@ -148,6 +152,9 @@ function App() {
         {loading && <div className="empty">加载中</div>}
         {!loading && view === 'dashboard' && dashboard && (
           <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} />
+        )}
+        {!loading && view === 'review' && review && (
+          <ReviewView data={review} onOpenCase={openCase} />
         )}
         {!loading && view === 'cases' && (
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
@@ -254,6 +261,117 @@ function Dashboard({ data, onOpenCase, onAct }) {
       </section>
     </div>
   );
+}
+
+function ReviewView({ data, onOpenCase }) {
+  return (
+    <div className="stack">
+      <section className="hero">
+        <div>
+          <p className="eyebrow">复盘 {data.today}</p>
+          <h1>账号表现和运营复盘</h1>
+          <p>把排期进度、交付、核对、素材和账号数据放在一起看，用来决定下一轮是补养号、加爆款提权，还是推进种草内容。</p>
+        </div>
+        <div className="stats reviewStats">
+          <Metric label="总排期" value={data.totals.slots} />
+          <Metric label="已派发" value={data.totals.sent} />
+          <Metric label="已核对" value={data.totals.verified} />
+          <Metric label="可用素材" value={data.totals.usableAssets} />
+          <Metric label="待图片Key" value={data.totals.imageWaitingKey} />
+        </div>
+      </section>
+
+      <div className="twoCol">
+        <section className="panel">
+          <div className="sectionHead"><h2>三类内容进度</h2><span>{data.totals.candidates} 条候选</span></div>
+          <div className="reviewGrid">
+            {data.contentKindStats.map((item) => (
+              <div className="reviewCard" key={item.kind}>
+                <div className="rowTitle">
+                  <span className={`kind k-${item.kind}`}>{item.kind}</span>
+                  <strong>{item.total}</strong>
+                </div>
+                <small>待生成/待选 {item.pending} · 已进入交付链路 {item.ready}</small>
+                <div className="progressBar"><span style={{ width: `${item.total ? Math.round((item.ready / item.total) * 100) : 0}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="sectionHead"><h2>生命周期分布</h2><span>{data.totals.cases} 个案例</span></div>
+          <div className="reviewGrid">
+            {data.stageStats.map((item) => (
+              <div className="reviewCard compact" key={item.stage}>
+                <strong>{item.stage}</strong>
+                <small>{item.cases} 个账号 · {item.slots} 个排期</small>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section className="panel">
+        <div className="sectionHead"><h2>重点关注账号</h2><span>{data.needsAttention.length} 个</span></div>
+        {data.needsAttention.length === 0 ? <div className="empty">暂无需要优先处理的账号</div> : (
+          <div className="caseGrid">
+            {data.needsAttention.map((item) => (
+              <button key={item.id} className="caseTile" onClick={() => onOpenCase(item.id)}>
+                <strong>{item.weixinNick}</strong>
+                <span>{item.caseCode} · {item.project} · {item.stage}</span>
+                <em>{[...item.reasons, item.pendingVerify ? `待核对 ${item.pendingVerify}` : '', item.materialGaps ? `素材缺口 ${item.materialGaps}` : ''].filter(Boolean).join(' / ')}</em>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="sectionHead"><h2>播放表现前列</h2><span>{data.topAccounts.length} 个</span></div>
+        {data.topAccounts.length === 0 ? <div className="empty">核对并回填数据后，这里会按播放排序</div> : (
+          <div className="metricTable">
+            <div className="metricHeader reviewMetricHeader"><span>账号</span><span>日期</span><span>粉丝</span><span>播放</span><span>点赞</span><span>评论</span><span>变化</span></div>
+            {data.topAccounts.map((item) => (
+              <div className="metricLine reviewMetricLine" key={item.id}>
+                <button className="linkButton" onClick={() => onOpenCase(item.id)}>{item.weixinNick}</button>
+                <span>{item.latestMetric.date}</span>
+                <span>{item.latestMetric.fans ?? '—'}</span>
+                <span>{item.latestMetric.plays ?? '—'}</span>
+                <span>{item.latestMetric.likes ?? '—'}</span>
+                <span>{item.latestMetric.comments ?? '—'}</span>
+                <span>{item.delta ? `粉丝 ${signed(item.delta.fans)} / 播放 ${signed(item.delta.plays)}` : '首次记录'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="sectionHead"><h2>最近回填数据</h2><span>{data.recentMetrics.length} 条</span></div>
+        {data.recentMetrics.length === 0 ? <div className="empty">暂无账号数据</div> : (
+          <div className="metricTable">
+            <div className="metricHeader reviewMetricHeader"><span>账号</span><span>日期</span><span>粉丝</span><span>播放</span><span>点赞</span><span>评论</span><span>备注</span></div>
+            {data.recentMetrics.map((item) => (
+              <div className="metricLine reviewMetricLine" key={item.id}>
+                <button className="linkButton" onClick={() => item.case && onOpenCase(item.case.id)}>{item.case?.weixinNick || '未知账号'}</button>
+                <span>{item.date}</span>
+                <span>{item.fans ?? '—'}</span>
+                <span>{item.plays ?? '—'}</span>
+                <span>{item.likes ?? '—'}</span>
+                <span>{item.comments ?? '—'}</span>
+                <span>{item.note || '—'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function signed(value) {
+  if (value == null) return '—';
+  return value >= 0 ? `+${value}` : String(value);
 }
 
 function Metric({ label, value }) {

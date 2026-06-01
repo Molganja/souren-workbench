@@ -625,6 +625,99 @@ function walkFiles(dir) {
   });
 }
 
+function groupCount(items, keyFn) {
+  return items.reduce((acc, item) => {
+    const key = keyFn(item) || '未分类';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function reviewSummary() {
+  const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
+  const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
+  const candidates = all('SELECT * FROM candidate_drafts ORDER BY created_at DESC').map(rowCandidate);
+  const assets = all('SELECT * FROM assets ORDER BY created_at DESC').map(rowAsset);
+  const imageTasks = all('SELECT * FROM image_tasks ORDER BY created_at DESC').map(rowImageTask);
+  const clipTasks = all('SELECT * FROM clip_tasks ORDER BY created_at DESC').map(rowClipTask);
+  const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
+  const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
+  const today = new Date().toISOString().slice(0, 10);
+  const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
+  const metricsByCase = cases.reduce((acc, caze) => {
+    acc[caze.id] = metrics.filter((item) => item.caseId === caze.id);
+    return acc;
+  }, {});
+  const caseRows = cases.map((caze) => {
+    const caseSlots = slots.filter((item) => item.caseId === caze.id);
+    const caseAssets = assets.filter((item) => item.caseId === caze.id);
+    const caseMetrics = metricsByCase[caze.id] || [];
+    const health = caseHealth(caze, caseSlots, caseAssets, caseMetrics, today);
+    const latest = caseMetrics[0] || null;
+    const prev = caseMetrics[1] || null;
+    return {
+      ...caze,
+      healthStatus: health.status,
+      reasons: health.reasons,
+      slots: caseSlots.length,
+      readySlots: caseSlots.filter((item) => ['可交付', '已派发', '已汇报', '已核对'].includes(item.status)).length,
+      pendingVerify: caseSlots.filter((item) => item.status === '已汇报').length,
+      materialGaps: health.gaps.length,
+      latestMetric: latest,
+      delta: latest && prev ? {
+        fans: (latest.fans || 0) - (prev.fans || 0),
+        plays: (latest.plays || 0) - (prev.plays || 0),
+        likes: (latest.likes || 0) - (prev.likes || 0),
+        comments: (latest.comments || 0) - (prev.comments || 0)
+      } : null
+    };
+  });
+  const topAccounts = caseRows
+    .filter((item) => item.latestMetric)
+    .sort((a, b) => (b.latestMetric.plays || 0) - (a.latestMetric.plays || 0))
+    .slice(0, 12);
+  const needsAttention = caseRows
+    .filter((item) => item.reasons.length > 0 || item.pendingVerify > 0 || item.materialGaps > 0)
+    .sort((a, b) => (b.pendingVerify + b.materialGaps + b.reasons.length) - (a.pendingVerify + a.materialGaps + a.reasons.length))
+    .slice(0, 20);
+
+  return {
+    today,
+    totals: {
+      cases: cases.length,
+      slots: slots.length,
+      candidates: candidates.length,
+      assets: assets.length,
+      usableAssets: assets.filter((item) => item.reviewStatus === '可用').length,
+      deliveryReady: slots.filter((item) => item.status === '可交付').length,
+      sent: slots.filter((item) => ['已派发', '已汇报', '已核对'].includes(item.status)).length,
+      verified: verifyTasks.filter((item) => item.status === 'verified').length,
+      metrics: metrics.length,
+      imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
+      clipPending: clipTasks.filter((item) => ['draft', 'review'].includes(item.status)).length
+    },
+    statusStats: groupCount(slots, (item) => item.status),
+    contentKindStats: CONTENT_KINDS.map((kind) => ({
+      kind,
+      total: slots.filter((item) => item.contentKind === kind).length,
+      pending: slots.filter((item) => item.contentKind === kind && ['待生成', '候选待选'].includes(item.status)).length,
+      ready: slots.filter((item) => item.contentKind === kind && ['可交付', '已派发', '已汇报', '已核对'].includes(item.status)).length
+    })),
+    stageStats: STAGES.map((stage) => ({
+      stage,
+      cases: cases.filter((item) => item.stage === stage).length,
+      slots: slots.filter((item) => item.stage === stage).length
+    })),
+    healthStats: groupCount(caseRows, (item) => item.healthStatus),
+    topAccounts,
+    needsAttention,
+    recentMetrics: metrics.slice(0, 20).map((item) => ({
+      ...item,
+      case: byCase[item.caseId] || null
+    }))
+  };
+}
+
 function dashboard() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
@@ -666,6 +759,10 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/dashboard', (_req, res) => {
   res.json(dashboard());
+});
+
+app.get('/api/review', (_req, res) => {
+  res.json(reviewSummary());
 });
 
 app.get('/api/cases', (_req, res) => {
