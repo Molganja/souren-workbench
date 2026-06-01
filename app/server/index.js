@@ -499,6 +499,32 @@ app.post('/api/cases/:id/generate-slots', (req, res) => {
   res.json({ created });
 });
 
+app.post('/api/cases/:id/slots', (req, res) => {
+  const caze = caseById(req.params.id);
+  if (!caze) return res.status(404).json({ error: 'case not found' });
+  const body = req.body || {};
+  const contentKind = CONTENT_KINDS.includes(body.contentKind) ? body.contentKind : '日常养号';
+  const stage = STAGES.includes(body.stage) ? body.stage : caze.stage;
+  const slotId = uid('slot');
+  run(
+    `INSERT INTO plan_slots
+    (id, case_id, date, time_window, content_kind, goal, stage, status, selected_candidate_id, delivery_dir, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, '待生成', NULL, NULL, ?, ?)`,
+    [
+      slotId,
+      caze.id,
+      body.date || new Date().toISOString().slice(0, 10),
+      body.timeWindow || '19:00-21:00',
+      contentKind,
+      body.goal || inferGoal(contentKind, stage),
+      stage,
+      now(),
+      now()
+    ]
+  );
+  res.json(slotById(slotId));
+});
+
 app.post('/api/slots/:id/generate-candidates', (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });

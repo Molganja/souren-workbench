@@ -287,6 +287,8 @@ function CasesView({ cases, onOpenCase, onNew }) {
 
 function CaseDetail({ detail, onAct, onBack }) {
   const { case: caze, slots, candidates, assets, imageTasks, verifyTasks } = detail;
+  const [editOpen, setEditOpen] = useState(false);
+  const [slotFormOpen, setSlotFormOpen] = useState(false);
   const candidatesBySlot = useMemo(() => {
     const map = {};
     candidates.forEach((item) => {
@@ -306,12 +308,34 @@ function CaseDetail({ detail, onAct, onBack }) {
           <p className="path">素材目录：{caze.localCaseDir}</p>
         </div>
         <div className="headerActions">
+          <button onClick={() => setEditOpen(true)}>编辑案例</button>
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 30 }) }), '已补齐 30 天排期槽位')}>生成30天排期</button>
+          <button onClick={() => setSlotFormOpen(true)}>手动加槽位</button>
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>
           <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>
           {caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音主页</a>}
         </div>
       </section>
+      {editOpen && (
+        <CaseForm
+          initial={caze}
+          onClose={() => setEditOpen(false)}
+          onSubmit={(payload) => onAct(async () => {
+            await request(`/cases/${caze.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+            setEditOpen(false);
+          }, '案例信息已更新')}
+        />
+      )}
+      {slotFormOpen && (
+        <SlotForm
+          caze={caze}
+          onClose={() => setSlotFormOpen(false)}
+          onSubmit={(payload) => onAct(async () => {
+            await request(`/cases/${caze.id}/slots`, { method: 'POST', body: JSON.stringify(payload) });
+            setSlotFormOpen(false);
+          }, '槽位已新增')}
+        />
+      )}
 
       <section className="panel">
         <div className="sectionHead"><h2>内容排期</h2><span>{slots.length} 条</span></div>
@@ -467,16 +491,22 @@ function ViralView({ templates, onNew }) {
   );
 }
 
-function CaseForm({ onClose, onSubmit }) {
-  const [form, setForm] = useState({
-    weixinNick: '',
-    douyinId: '',
-    douyinUrl: '',
-    project: '吸脂',
-    stage: '起号期',
-    staff: '',
-    persona: { city: '', age: '', occupation: '', tone: '', motivation: '' }
-  });
+function CaseForm({ initial, onClose, onSubmit }) {
+  const [form, setForm] = useState(() => ({
+    weixinNick: initial?.weixinNick || '',
+    douyinId: initial?.douyinId || '',
+    douyinUrl: initial?.douyinUrl || '',
+    project: initial?.project || '吸脂',
+    stage: initial?.stage || '起号期',
+    staff: initial?.staff || '',
+    persona: {
+      city: initial?.persona?.city || '',
+      age: initial?.persona?.age || '',
+      occupation: initial?.persona?.occupation || '',
+      tone: initial?.persona?.tone || '',
+      motivation: initial?.persona?.motivation || ''
+    }
+  }));
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
@@ -484,7 +514,7 @@ function CaseForm({ onClose, onSubmit }) {
     setForm((prev) => ({ ...prev, persona: { ...prev.persona, [key]: value } }));
   }
   return (
-    <Modal title="新建案例" onClose={onClose}>
+    <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
@@ -499,7 +529,35 @@ function CaseForm({ onClose, onSubmit }) {
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>创建</button>
+        <button className="primary" onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>{initial ? '保存' : '创建'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function SlotForm({ caze, onClose, onSubmit }) {
+  const [form, setForm] = useState({
+    date: today(),
+    timeWindow: '19:00-21:00',
+    contentKind: '日常养号',
+    stage: caze.stage || '起号期',
+    goal: ''
+  });
+  function update(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+  return (
+    <Modal title="手动新增内容槽位" onClose={onClose}>
+      <div className="formGrid">
+        <label>日期<input value={form.date} onChange={(e) => update('date', e.target.value)} /></label>
+        <label>时间窗<input value={form.timeWindow} onChange={(e) => update('timeWindow', e.target.value)} /></label>
+        <label>内容类型<select value={form.contentKind} onChange={(e) => update('contentKind', e.target.value)}>{KINDS.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label>阶段<select value={form.stage} onChange={(e) => update('stage', e.target.value)}>{STAGES.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label className="wide">目标/备注<textarea value={form.goal} onChange={(e) => update('goal', e.target.value)} placeholder="留空则按类型自动生成目标" /></label>
+      </div>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="primary" onClick={() => onSubmit(form)}>新增</button>
       </div>
     </Modal>
   );
