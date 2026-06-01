@@ -144,6 +144,13 @@ async function main() {
     });
     assert(caze.weixinNick.includes('成都') && caze.persona.age && caze.persona.tone && caze.persona.motivation, 'case random defaults missing');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
+    const minimalCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', staff: '咨询Z' })
+    });
+    assert(minimalCase.weixinNick && minimalCase.weixinNick !== '未命名兼职', 'minimal case did not generate nick');
+    assert(minimalCase.staff === '咨询Z' && minimalCase.persona.city && minimalCase.persona.motivation, 'minimal case defaults missing');
+    assert(!minimalCase.localCaseDir.includes('未命名'), 'minimal case directory used unnamed segment');
     const manifestPath = path.join(caze.localCaseDir, 'case.json');
     assert(fs.existsSync(manifestPath), 'case manifest missing');
     const editedCase = await api(`/cases/${caze.id}`, {
@@ -284,9 +291,9 @@ async function main() {
     await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
 
     const viralBulk = await api(`/viral-templates/${viral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-02' }) });
-    assert(viralBulk.createdCount === 2, 'viral bulk generation failed');
+    assert(viralBulk.createdCount === 3, 'viral bulk generation failed');
     const filteredBulk = await api(`/viral-templates/${filteredViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-03' }) });
-    assert(filteredBulk.createdCount === 1 && filteredBulk.skippedCount >= 1, 'viral persona filter bulk generation failed');
+    assert(filteredBulk.createdCount >= 1 && filteredBulk.skippedCount >= 1, 'viral persona filter bulk generation failed');
     let pendingRejected = false;
     try {
       await api(`/viral-templates/${linkOnlyViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-04' }) });
@@ -307,10 +314,10 @@ async function main() {
     });
     assert(analyzedViral.title === '青豆分析后的链接' && analyzedViral.category === '情绪', 'viral analysis patch failed');
     const analyzedBulk = await api(`/viral-templates/${analyzedViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-05' }) });
-    assert(analyzedBulk.createdCount === 1, 'analyzed viral link did not generate filtered slots');
+    assert(analyzedBulk.createdCount >= 1, 'analyzed viral link did not generate filtered slots');
 
     const exported = await api('/export');
-    assert(exported.cases.length === 2, 'export missing cases');
+    assert(exported.cases.length === 3, 'export missing cases');
     assert(exported.metrics.length === 1, 'export missing metrics');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
@@ -332,9 +339,9 @@ async function main() {
     }
     assert(badImportRejected, 'bad import was not rejected');
     const afterBadImportCases = await api('/cases');
-    assert(afterBadImportCases.length === 2, 'bad import changed existing cases');
+    assert(afterBadImportCases.length === 3, 'bad import changed existing cases');
     const review = await api('/review');
-    assert(review.totals.cases === 2, 'review case total invalid');
+    assert(review.totals.cases === 3, 'review case total invalid');
     assert(review.totals.metrics === 1, 'review metrics total invalid');
     assert(review.contentKindStats.some((item) => item.kind === '爆款提权' && item.total >= 1), 'review content kind stats missing');
     assert(review.topAccounts.length === 1, 'review top account missing');

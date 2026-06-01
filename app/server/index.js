@@ -561,7 +561,8 @@ function createCaseFromBody(body = {}) {
   const date = created.slice(0, 10).replaceAll('-', '');
   const seq = all('SELECT id FROM cases').length + 1;
   const caseCode = body.caseCode || `XZ-${date}-${String(seq).padStart(3, '0')}`;
-  const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(body.weixinNick)}`;
+  const weixinNick = body.weixinNick || `${persona.city}${persona.occupation}${String(seq).padStart(2, '0')}`;
+  const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(weixinNick)}`;
   const caseDir = path.join(MATERIAL_ROOT, dirName);
   ensureCaseDirs(caseDir);
   run(
@@ -571,7 +572,7 @@ function createCaseFromBody(body = {}) {
     [
       id,
       caseCode,
-      body.weixinNick || `${persona.city}${persona.occupation}`,
+      weixinNick,
       body.douyinId || '',
       body.douyinUrl || '',
       project,

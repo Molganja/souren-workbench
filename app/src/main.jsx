@@ -1198,7 +1198,9 @@ function bulkGenerateViral(template, onAct) {
 }
 
 function CaseForm({ initial, onClose, onSubmit }) {
+  const isCreate = !initial;
   const defaults = useMemo(() => initial ? null : randomCaseDefaults(), [initial]);
+  const [showAdvanced, setShowAdvanced] = useState(Boolean(initial));
   const [form, setForm] = useState(() => ({
     weixinNick: initial?.weixinNick || defaults?.weixinNick || '',
     douyinId: initial?.douyinId || '',
@@ -1226,22 +1228,38 @@ function CaseForm({ initial, onClose, onSubmit }) {
   }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {!initial && <div className="hintBox">这里默认随机生成人设。工作人员只需要补微信昵称、抖音号、主页链接和对接人；不确定就直接创建，后面再改。</div>}
+      {isCreate && <div className="hintBox">新建时只需要填对接人和抖音链接。昵称和人设默认随机生成，用来先建目录、排期和交付链路，后面需要再细改。</div>}
+      {isCreate && (
+        <div className="generatedPreview">
+          <strong>{form.weixinNick}</strong>
+          <span>{personaText(form.persona)}</span>
+          <small>{form.persona.motivation}</small>
+        </div>
+      )}
       <div className="formGrid">
-        <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
+        {(!isCreate || showAdvanced) && (
+          <>
+            <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
+            <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
+          </>
+        )}
         <label>对接咨询/负责人<input placeholder="例如：咨询A / 小王" value={form.staff} onChange={(e) => update('staff', e.target.value)} /></label>
-        <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
-        <label className="wide">抖音主页链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
+        <label className={showAdvanced || !isCreate ? '' : 'wide'}>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
         <label>项目<input value={form.project} onChange={(e) => update('project', e.target.value)} /></label>
         <label>阶段<select value={form.stage} onChange={(e) => update('stage', e.target.value)}>{STAGES.map((s) => <option key={s}>{s}</option>)}</select></label>
-        <label>城市<input value={form.persona.city} onChange={(e) => updatePersona('city', e.target.value)} /></label>
-        <label>年龄<input value={form.persona.age} onChange={(e) => updatePersona('age', e.target.value)} /></label>
-        <label>职业<input value={form.persona.occupation} onChange={(e) => updatePersona('occupation', e.target.value)} /></label>
-        <label>语气<input value={form.persona.tone} onChange={(e) => updatePersona('tone', e.target.value)} /></label>
-        <label className="wide">动机故事<textarea value={form.persona.motivation} onChange={(e) => updatePersona('motivation', e.target.value)} /></label>
+        {(!isCreate || showAdvanced) && (
+          <>
+            <label>城市<input value={form.persona.city} onChange={(e) => updatePersona('city', e.target.value)} /></label>
+            <label>年龄<input value={form.persona.age} onChange={(e) => updatePersona('age', e.target.value)} /></label>
+            <label>职业<input value={form.persona.occupation} onChange={(e) => updatePersona('occupation', e.target.value)} /></label>
+            <label>语气<input value={form.persona.tone} onChange={(e) => updatePersona('tone', e.target.value)} /></label>
+            <label className="wide">动机故事<textarea value={form.persona.motivation} onChange={(e) => updatePersona('motivation', e.target.value)} /></label>
+          </>
+        )}
       </div>
       <div className="modalActions">
-        {!initial && <button onClick={reroll}>随机换一组</button>}
+        {isCreate && <button onClick={reroll}>随机换一组</button>}
+        {isCreate && <button onClick={() => setShowAdvanced((prev) => !prev)}>{showAdvanced ? '收起随机信息' : '编辑随机信息'}</button>}
         <button onClick={onClose}>取消</button>
         <button className="primary" onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>{initial ? '保存' : '创建'}</button>
       </div>

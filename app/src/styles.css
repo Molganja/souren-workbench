@@ -737,6 +737,25 @@ textarea {
   line-height: 1.6;
 }
 
+.generatedPreview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: grid;
+  gap: 5px;
+  background: #fff;
+}
+
+.generatedPreview strong {
+  font-size: 16px;
+}
+
+.generatedPreview span,
+.generatedPreview small {
+  color: var(--muted);
+}
+
 .toast {
   position: fixed;
   left: 50%;
