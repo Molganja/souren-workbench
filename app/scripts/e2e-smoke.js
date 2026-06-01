@@ -5,7 +5,8 @@ import { spawn } from 'node:child_process';
 const TEST_PORT = 5184;
 const BASE = `http://127.0.0.1:${TEST_PORT}/api`;
 const APP_DIR = path.resolve(import.meta.dirname, '..');
-const ROOT_DIR = path.resolve(APP_DIR, '..');
+const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
+const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,10 +43,11 @@ function assert(condition, message) {
 async function main() {
   fs.rmSync(path.join(ROOT_DIR, 'data'), { recursive: true, force: true });
   fs.rmSync(path.join(ROOT_DIR, '素材库'), { recursive: true, force: true });
+  fs.mkdirSync(ROOT_DIR, { recursive: true });
 
   const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
     cwd: APP_DIR,
-    env: { ...process.env, PORT: String(TEST_PORT) },
+    env: { ...process.env, PORT: String(TEST_PORT), SOUREN_ROOT_DIR: ROOT_DIR },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   server.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -349,8 +351,7 @@ async function main() {
   } finally {
     server.kill('SIGTERM');
     await sleep(300);
-    fs.rmSync(path.join(ROOT_DIR, 'data'), { recursive: true, force: true });
-    fs.rmSync(path.join(ROOT_DIR, '素材库'), { recursive: true, force: true });
+    fs.rmSync(ROOT_DIR, { recursive: true, force: true });
   }
 }
 

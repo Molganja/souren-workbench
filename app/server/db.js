@@ -2,7 +2,9 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const ROOT_DIR = path.resolve(process.cwd(), '..');
+export const ROOT_DIR = process.env.SOUREN_ROOT_DIR
+  ? path.resolve(process.env.SOUREN_ROOT_DIR)
+  : path.resolve(process.cwd(), '..');
 export const DATA_DIR = path.join(ROOT_DIR, 'data');
 export const MATERIAL_ROOT = path.join(ROOT_DIR, '素材库', '真实案例');
 export const DB_PATH = path.join(DATA_DIR, 'souren.sqlite');
