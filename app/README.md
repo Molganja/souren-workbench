@@ -113,7 +113,7 @@ npm run verify:consult
 
 `test:e2e` 会临时创建测试数据库和素材目录，跑完后自动清理。
 `verify` 会顺序运行 doctor、build、E2E，并额外启动隔离服务检查 `/api/health` 和 `/api/readiness`。
-`verify:consult` 会在上述验收后尝试调用本地 AI 顾问，把当前工作包发给 `claude`/`clude`/`LOCAL_CLAUDE_COMMAND`，并保存顾问记录。
+`verify:consult` 会在上述验收后尝试调用本地 AI 顾问，把当前工作包和关键本地文件路径发给 `claude`/`clude`/`LOCAL_CLAUDE_COMMAND`，要求它优先读取这些文件再给建议，并保存顾问记录。
 
 ## 批量导入样例
 
@@ -134,7 +134,7 @@ npm run verify:consult
 - 「排期规划」页可以按未来 7/14/30/60 天、状态、内容类型和账号关键词查看全局排期，并直接处理生成、交付、派发和核对动作。
 - 「今日中控台」会按对接咨询/负责人汇总今日任务，工作人员能直接知道每条内容该发给哪个兼职、由谁对接。
 - 「今日链路复盘」按状态串起待生成、待选择、已锁定、素材阻塞、可交付、已派发、已汇报、已核对，并支持复制今日工作简报。
-- 「复制AI工作包」会在 `data/operator-packets/` 生成 Markdown，并把内容复制到剪贴板，里面包含 Codex 下一步优先级、今日链路、待青豆分析、图片/剪辑任务、异常账号和本地路径。
+- 「复制AI工作包」会在 `data/operator-packets/` 生成 Markdown，并把内容复制到剪贴板，里面包含 Codex 下一步优先级、审阅指令、今日链路、待青豆分析、图片/剪辑任务、异常账号和本地路径。
 - AI 工作包会附带当前 git 分支、提交、工作树状态、最近提交和关键代码文件路径，方便本地 clude/Claude 直接审阅系统进度。
 - 「请本地AI建议」会优先调用 `claude`、`clude`、`claude-code`，也可以通过 `LOCAL_CLAUDE_COMMAND` 指定命令；结果会保存到 `data/ai-consults/`，首页会展示最近记录并能打开原文件。如果命令未安装，系统会保存调用记录，不影响其他功能。
 - 「系统配置」页可直接打开 AI 工作包目录和本地 AI 顾问记录目录。
