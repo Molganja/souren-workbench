@@ -116,6 +116,19 @@ CREATE TABLE IF NOT EXISTS image_tasks (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS clip_tasks (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  plan_slot_id TEXT REFERENCES plan_slots(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  brief TEXT NOT NULL,
+  output_dir TEXT NOT NULL,
+  status TEXT NOT NULL,
+  final_video_path TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS verify_tasks (
   id TEXT PRIMARY KEY,
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,

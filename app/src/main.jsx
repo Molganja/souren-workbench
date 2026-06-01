@@ -338,7 +338,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk }) {
 }
 
 function CaseDetail({ detail, onAct, onCopy, onBack }) {
-  const { case: caze, slots, candidates, assets, imageTasks, verifyTasks, metrics = [], materialGaps = [], healthReasons = [] } = detail;
+  const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], verifyTasks, metrics = [], materialGaps = [], healthReasons = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const [slotFormOpen, setSlotFormOpen] = useState(false);
   const candidatesBySlot = useMemo(() => {
@@ -395,7 +395,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
         {slots.length === 0 ? <div className="empty">还没有排期槽位</div> : (
           <div className="slotList">
             {slots.map((slot) => (
-              <SlotCard key={slot.id} slot={slot} candidates={candidatesBySlot[slot.id] || []} onAct={onAct} onCopy={onCopy} />
+              <SlotCard key={slot.id} slot={slot} candidates={candidatesBySlot[slot.id] || []} caze={caze} onAct={onAct} onCopy={onCopy} />
             ))}
           </div>
         )}
@@ -445,6 +445,30 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
                       }), '已按素材缺口创建 Image 任务')}>创建 Image 任务</button>
                     </div>
                   )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="panel">
+          <div className="sectionHead">
+            <h2>剪辑任务</h2>
+            <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, title: `${caze.weixinNick}临时剪辑任务` }) }), '剪辑任务已创建')}>新建剪辑任务</button>
+          </div>
+          {clipTasks.length === 0 ? <div className="empty">暂无剪辑任务</div> : (
+            <div className="assetList">
+              {clipTasks.map((task) => (
+                <div className="assetRow" key={task.id}>
+                  <strong>{task.title}</strong>
+                  <span>{task.status}</span>
+                  <small>{task.outputDir}</small>
+                  <div className="inlineActions">
+                    <button onClick={() => onCopy(task.brief, '剪辑任务单已复制')}>复制任务单</button>
+                    <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>
+                    {['review', 'approved', 'rejected'].map((status) => (
+                      <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${status}`)}>{status}</button>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -525,7 +549,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
   );
 }
 
-function SlotCard({ slot, candidates, onAct, onCopy }) {
+function SlotCard({ slot, candidates, caze, onAct, onCopy }) {
   const selected = candidates.find((item) => item.selected);
   return (
     <div className="slotCard">
@@ -540,6 +564,7 @@ function SlotCard({ slot, candidates, onAct, onCopy }) {
       <div className="inlineActions">
         <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
         {selected && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
+        {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '进入待核对')}>兼职已汇报</button>}

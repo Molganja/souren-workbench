@@ -243,6 +243,22 @@ function rowImageTask(row) {
   };
 }
 
+function rowClipTask(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    planSlotId: row.plan_slot_id,
+    title: row.title,
+    brief: row.brief,
+    outputDir: row.output_dir,
+    status: row.status,
+    finalVideoPath: row.final_video_path,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function rowVerify(row) {
   if (!row) return null;
   return {
@@ -714,10 +730,11 @@ app.get('/api/cases/:id', (req, res) => {
   ).map(rowCandidate);
   const assets = all('SELECT * FROM assets WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowAsset);
   const imageTasks = all('SELECT * FROM image_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowImageTask);
+  const clipTasks = all('SELECT * FROM clip_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowClipTask);
   const verifyTasks = all('SELECT * FROM verify_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowVerify);
   const metrics = all('SELECT * FROM metrics WHERE case_id = ? ORDER BY date DESC, created_at DESC', [caze.id]).map(rowMetric);
   const health = caseHealth(caze, slots, assets, metrics, new Date().toISOString().slice(0, 10));
-  res.json({ case: { ...caze, healthStatus: health.status }, slots, candidates, assets, imageTasks, verifyTasks, metrics, materialGaps: health.gaps, healthReasons: health.reasons });
+  res.json({ case: { ...caze, healthStatus: health.status }, slots, candidates, assets, imageTasks, clipTasks, verifyTasks, metrics, materialGaps: health.gaps, healthReasons: health.reasons });
 });
 
 app.get('/api/config', (_req, res) => {
@@ -913,6 +930,74 @@ app.patch('/api/image-tasks/:id', (req, res) => {
   res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id])));
 });
 
+app.post('/api/clip-tasks', (req, res) => {
+  const body = req.body || {};
+  const caze = caseById(body.caseId);
+  if (!caze) return res.status(404).json({ error: 'case not found' });
+  const slot = body.planSlotId ? slotById(body.planSlotId) : null;
+  const selected = slot?.selectedCandidateId ? rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId])) : null;
+  const title = body.title || selected?.title || `${caze.weixinNick}剪辑任务`;
+  const outputDir = path.join(caze.localCaseDir, '02-生成补充', '剪辑任务', safeSegment(title));
+  fs.mkdirSync(outputDir, { recursive: true });
+  const assets = all('SELECT * FROM assets WHERE case_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 8', [caze.id, '视频']).map(rowAsset);
+  const brief = body.brief || [
+    `剪辑任务：${title}`,
+    `案例：${caze.caseCode} / ${caze.weixinNick}`,
+    `账号：${caze.douyinId || '未填'}`,
+    `阶段：${slot?.stage || caze.stage}`,
+    `内容类型：${slot?.contentKind || '视频'}`,
+    `建议比例：9:16`,
+    `建议时长：20-35秒`,
+    '',
+    '发布文案/口播参考：',
+    selected ? `${selected.title}\n${selected.publishText}` : '暂无锁定候选，可先按素材做生活化短视频。',
+    '',
+    '可用视频素材：',
+    assets.length ? assets.map((asset, index) => `${index + 1}. ${asset.path}`).join('\n') : '暂无已扫描视频素材，请先放入 00-原始素材 后扫描。',
+    '',
+    '交付要求：输出 final.mp4 放回本目录；如需要封面图，放 cover.jpg。'
+  ].join('\n');
+  fs.writeFileSync(path.join(outputDir, '剪辑任务单.txt'), brief);
+  const id = uid('clip');
+  run(
+    `INSERT INTO clip_tasks
+    (id, case_id, plan_slot_id, title, brief, output_dir, status, final_video_path, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      caze.id,
+      body.planSlotId || null,
+      title,
+      brief,
+      outputDir,
+      body.status || 'waiting_edit',
+      body.finalVideoPath || '',
+      now(),
+      now()
+    ]
+  );
+  res.json(rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [id])));
+});
+
+app.patch('/api/clip-tasks/:id', (req, res) => {
+  const task = rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [req.params.id]));
+  if (!task) return res.status(404).json({ error: 'clip task not found' });
+  const body = req.body || {};
+  const finalPath = body.finalVideoPath ?? task.finalVideoPath;
+  run(
+    `UPDATE clip_tasks SET title = ?, brief = ?, status = ?, final_video_path = ?, updated_at = ? WHERE id = ?`,
+    [
+      body.title ?? task.title,
+      body.brief ?? task.brief,
+      body.status ?? task.status,
+      finalPath,
+      now(),
+      task.id
+    ]
+  );
+  res.json(rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [task.id])));
+});
+
 app.get('/api/viral-templates', (_req, res) => {
   res.json(all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral));
 });
@@ -1068,6 +1153,7 @@ app.get('/api/export', (_req, res) => {
     contentSeeds: all('SELECT * FROM content_seeds').map(rowContentSeed),
     assets: all('SELECT * FROM assets').map(rowAsset),
     imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
+    clipTasks: all('SELECT * FROM clip_tasks').map(rowClipTask),
     verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify),
     metrics: all('SELECT * FROM metrics').map(rowMetric)
   });
@@ -1079,6 +1165,7 @@ app.post('/api/import', (req, res) => {
   const importedAt = now();
   run('DELETE FROM metrics');
   run('DELETE FROM verify_tasks');
+  run('DELETE FROM clip_tasks');
   run('DELETE FROM image_tasks');
   run('DELETE FROM assets');
   run('DELETE FROM candidate_drafts');
@@ -1233,6 +1320,26 @@ app.post('/api/import', (req, res) => {
         JSON.stringify(item.sourceMaterials || []),
         item.outputDir || item.output_dir || '',
         item.status || 'draft',
+        item.createdAt || importedAt,
+        item.updatedAt || importedAt
+      ]
+    );
+  });
+
+  (data.clipTasks || []).forEach((item) => {
+    run(
+      `INSERT INTO clip_tasks
+      (id, case_id, plan_slot_id, title, brief, output_dir, status, final_video_path, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.planSlotId || item.plan_slot_id || null,
+        item.title || '剪辑任务',
+        item.brief || '',
+        item.outputDir || item.output_dir || '',
+        item.status || 'waiting_edit',
+        item.finalVideoPath || item.final_video_path || '',
         item.createdAt || importedAt,
         item.updatedAt || importedAt
       ]

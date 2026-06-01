@@ -131,6 +131,10 @@ async function main() {
     const drafts = await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' });
     assert(drafts.length === 3, 'candidate count is not 3');
     await api(`/candidates/${drafts[0].id}/select`, { method: 'POST' });
+    const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
+    assert(fs.existsSync(path.join(clip.outputDir, '剪辑任务单.txt')), 'clip brief file missing');
+    const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
+    assert(reviewedClip.status === 'approved', 'clip status update failed');
     const delivery = await api(`/slots/${slot.id}/delivery`, { method: 'POST' });
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
 
@@ -160,12 +164,14 @@ async function main() {
     assert(exported.cases.length === 3, 'export missing cases');
     assert(exported.metrics.length === 1, 'export missing metrics');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
+    assert(exported.clipTasks.length === 1, 'export missing clip task');
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');
 
     const finalDetail = await api(`/cases/${caze.id}`);
     assert(finalDetail.metrics.length === 1, 'case metrics missing');
+    assert(finalDetail.clipTasks.length === 1, 'case clip tasks missing');
 
     console.log('E2E smoke PASS');
   } finally {
