@@ -438,6 +438,7 @@ async function main() {
     assert(config.stageRatios.起号期, 'config ratios missing');
     assert(config.backups.length >= 2, 'config backup list missing');
     assert(config.localAi && config.localAi.ready === false, 'config local AI status missing');
+    assert(config.operatorPacketDir && config.aiConsultDir, 'config AI work dirs missing');
     assert(config.readiness?.summary?.total >= 10, 'config readiness summary missing');
     assert(config.readiness.checks.some((item) => item.key === 'delivery-package' && item.status === 'ready'), 'readiness delivery package missing');
     assert(config.readiness.checks.some((item) => item.key === 'local-ai' && item.status === 'waiting'), 'readiness local AI waiting missing');

@@ -195,7 +195,7 @@ function App() {
           <SeedView seeds={contentSeeds} onNew={() => setSeedFormOpen(true)} onAct={act} />
         )}
         {!loading && view === 'settings' && config && (
-          <SettingsView config={config} />
+          <SettingsView config={config} onAct={act} />
         )}
       </main>
       {caseFormOpen && (
@@ -1418,7 +1418,7 @@ function SeedForm({ onClose, onSubmit }) {
   );
 }
 
-function SettingsView({ config }) {
+function SettingsView({ config, onAct }) {
   return (
     <div className="stack">
       <section className="hero">
@@ -1456,6 +1456,30 @@ function SettingsView({ config }) {
       <section className="panel">
         <div className="sectionHead"><h2>本地素材根目录</h2></div>
         <div className="path">{config.materialRoot}</div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>AI 工作目录</h2>
+          <div className="headerActions">
+            <span>{config.localAi?.ready ? '本地AI已接入' : '本地AI待接入'}</span>
+            <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.operatorPacketDir }) }), '已打开AI工作包目录')}>打开工作包目录</button>
+            <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.aiConsultDir }) }), '已打开顾问记录目录')}>打开顾问记录目录</button>
+          </div>
+        </div>
+        <div className="templateList">
+          <div className="templateRow">
+            <strong>工作包目录</strong>
+            <span>{config.operatorPacketDir}</span>
+          </div>
+          <div className="templateRow">
+            <strong>顾问记录目录</strong>
+            <span>{config.aiConsultDir}</span>
+          </div>
+          <div className="templateRow">
+            <strong>本地AI命令</strong>
+            <span>{config.localAi?.ready ? config.localAi.command : config.localAi?.message}</span>
+          </div>
+        </div>
       </section>
       <section className="twoCol">
         <div className="panel">

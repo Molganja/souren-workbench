@@ -1710,6 +1710,8 @@ app.get('/api/config', (_req, res) => {
     localAi: localAiStatus(),
     readiness: systemReadiness(),
     materialRoot: MATERIAL_ROOT,
+    operatorPacketDir: OPERATOR_PACKET_DIR,
+    aiConsultDir: AI_CONSULT_DIR,
     backupDir: BACKUP_DIR,
     backups: backupList().slice(0, 10)
   });
