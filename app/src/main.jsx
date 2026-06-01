@@ -37,23 +37,27 @@ function App() {
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseDetail, setCaseDetail] = useState(null);
   const [viralTemplates, setViralTemplates] = useState([]);
+  const [contentSeeds, setContentSeeds] = useState([]);
   const [config, setConfig] = useState(null);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(true);
   const [caseFormOpen, setCaseFormOpen] = useState(false);
   const [bulkCaseOpen, setBulkCaseOpen] = useState(false);
   const [viralFormOpen, setViralFormOpen] = useState(false);
+  const [seedFormOpen, setSeedFormOpen] = useState(false);
 
   async function refresh() {
-    const [dash, caseRows, viralRows, configData] = await Promise.all([
+    const [dash, caseRows, viralRows, seedRows, configData] = await Promise.all([
       request('/dashboard'),
       request('/cases'),
       request('/viral-templates'),
+      request('/content-seeds'),
       request('/config')
     ]);
     setDashboard(dash);
     setCases(caseRows);
     setViralTemplates(viralRows);
+    setContentSeeds(seedRows);
     setConfig(configData);
     if (selectedCaseId) {
       const detail = await request(`/cases/${selectedCaseId}`);
@@ -121,6 +125,7 @@ function App() {
       <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>今日中控台</button>
       <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
       <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款模板</button>
+      <button className={view === 'seeds' ? 'active' : ''} onClick={() => setView('seeds')}>内容种子</button>
       <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>配置</button>
     </div>
   );
@@ -152,6 +157,9 @@ function App() {
         )}
         {!loading && view === 'viral' && (
           <ViralView templates={viralTemplates} onNew={() => setViralFormOpen(true)} onAct={act} />
+        )}
+        {!loading && view === 'seeds' && (
+          <SeedView seeds={contentSeeds} onNew={() => setSeedFormOpen(true)} onAct={act} />
         )}
         {!loading && view === 'settings' && config && (
           <SettingsView config={config} />
@@ -185,6 +193,15 @@ function App() {
             await request('/viral-templates', { method: 'POST', body: JSON.stringify(payload) });
             setViralFormOpen(false);
           }, '爆款模板已保存')}
+        />
+      )}
+      {seedFormOpen && (
+        <SeedForm
+          onClose={() => setSeedFormOpen(false)}
+          onSubmit={(payload) => act(async () => {
+            await request('/content-seeds', { method: 'POST', body: JSON.stringify(payload) });
+            setSeedFormOpen(false);
+          }, '内容种子已保存')}
         />
       )}
       {toast && <div className="toast">{toast}</div>}
@@ -593,6 +610,77 @@ function ViralView({ templates, onNew, onAct }) {
         </div>
       )}
     </section>
+  );
+}
+
+function SeedView({ seeds, onNew, onAct }) {
+  return (
+    <section className="panel">
+      <div className="sectionHead">
+        <h2>内容种子库</h2>
+        <button className="button primary" onClick={onNew}>新增内容种子</button>
+      </div>
+      <div className="hintBox">素人种草和日常养号会优先从这里抽取模板，再按账号人设生成 3 条候选。可用变量：{'{城市}'} {'{年龄}'} {'{occupation}'} {'{项目}'} {'{阶段}'} {'{motivation}'}。</div>
+      {seeds.length === 0 ? <div className="empty">暂无内容种子</div> : (
+        <div className="templateList">
+          {seeds.map((seed) => (
+            <div className="templateRow" key={seed.id}>
+              <strong>{seed.titleTemplate}</strong>
+              <span>{seed.project} · {seed.stage} · {seed.contentKind} · {seed.format} · 使用 {seed.usageCount}</span>
+              <p>{seed.contentTemplate}</p>
+              <small>{seed.tags.join(' / ') || '未打标签'}</small>
+              <div className="inlineActions">
+                <button onClick={() => onAct(() => request(`/content-seeds/${seed.id}`, { method: 'DELETE' }), '内容种子已删除')}>删除</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SeedForm({ onClose, onSubmit }) {
+  const [form, setForm] = useState({
+    project: '通用',
+    stage: '通用',
+    contentKind: '日常养号',
+    format: '图文',
+    titleTemplate: '{城市}{occupation}的一天',
+    contentTemplate: '{城市}{occupation}日常。\\n今天正常记录一点生活，不做得太像广告。\\n{motivation}',
+    tagsText: '日常,起号',
+    baseWeight: 1
+  });
+  function update(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+  return (
+    <Modal title="新增内容种子" onClose={onClose}>
+      <div className="formGrid">
+        <label>项目<input value={form.project} onChange={(e) => update('project', e.target.value)} /></label>
+        <label>阶段<select value={form.stage} onChange={(e) => update('stage', e.target.value)}>
+          {['通用', ...STAGES].map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label>内容类型<select value={form.contentKind} onChange={(e) => update('contentKind', e.target.value)}>
+          {KINDS.filter((item) => item !== '爆款提权').map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label>形式<select value={form.format} onChange={(e) => update('format', e.target.value)}>
+          {['图文', '口播', '视频'].map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label className="wide">标题模板<input value={form.titleTemplate} onChange={(e) => update('titleTemplate', e.target.value)} /></label>
+        <label className="wide">正文模板<textarea rows="7" value={form.contentTemplate} onChange={(e) => update('contentTemplate', e.target.value)} /></label>
+        <label>标签<input value={form.tagsText} onChange={(e) => update('tagsText', e.target.value)} /></label>
+        <label>权重<input value={form.baseWeight} onChange={(e) => update('baseWeight', e.target.value)} /></label>
+      </div>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="primary" onClick={() => onSubmit({
+          ...form,
+          tags: form.tagsText.split(/,|，/).map((item) => item.trim()).filter(Boolean),
+          baseWeight: Number(form.baseWeight) || 1
+        })}>保存</button>
+      </div>
+    </Modal>
   );
 }
 

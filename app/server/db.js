@@ -74,6 +74,21 @@ CREATE TABLE IF NOT EXISTS viral_templates (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS content_seeds (
+  id TEXT PRIMARY KEY,
+  project TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  content_kind TEXT NOT NULL,
+  format TEXT NOT NULL,
+  title_template TEXT NOT NULL,
+  content_template TEXT NOT NULL,
+  tags TEXT NOT NULL DEFAULT '[]',
+  base_weight REAL NOT NULL DEFAULT 1,
+  usage_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS assets (
   id TEXT PRIMARY KEY,
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,

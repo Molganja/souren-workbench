@@ -65,6 +65,20 @@ async function main() {
       })
     });
     assert(viral.id, 'viral template not created');
+    const seed = await api('/content-seeds', {
+      method: 'POST',
+      body: JSON.stringify({
+        project: '吸脂',
+        stage: '起号期',
+        contentKind: '素人种草',
+        format: '图文',
+        titleTemplate: '验收种子：{城市}{occupation}',
+        contentTemplate: '这是验收内容种子，{城市}{occupation}，{motivation}',
+        tags: ['验收'],
+        baseWeight: 5
+      })
+    });
+    assert(seed.id, 'content seed not created');
 
     const bulk = await api('/cases/bulk', {
       method: 'POST',
@@ -105,9 +119,11 @@ async function main() {
 
     const manualSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
-      body: JSON.stringify({ date: '2026-06-01', contentKind: '素人种草', stage: '决策期', goal: '手动槽位验收' })
+      body: JSON.stringify({ date: '2026-06-01', contentKind: '素人种草', stage: '起号期', goal: '手动槽位验收' })
     });
     assert(manualSlot.contentKind === '素人种草', 'manual slot failed');
+    const seededDrafts = await api(`/slots/${manualSlot.id}/generate-candidates`, { method: 'POST' });
+    assert(seededDrafts.some((draft) => draft.sourceTemplateId === seed.id), 'seed was not used for daily content');
 
     const slots = await api(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 2 }) });
     assert(slots.created.length >= 1, 'generated slots missing');
@@ -143,6 +159,7 @@ async function main() {
     const exported = await api('/export');
     assert(exported.cases.length === 3, 'export missing cases');
     assert(exported.metrics.length === 1, 'export missing metrics');
+    assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');

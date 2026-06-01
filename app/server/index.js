@@ -58,6 +58,70 @@ const MATERIAL_TEMPLATES = {
   ]
 };
 
+const DEFAULT_CONTENT_SEEDS = [
+  {
+    project: '通用',
+    stage: '起号期',
+    contentKind: '日常养号',
+    format: '图文',
+    titleTemplate: '{城市}{occupation}今天的小记录',
+    contentTemplate: '{城市}{occupation}日常。\n今天不做复杂内容，就是正常上班、吃饭、走路，顺手拍几张。\n这个号后面会多记录真实生活，不想做得太像广告。',
+    tags: ['日常', '起号']
+  },
+  {
+    project: '通用',
+    stage: '通用',
+    contentKind: '日常养号',
+    format: '图文',
+    titleTemplate: '普通女生状态稳定的几个小细节',
+    contentTemplate: '让状态慢慢变好的，不一定是什么大改变。\n1. 出门前给自己留一点时间。\n2. 拍照不用精修，但光线舒服一点。\n3. 每天记录一点点，别断太久。',
+    tags: ['状态', '清单']
+  },
+  {
+    project: '吸脂',
+    stage: '决策期',
+    contentKind: '素人种草',
+    format: '口播',
+    titleTemplate: '{城市}{年龄}岁，我为什么开始认真看{项目}',
+    contentTemplate: '我是{城市}{年龄}岁，{occupation}。\n一开始看{项目}不是因为冲动，而是{motivation}。\n今天先说我做决定前最纠结的3件事：恢复期、真实变化、以及自己能不能接受过程。',
+    tags: ['决策', '口播']
+  },
+  {
+    project: '吸脂',
+    stage: '术后恢复期',
+    contentKind: '素人种草',
+    format: '图文',
+    titleTemplate: '{项目}{阶段}记录：今天真实感受',
+    contentTemplate: '今天按{项目}{阶段}来记录，不把话说满。\n身体状态、穿衣感受、情绪变化都分开写。\n如果你也在看类似项目，建议先看过程，不要只看单张结果图。',
+    tags: ['恢复', '图文']
+  }
+];
+
+function seedDefaultContentSeeds() {
+  const count = get('SELECT COUNT(*) AS count FROM content_seeds')?.count || 0;
+  if (count > 0) return;
+  DEFAULT_CONTENT_SEEDS.forEach((item) => {
+    run(
+      `INSERT INTO content_seeds
+      (id, project, stage, content_kind, format, title_template, content_template, tags, base_weight, usage_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      [
+        uid('seed'),
+        item.project,
+        item.stage,
+        item.contentKind,
+        item.format,
+        item.titleTemplate,
+        item.contentTemplate,
+        JSON.stringify(item.tags || []),
+        item.baseWeight || 1,
+        now(),
+        now()
+      ]
+    );
+  });
+}
+
 function rowCase(row) {
   if (!row) return null;
   return {
@@ -139,6 +203,24 @@ function rowViral(row) {
     suitablePersonas: parseJson(row.suitable_personas, []),
     forbiddenPersonas: parseJson(row.forbidden_personas, []),
     rewritePolicy: row.rewrite_policy,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowContentSeed(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    project: row.project,
+    stage: row.stage,
+    contentKind: row.content_kind,
+    format: row.format,
+    titleTemplate: row.title_template,
+    contentTemplate: row.content_template,
+    tags: parseJson(row.tags, []),
+    baseWeight: row.base_weight,
+    usageCount: row.usage_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -265,7 +347,46 @@ function titleFor(kind, stage, persona, viral) {
   return `${stage}：我为什么开始认真考虑这个项目`;
 }
 
-function draftText(kind, variant, caze, slot, viral) {
+function fillVars(template, caze) {
+  const p = caze.persona || {};
+  const vars = {
+    昵称: p.nickname || caze.weixinNick || '我',
+    城市: p.city || '本地',
+    年龄: p.age || '',
+    occupation: p.occupation || '上班族',
+    职业: p.occupation || '上班族',
+    tone: p.tone || '自然',
+    语气: p.tone || '自然',
+    motivation: p.motivation || '想把状态调整得更稳定一点',
+    动机: p.motivation || '想把状态调整得更稳定一点',
+    项目: caze.project || '项目',
+    阶段: caze.stage || '当前阶段'
+  };
+  return String(template || '').replace(/\{([^}]+)\}/g, (_, key) => vars[key] ?? '');
+}
+
+function seedVariantText(base, variant) {
+  if (variant === '互动版') return `${base}\n\n你们会更想看过程记录，还是直接看结果和踩坑？`;
+  if (variant === '爆款结构版') return `先说结论：这件事最重要的不是冲动决定，而是把过程拆清楚。\n\n${base}\n\n我后面会按时间线继续记。`;
+  return base;
+}
+
+function pickContentSeed(slot, caze) {
+  const rows = all(
+    `SELECT * FROM content_seeds
+    WHERE content_kind = ?
+      AND (project = ? OR project = '通用')
+      AND (stage = ? OR stage = '通用')
+    ORDER BY usage_count ASC, created_at DESC`,
+    [slot.contentKind, caze.project, slot.stage]
+  ).map(rowContentSeed);
+  if (!rows.length) return null;
+  const weighted = rows.flatMap((item) => Array(Math.max(1, Math.round(Number(item.baseWeight || 1)))).fill(item));
+  return weighted[Math.floor(Math.random() * weighted.length)];
+}
+
+function draftText(kind, variant, caze, slot, viral, seed) {
+  if (seed) return seedVariantText(fillVars(seed.contentTemplate, caze), variant);
   const p = caze.persona || {};
   const line = personaLine(p);
   const motivation = p.motivation || '想把状态调整得更稳定一点';
@@ -289,15 +410,16 @@ function draftText(kind, variant, caze, slot, viral) {
   return base[variant];
 }
 
-function formatForKind(kind) {
+function formatForKind(kind, seed) {
+  if (seed?.format) return seed.format;
   if (kind === '爆款提权') return '图文';
   return Math.random() > 0.55 ? '图文' : '口播';
 }
 
-function createCandidate(slot, caze, variant, viral = null) {
+function createCandidate(slot, caze, variant, viral = null, seed = null) {
   const id = uid('draft');
-  const title = titleFor(slot.contentKind, slot.stage, caze.persona, viral);
-  const publishText = draftText(slot.contentKind, variant, caze, slot, viral);
+  const title = seed ? fillVars(seed.titleTemplate, caze) : titleFor(slot.contentKind, slot.stage, caze.persona, viral);
+  const publishText = draftText(slot.contentKind, variant, caze, slot, viral, seed);
   const operatorInstruction = [
     `今天发：${slot.contentKind}`,
     `账号：${caze.weixinNick} / ${caze.douyinId || '未填抖音号'}`,
@@ -315,12 +437,13 @@ function createCandidate(slot, caze, variant, viral = null) {
       title,
       publishText,
       operatorInstruction,
-      formatForKind(slot.contentKind),
-      viral?.id || null,
+      formatForKind(slot.contentKind, seed),
+      viral?.id || seed?.id || null,
       JSON.stringify([]),
       now()
     ]
   );
+  if (seed) run('UPDATE content_seeds SET usage_count = usage_count + 1, updated_at = ? WHERE id = ?', [now(), seed.id]);
 }
 
 function createSlotForCase(caze, input = {}) {
@@ -677,8 +800,9 @@ app.post('/api/slots/:id/generate-candidates', (req, res) => {
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   const caze = caseById(slot.caseId);
   const viral = rowViral(get('SELECT * FROM viral_templates ORDER BY created_at DESC LIMIT 1'));
+  const seed = slot.contentKind === '爆款提权' ? null : pickContentSeed(slot, caze);
   run('DELETE FROM candidate_drafts WHERE slot_id = ? AND selected = 0', [slot.id]);
-  ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, slot.contentKind === '爆款提权' ? viral : null));
+  ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, slot.contentKind === '爆款提权' ? viral : null, seed));
   run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['候选待选', now(), slot.id]);
   res.json(all('SELECT * FROM candidate_drafts WHERE slot_id = ? ORDER BY created_at ASC', [slot.id]).map(rowCandidate));
 });
@@ -793,6 +917,63 @@ app.get('/api/viral-templates', (_req, res) => {
   res.json(all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral));
 });
 
+app.get('/api/content-seeds', (_req, res) => {
+  res.json(all('SELECT * FROM content_seeds ORDER BY created_at DESC').map(rowContentSeed));
+});
+
+app.post('/api/content-seeds', (req, res) => {
+  const body = req.body || {};
+  const id = uid('seed');
+  run(
+    `INSERT INTO content_seeds
+    (id, project, stage, content_kind, format, title_template, content_template, tags, base_weight, usage_count, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    [
+      id,
+      body.project || '通用',
+      body.stage || '通用',
+      body.contentKind || '日常养号',
+      body.format || '图文',
+      body.titleTemplate || '未命名内容种子',
+      body.contentTemplate || '',
+      JSON.stringify(body.tags || []),
+      Number(body.baseWeight || 1),
+      now(),
+      now()
+    ]
+  );
+  res.json(rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [id])));
+});
+
+app.patch('/api/content-seeds/:id', (req, res) => {
+  const seed = rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [req.params.id]));
+  if (!seed) return res.status(404).json({ error: 'content seed not found' });
+  const body = req.body || {};
+  run(
+    `UPDATE content_seeds
+    SET project = ?, stage = ?, content_kind = ?, format = ?, title_template = ?, content_template = ?, tags = ?, base_weight = ?, updated_at = ?
+    WHERE id = ?`,
+    [
+      body.project ?? seed.project,
+      body.stage ?? seed.stage,
+      body.contentKind ?? seed.contentKind,
+      body.format ?? seed.format,
+      body.titleTemplate ?? seed.titleTemplate,
+      body.contentTemplate ?? seed.contentTemplate,
+      JSON.stringify(body.tags ?? seed.tags),
+      Number(body.baseWeight ?? seed.baseWeight),
+      now(),
+      seed.id
+    ]
+  );
+  res.json(rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [seed.id])));
+});
+
+app.delete('/api/content-seeds/:id', (req, res) => {
+  run('DELETE FROM content_seeds WHERE id = ?', [req.params.id]);
+  res.json({ deleted: true });
+});
+
 app.post('/api/viral-templates', (req, res) => {
   const body = req.body || {};
   const id = uid('viral');
@@ -832,7 +1013,7 @@ app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
       status: '候选待选',
       goal: `爆款提权：按「${viral.title}」做人设化改写`
     });
-    ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral));
+    ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral, null));
     created.push(slotById(slot.id));
   });
   res.json({ createdCount: created.length, slots: created });
@@ -884,6 +1065,7 @@ app.get('/api/export', (_req, res) => {
     planSlots: all('SELECT * FROM plan_slots').map(rowSlot),
     candidateDrafts: all('SELECT * FROM candidate_drafts').map(rowCandidate),
     viralTemplates: all('SELECT * FROM viral_templates').map(rowViral),
+    contentSeeds: all('SELECT * FROM content_seeds').map(rowContentSeed),
     assets: all('SELECT * FROM assets').map(rowAsset),
     imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
     verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify),
@@ -901,6 +1083,7 @@ app.post('/api/import', (req, res) => {
   run('DELETE FROM assets');
   run('DELETE FROM candidate_drafts');
   run('DELETE FROM plan_slots');
+  run('DELETE FROM content_seeds');
   run('DELETE FROM viral_templates');
   run('DELETE FROM cases');
 
@@ -949,6 +1132,29 @@ app.post('/api/import', (req, res) => {
       ]
     );
   });
+
+  (data.contentSeeds || []).forEach((item) => {
+    run(
+      `INSERT INTO content_seeds
+      (id, project, stage, content_kind, format, title_template, content_template, tags, base_weight, usage_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.project || '通用',
+        item.stage || '通用',
+        item.contentKind || item.content_kind || '日常养号',
+        item.format || '图文',
+        item.titleTemplate || item.title_template || '',
+        item.contentTemplate || item.content_template || '',
+        JSON.stringify(item.tags || []),
+        Number(item.baseWeight || item.base_weight || 1),
+        Number(item.usageCount || item.usage_count || 0),
+        item.createdAt || importedAt,
+        item.updatedAt || importedAt
+      ]
+    );
+  });
+  seedDefaultContentSeeds();
 
   (data.planSlots || []).forEach((item) => {
     run(
@@ -1107,6 +1313,8 @@ app.post('/api/open-path', (req, res) => {
 });
 
 app.use('/files', express.static(ROOT_DIR));
+
+seedDefaultContentSeeds();
 
 if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
   app.use(express.static(path.join(process.cwd(), 'dist')));
