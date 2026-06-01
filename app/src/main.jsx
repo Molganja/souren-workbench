@@ -778,6 +778,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
           <button onClick={() => setSlotFormOpen(true)}>手动加槽位</button>
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>
           <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>
+          <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>
           {caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音主页</a>}
         </div>
       </section>
@@ -959,6 +960,11 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
       </section>
     </div>
   );
+}
+
+async function copyMaterialIntakeNote(caze, onCopy) {
+  const result = await request(`/cases/${caze.id}/material-intake-note`);
+  onCopy(result.text, '补素材说明已复制');
 }
 
 function SlotCard({ slot, candidates, caze, onAct, onCopy }) {

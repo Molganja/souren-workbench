@@ -178,6 +178,9 @@ async function main() {
     const gapCase = gapDashboard.abnormalCases.find((item) => item.id === caze.id);
     assert(gapDashboard.counts.requiredMaterialGaps >= 1, 'dashboard missing required material gap count');
     assert(gapCase?.materialGaps?.some((gap) => gap.status === '必补'), 'dashboard missing material gap details');
+    const intakeNote = await api(`/cases/${caze.id}/material-intake-note`);
+    assert(intakeNote.text.includes('素材补齐说明') && intakeNote.text.includes('00-原始素材'), 'material intake note missing target dir');
+    assert(intakeNote.text.includes('必补素材') && intakeNote.text.includes(caze.caseCode), 'material intake note missing gap summary');
     const gapImage = await api('/image-tasks', {
       method: 'POST',
       body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label, prompt: `补${withGaps.materialGaps[0].label}` })

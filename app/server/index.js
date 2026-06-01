@@ -672,6 +672,37 @@ function qingdouTaskText(viral) {
   ].join('\n');
 }
 
+function materialIntakeText(caze, gaps = []) {
+  const openGaps = gaps.filter((gap) => gap.status !== '已满足');
+  const required = openGaps.filter((gap) => gap.status === '必补');
+  const optional = openGaps.filter((gap) => gap.status === '可补');
+  return [
+    '素材补齐说明',
+    `案例：${caze.caseCode} / ${caze.weixinNick}`,
+    `项目：${caze.project}`,
+    `阶段：${caze.stage}`,
+    `对接人：${caze.staff || '未填'}`,
+    '',
+    '请把原始素材复制到：',
+    path.join(caze.localCaseDir, '00-原始素材'),
+    '',
+    '也可以把已筛选好的素材放到：',
+    path.join(caze.localCaseDir, '01-已筛选素材'),
+    '',
+    required.length ? '必补素材：' : '必补素材：暂无',
+    ...required.map((gap, index) => `${index + 1}. ${gap.label}｜${gap.suggestion}`),
+    '',
+    optional.length ? '可补素材：' : '可补素材：暂无',
+    ...optional.slice(0, 6).map((gap, index) => `${index + 1}. ${gap.label}｜${gap.suggestion}`),
+    '',
+    '放完素材后：',
+    '1. 回到系统案例详情',
+    '2. 点击“扫描素材”',
+    '3. 把可用素材标记为“可用”',
+    '4. 再生成候选或交付包'
+  ].join('\n');
+}
+
 function parseBulkCaseText(text) {
   return String(text || '')
     .split(/\r?\n/)
@@ -1213,6 +1244,14 @@ app.get('/api/config', (_req, res) => {
     backupDir: BACKUP_DIR,
     backups: backupList().slice(0, 10)
   });
+});
+
+app.get('/api/cases/:id/material-intake-note', (req, res) => {
+  const caze = caseById(req.params.id);
+  if (!caze) return res.status(404).json({ error: 'case not found' });
+  const assets = all('SELECT * FROM assets WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowAsset);
+  const gaps = materialGaps(caze.project, assets);
+  res.json({ text: materialIntakeText(caze, gaps) });
 });
 
 app.post('/api/cases/:id/scan-assets', (req, res) => {
