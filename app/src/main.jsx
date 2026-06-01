@@ -1157,6 +1157,8 @@ function ViralForm({ onClose, onSubmit }) {
     sourceLink: '',
     category: '情绪',
     hotStructure: '开头提出共鸣问题，中段列出3个细节，结尾引导评论',
+    suitableText: '',
+    forbiddenText: '',
     rewritePolicy: '结构模仿'
   });
   function update(key, value) {
@@ -1174,11 +1176,17 @@ function ViralForm({ onClose, onSubmit }) {
         <label>改写策略<select value={form.rewritePolicy} onChange={(e) => update('rewritePolicy', e.target.value)}>
           {['结构模仿', '话题模仿', '仅参考'].map((item) => <option key={item}>{item}</option>)}
         </select></label>
+        <label className="wide">适合人设关键词<input placeholder="例如：成都,上班族,起号期。留空表示全部适合" value={form.suitableText} onChange={(e) => update('suitableText', e.target.value)} /></label>
+        <label className="wide">禁用人设关键词<input placeholder="例如：自由职业,收尾期。命中则不批量生成" value={form.forbiddenText} onChange={(e) => update('forbiddenText', e.target.value)} /></label>
         <label className="wide">爆点结构<textarea value={form.hotStructure} onChange={(e) => update('hotStructure', e.target.value)} /></label>
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={() => onSubmit(form)}>保存</button>
+        <button className="primary" onClick={() => onSubmit({
+          ...form,
+          suitablePersonas: form.suitableText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean),
+          forbiddenPersonas: form.forbiddenText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean)
+        })}>保存</button>
       </div>
     </Modal>
   );

@@ -545,6 +545,23 @@ function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
   ].join('\n');
 }
 
+function personaMatchTokens(caze) {
+  const p = caze.persona || {};
+  return [caze.weixinNick, caze.project, caze.stage, p.city, p.age ? `${p.age}岁` : '', p.occupation, p.tone, p.motivation]
+    .filter(Boolean)
+    .map((item) => String(item).toLowerCase());
+}
+
+function viralSuitableForCase(viral, caze) {
+  const tokens = personaMatchTokens(caze);
+  const suitable = viral.suitablePersonas.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+  const forbidden = viral.forbiddenPersonas.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+  const hasForbidden = forbidden.some((rule) => tokens.some((token) => token.includes(rule)));
+  if (hasForbidden) return false;
+  if (suitable.length === 0) return true;
+  return suitable.every((rule) => tokens.some((token) => token.includes(rule)));
+}
+
 function parseBulkCaseText(text) {
   return String(text || '')
     .split(/\r?\n/)
@@ -1384,6 +1401,7 @@ app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
   const cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase);
   const created = [];
   cases.forEach((caze) => {
+    if (!viralSuitableForCase(viral, caze)) return;
     const slot = createSlotForCase(caze, {
       date: body.date || new Date().toISOString().slice(0, 10),
       timeWindow: body.timeWindow || '19:00-21:00',
@@ -1395,7 +1413,7 @@ app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
     ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral, null));
     created.push(slotById(slot.id));
   });
-  res.json({ createdCount: created.length, slots: created });
+  res.json({ createdCount: created.length, skippedCount: cases.length - created.length, slots: created });
 });
 
 app.patch('/api/verify-tasks/:id', (req, res) => {

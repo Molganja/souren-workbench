@@ -65,6 +65,19 @@ async function main() {
       })
     });
     assert(viral.id, 'viral template not created');
+    const filteredViral = await api('/viral-templates', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: '成都上班族专用爆款',
+        rawText: '只给成都上班族生成。',
+        category: '职场',
+        hotStructure: '城市 + 职业 + 三点清单',
+        suitablePersonas: ['成都', '上班族'],
+        forbiddenPersonas: ['杭州'],
+        rewritePolicy: '结构模仿'
+      })
+    });
+    assert(filteredViral.suitablePersonas.length === 2 && filteredViral.forbiddenPersonas.length === 1, 'viral persona filters not saved');
     const seed = await api('/content-seeds', {
       method: 'POST',
       body: JSON.stringify({
@@ -192,6 +205,8 @@ async function main() {
 
     const viralBulk = await api(`/viral-templates/${viral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-02' }) });
     assert(viralBulk.createdCount === 2, 'viral bulk generation failed');
+    const filteredBulk = await api(`/viral-templates/${filteredViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-03' }) });
+    assert(filteredBulk.createdCount === 1 && filteredBulk.skippedCount >= 1, 'viral persona filter bulk generation failed');
 
     const exported = await api('/export');
     assert(exported.cases.length === 2, 'export missing cases');
