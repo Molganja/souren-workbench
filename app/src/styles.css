@@ -583,6 +583,10 @@ button.primary, .button.primary {
   gap: 4px;
 }
 
+.readinessRow {
+  align-items: start;
+}
+
 .assetEditable .inlineActions {
   justify-content: flex-start;
 }

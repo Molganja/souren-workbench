@@ -1433,6 +1433,24 @@ function SettingsView({ config }) {
           <Metric label="阶段" value={config.stages.length} />
           <Metric label="内容类" value={config.contentKinds.length} />
           <Metric label="模板" value={Object.keys(config.materialTemplates).length} />
+          <Metric label="就绪" value={`${config.readiness?.summary?.ready || 0}/${config.readiness?.summary?.total || 0}`} />
+        </div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>系统验收清单</h2>
+          <span>等待 {config.readiness?.summary?.waiting || 0} · 警告 {config.readiness?.summary?.warning || 0}</span>
+        </div>
+        <div className="templateList">
+          {(config.readiness?.checks || []).map((item) => (
+            <div className="templateRow readinessRow" key={item.key}>
+              <div className="rowTitle">
+                <span className={`status ${readinessStatusClass(item.status)}`}>{readinessStatusText(item.status)}</span>
+                <strong>{item.label}</strong>
+              </div>
+              <span>{item.detail}</span>
+            </div>
+          ))}
         </div>
       </section>
       <section className="panel">
@@ -1465,6 +1483,18 @@ function SettingsView({ config }) {
       </section>
     </div>
   );
+}
+
+function readinessStatusClass(status) {
+  if (status === 'ready') return 's-ok';
+  if (status === 'waiting') return 's-pending';
+  return 's-bad';
+}
+
+function readinessStatusText(status) {
+  if (status === 'ready') return '已就绪';
+  if (status === 'waiting') return '待接入';
+  return '需处理';
 }
 
 function bulkGenerateViral(template, onAct) {

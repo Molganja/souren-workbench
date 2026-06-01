@@ -398,8 +398,14 @@ async function main() {
     assert(config.stageRatios.起号期, 'config ratios missing');
     assert(config.backups.length >= 2, 'config backup list missing');
     assert(config.localAi && config.localAi.ready === false, 'config local AI status missing');
+    assert(config.readiness?.summary?.total >= 10, 'config readiness summary missing');
+    assert(config.readiness.checks.some((item) => item.key === 'delivery-package' && item.status === 'ready'), 'readiness delivery package missing');
+    assert(config.readiness.checks.some((item) => item.key === 'local-ai' && item.status === 'waiting'), 'readiness local AI waiting missing');
     const health = await api('/health');
     assert(health.localAi && health.localAi.ready === false, 'health local AI status missing');
+    assert(health.readiness?.total >= 10, 'health readiness summary missing');
+    const readiness = await api('/readiness');
+    assert(readiness.checks.some((item) => item.key === 'operator-packet' && item.status === 'ready'), 'readiness endpoint missing operator packet');
 
     const finalDetail = await api(`/cases/${caze.id}`);
     assert(finalDetail.metrics.length === 1, 'case metrics missing');

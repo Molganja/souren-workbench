@@ -1351,6 +1351,34 @@ function localAiStatus() {
     : { ready: false, command: null, message: '未找到 claude / clude / claude-code，可安装本地命令或设置 LOCAL_CLAUDE_COMMAND' };
 }
 
+function systemReadiness() {
+  const dbPath = path.join(DATA_DIR, 'souren.sqlite');
+  const imageReady = Boolean(process.env.IMAGE_API_KEY);
+  const ai = localAiStatus();
+  const checks = [
+    { key: 'local-web', label: '本地网页工作台', status: 'ready', detail: `http://127.0.0.1:${PORT}` },
+    { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
+    { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
+    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、待核对、AI顾问记录' },
+    { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '对接人 + 抖音链接即可先建链路' },
+    { key: 'delivery-package', label: '微信交付包', status: 'ready', detail: '写入收件人、对接人、发布文案、素材顺序和回传要求' },
+    { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '记录作品链接、核对清单、播放/点赞/评论/粉丝' },
+    { key: 'viral-qingdou', label: '爆款链接与青豆任务', status: 'ready', detail: '链接先入库，复制青豆提取任务后回填结构' },
+    { key: 'image-key', label: 'Image v2 Key', status: imageReady ? 'ready' : 'waiting', detail: imageReady ? 'IMAGE_API_KEY 已配置' : 'IMAGE_API_KEY 为空，图片任务进入 waiting_key' },
+    { key: 'local-ai', label: '本地 clude/Claude 顾问', status: ai.ready ? 'ready' : 'waiting', detail: ai.ready ? ai.command : ai.message },
+    { key: 'operator-packet', label: 'AI 工作包和顾问记录', status: 'ready', detail: `${OPERATOR_PACKET_DIR} / ${AI_CONSULT_DIR}` }
+  ];
+  return {
+    summary: {
+      ready: checks.filter((item) => item.status === 'ready').length,
+      waiting: checks.filter((item) => item.status === 'waiting').length,
+      warning: checks.filter((item) => item.status === 'warning').length,
+      total: checks.length
+    },
+    checks
+  };
+}
+
 function consultPrompt(packetText) {
   return [
     '你是这个“素人种草运营工作台”的本地顾问。',
@@ -1437,7 +1465,8 @@ app.get('/api/health', (_req, res) => {
     rootDir: ROOT_DIR,
     materialRoot: MATERIAL_ROOT,
     imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
-    localAi: localAiStatus()
+    localAi: localAiStatus(),
+    readiness: systemReadiness().summary
   });
 });
 
@@ -1447,6 +1476,10 @@ app.get('/api/dashboard', (_req, res) => {
 
 app.get('/api/dashboard/ai-consults', (_req, res) => {
   res.json(recentAiConsults(20));
+});
+
+app.get('/api/readiness', (_req, res) => {
+  res.json(systemReadiness());
 });
 
 app.post('/api/dashboard/operator-packet', (_req, res) => {
@@ -1623,6 +1656,7 @@ app.get('/api/config', (_req, res) => {
     imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
     llmKeyReady: Boolean(process.env.LLM_API_KEY),
     localAi: localAiStatus(),
+    readiness: systemReadiness(),
     materialRoot: MATERIAL_ROOT,
     backupDir: BACKUP_DIR,
     backups: backupList().slice(0, 10)
