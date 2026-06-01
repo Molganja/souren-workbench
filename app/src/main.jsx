@@ -111,9 +111,9 @@ function App() {
 
   async function act(fn, message) {
     try {
-      await fn();
+      const result = await fn();
       await refresh();
-      if (message) showToast(message);
+      if (message) showToast(typeof message === 'function' ? message(result) : message);
     } catch (err) {
       showToast(err.message);
     }
@@ -259,9 +259,18 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
           <h1>运营中控台</h1>
           <p>先处理待生成、待选择和待交付，再核对兼职回传。这里按 40+ 账号的日常动作聚合，不需要逐个翻案例。</p>
           <div className="heroActions">
-            <button className="primary" onClick={() => onAct(() => request('/dashboard/prepare-today', { method: 'POST' }), '今日内容已准备到可交付')}>一键准备今日交付</button>
-            <button onClick={() => onAct(() => request('/dashboard/generate-today', { method: 'POST' }), '今日待生成已批量生成候选')}>批量生成今日候选</button>
-            <button onClick={() => onAct(() => request('/dashboard/deliver-today', { method: 'POST' }), '今日已锁定内容已生成交付包')}>批量生成今日交付包</button>
+            <button className="primary" onClick={() => onAct(
+              () => request('/dashboard/prepare-today', { method: 'POST' }),
+              (result) => `已准备：生成 ${result.generatedCount}，锁定 ${result.selectedCount}，交付 ${result.deliveryCount}`
+            )}>一键准备今日交付</button>
+            <button onClick={() => onAct(
+              () => request('/dashboard/generate-today', { method: 'POST' }),
+              (result) => `已生成：槽位 ${result.slotCount}，候选 ${result.candidateCount}`
+            )}>批量生成今日候选</button>
+            <button onClick={() => onAct(
+              () => request('/dashboard/deliver-today', { method: 'POST' }),
+              (result) => `已生成交付包：${result.deliveryCount}`
+            )}>批量生成今日交付包</button>
           </div>
         </div>
         <div className="stats">
