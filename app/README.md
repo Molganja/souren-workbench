@@ -109,11 +109,13 @@ npm run check
 npm run test:e2e
 npm run verify
 npm run verify:consult
+npm run verify:github
 ```
 
 `test:e2e` 会临时创建测试数据库和素材目录，跑完后自动清理。
 `verify` 会顺序运行 doctor、build、E2E，并额外启动隔离服务检查 `/api/health` 和 `/api/readiness`。
 `verify:consult` 会在上述验收后尝试调用本地 AI 顾问，把当前工作包和关键本地文件路径发给 `claude`/`clude`/`LOCAL_CLAUDE_COMMAND`，要求它优先读取这些文件再给建议，并保存顾问记录。
+`verify:github` 会把 GitHub main 是否与本地 HEAD 同步作为硬性验收；如果本机没有 GitHub 写权限，它会失败并提示需要认证后 push。
 
 ## 批量导入样例
 

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 
 const APP_DIR = path.resolve(import.meta.dirname, '..');
 const ROOT_DIR = path.resolve(APP_DIR, '..');
@@ -8,6 +8,7 @@ const VERIFY_ROOT = path.join(ROOT_DIR, '.tmp-verify');
 const PORT = 5186;
 const BASE = `http://127.0.0.1:${PORT}/api`;
 const WITH_CONSULT = process.argv.includes('--consult');
+const STRICT_GITHUB = process.argv.includes('--strict-github');
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -52,6 +53,33 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function gitOutput(args) {
+  try {
+    return execFileSync('git', args, { cwd: ROOT_DIR, encoding: 'utf8' }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function verifyGitHubSync() {
+  const remote = gitOutput(['remote', 'get-url', 'origin']);
+  if (!remote) {
+    const message = 'WARN GitHub remote 未配置';
+    if (STRICT_GITHUB) throw new Error(message);
+    console.log(message);
+    return;
+  }
+  const local = gitOutput(['rev-parse', 'HEAD']);
+  const remoteHead = gitOutput(['ls-remote', '--heads', 'origin', 'main']).split(/\s+/)[0] || '';
+  if (local && remoteHead && local === remoteHead) {
+    console.log(`OK GitHub main 已同步 ${local.slice(0, 7)}`);
+    return;
+  }
+  const message = `WARN GitHub main 未同步，本地 ${local.slice(0, 7) || 'unknown'}，远端 ${remoteHead.slice(0, 7) || 'unknown'}；当前 shell 缺少 GitHub 写权限时需要手动认证后 push。`;
+  if (STRICT_GITHUB) throw new Error(message);
+  console.log(message);
+}
+
 async function verifyRuntime() {
   fs.rmSync(VERIFY_ROOT, { recursive: true, force: true });
   fs.mkdirSync(VERIFY_ROOT, { recursive: true });
@@ -92,6 +120,7 @@ async function main() {
   await run('npm', ['run', 'check']);
   await run('npm', ['run', 'test:e2e']);
   await verifyRuntime();
+  verifyGitHubSync();
   console.log(WITH_CONSULT ? 'VERIFY CONSULT PASS' : 'VERIFY PASS');
 }
 

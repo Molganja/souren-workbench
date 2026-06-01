@@ -72,4 +72,5 @@ npm run check
 npm run test:e2e
 npm run verify
 npm run verify:consult
+npm run verify:github
 ```
