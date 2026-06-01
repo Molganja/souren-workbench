@@ -500,7 +500,6 @@ function createCaseFromBody(body = {}) {
   const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(body.weixinNick)}`;
   const caseDir = path.join(MATERIAL_ROOT, dirName);
   ensureCaseDirs(caseDir);
-  fs.writeFileSync(path.join(caseDir, 'case.json'), JSON.stringify({ id, caseCode, ...body }, null, 2));
   run(
     `INSERT INTO cases
     (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, local_case_dir, health_status, created_at, updated_at)
@@ -521,7 +520,15 @@ function createCaseFromBody(body = {}) {
       created
     ]
   );
-  return caseById(id);
+  const createdCase = caseById(id);
+  writeCaseManifest(createdCase);
+  return createdCase;
+}
+
+function writeCaseManifest(caze) {
+  if (!caze?.localCaseDir) return;
+  ensureCaseDirs(caze.localCaseDir);
+  fs.writeFileSync(path.join(caze.localCaseDir, 'case.json'), JSON.stringify(caze, null, 2));
 }
 
 function parseBulkCaseText(text) {
@@ -905,7 +912,9 @@ app.patch('/api/cases/:id', (req, res) => {
       req.params.id
     ]
   );
-  res.json(caseById(req.params.id));
+  const updated = caseById(req.params.id);
+  writeCaseManifest(updated);
+  res.json(updated);
 });
 
 app.delete('/api/cases/:id', (req, res) => {
@@ -1394,6 +1403,7 @@ app.post('/api/import', (req, res) => {
         item.updatedAt || importedAt
       ]
     );
+    writeCaseManifest(caseById(item.id));
   });
 
   (data.viralTemplates || []).forEach((item) => {

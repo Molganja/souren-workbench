@@ -106,6 +106,14 @@ async function main() {
       })
     });
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
+    const manifestPath = path.join(caze.localCaseDir, 'case.json');
+    assert(fs.existsSync(manifestPath), 'case manifest missing');
+    const editedCase = await api(`/cases/${caze.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ weixinNick: '验收兼职改名', persona: { ...caze.persona, city: '重庆' } })
+    });
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    assert(editedCase.weixinNick === '验收兼职改名' && manifest.weixinNick === '验收兼职改名', 'case manifest not synced after edit');
 
     fs.writeFileSync(path.join(caze.localCaseDir, '00-原始素材', 'D1-test.jpg'), 'fake image');
     const scan = await api(`/cases/${caze.id}/scan-assets`, { method: 'POST' });
