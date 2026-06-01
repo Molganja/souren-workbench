@@ -1124,10 +1124,53 @@ function dashboard() {
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
+    aiConsults: recentAiConsults(),
     abnormalCases: caseHealthRows
       .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0)
       .sort((a, b) => (b.requiredGapCount + b.materialGaps.length + b.reasons.length) - (a.requiredGapCount + a.materialGaps.length + a.reasons.length))
   };
+}
+
+function extractRecordValue(text, label) {
+  const line = text.split('\n').find((item) => item.startsWith(`${label}：`));
+  return line ? line.slice(label.length + 1).trim() : '';
+}
+
+function extractSection(text, heading) {
+  const marker = `## ${heading}`;
+  const start = text.indexOf(marker);
+  if (start < 0) return '';
+  const rest = text.slice(start + marker.length).trim();
+  const next = rest.indexOf('\n## ');
+  return (next >= 0 ? rest.slice(0, next) : rest).trim();
+}
+
+function summarizeAdvice(text) {
+  const advice = extractSection(text, '建议输出');
+  if (!advice || advice === '无输出。') return '暂无建议输出';
+  return advice.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 4).join('\n');
+}
+
+function recentAiConsults(limit = 5) {
+  if (!fs.existsSync(AI_CONSULT_DIR)) return [];
+  return fs.readdirSync(AI_CONSULT_DIR)
+    .filter((file) => file.endsWith('.md'))
+    .map((file) => {
+      const recordPath = path.join(AI_CONSULT_DIR, file);
+      const stat = fs.statSync(recordPath);
+      const text = fs.readFileSync(recordPath, 'utf8');
+      return {
+        file,
+        path: recordPath,
+        createdAt: stat.mtime.toISOString(),
+        status: extractRecordValue(text, '状态') || 'unknown',
+        command: extractRecordValue(text, '命令') || '未找到',
+        packetPath: extractRecordValue(text, '工作包'),
+        summary: summarizeAdvice(text)
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
 }
 
 const OPERATOR_FLOW = [
@@ -1387,6 +1430,10 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/dashboard', (_req, res) => {
   res.json(dashboard());
+});
+
+app.get('/api/dashboard/ai-consults', (_req, res) => {
+  res.json(recentAiConsults(20));
 });
 
 app.post('/api/dashboard/operator-packet', (_req, res) => {

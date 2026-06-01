@@ -292,6 +292,25 @@ button.primary, .button.primary {
   align-items: center;
 }
 
+.consultRow {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+.consultRow pre {
+  white-space: pre-wrap;
+  margin: 8px 0;
+  font: inherit;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
 .dateBox {
   background: #f2f4f7;
   border-radius: 7px;
@@ -818,7 +837,7 @@ textarea {
   .topActions {
     margin-left: 0;
   }
-  .hero, .caseHeader, .taskRow, .twoCol {
+  .hero, .caseHeader, .taskRow, .consultRow, .twoCol {
     grid-template-columns: 1fr;
   }
   .stats, .draftGrid {

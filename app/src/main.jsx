@@ -354,6 +354,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
       <PendingViralSection items={data.pendingViralTemplates || []} onCopy={onCopy} onOpenViral={onOpenViral} />
       <ImageTaskSection items={data.imageTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
       <ClipTaskSection items={data.clipTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <AiConsultSection items={data.aiConsults || []} onAct={onAct} />
 
       <section className="panel">
         <div className="sectionHead">
@@ -481,6 +482,49 @@ function ClipTaskSection({ items, onOpenCase, onAct, onCopy }) {
       )}
     </section>
   );
+}
+
+function AiConsultSection({ items, onAct }) {
+  return (
+    <section className="panel">
+      <div className="sectionHead">
+        <h2>本地AI顾问记录</h2>
+        <span>{items.length} 条</span>
+      </div>
+      {items.length === 0 ? <div className="empty">还没有本地AI建议记录</div> : (
+        <div className="taskList">
+          {items.map((item) => (
+            <div className="consultRow" key={item.path}>
+              <div>
+                <div className="rowTitle">
+                  <span className={`status ${consultStatusClass(item.status)}`}>{item.status}</span>
+                  <strong>{formatDateTime(item.createdAt)}</strong>
+                  <small>{item.command}</small>
+                </div>
+                <pre>{item.summary}</pre>
+                <small>{item.path}</small>
+              </div>
+              <div className="rowActions">
+                <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.path }) }), '已打开顾问记录')}>打开记录</button>
+                {item.packetPath && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.packetPath }) }), '已打开工作包')}>打开工作包</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function consultStatusClass(status) {
+  if (status === 'completed') return 's-ok';
+  if (status === 'unavailable') return 's-pending';
+  return 's-bad';
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  return String(value).replace('T', ' ').slice(0, 16);
 }
 
 function groupTodayByContact(slots) {

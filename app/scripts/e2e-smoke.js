@@ -274,6 +274,10 @@ async function main() {
     assert(aiConsult.status === 'unavailable', 'disabled local AI consult should be unavailable');
     assert(fs.existsSync(aiConsult.consultPath), 'AI consult record file missing');
     assert(aiConsult.text.includes('本地AI顾问记录') && aiConsult.text.includes(operatorPacket.path.slice(0, operatorPacket.path.lastIndexOf('/'))), 'AI consult record missing context');
+    const consultHistory = await api('/dashboard/ai-consults');
+    assert(consultHistory.some((item) => item.path === aiConsult.consultPath && item.status === 'unavailable'), 'AI consult history missing record');
+    const dashboardWithConsult = await api('/dashboard');
+    assert(dashboardWithConsult.aiConsults.some((item) => item.path === aiConsult.consultPath), 'dashboard missing AI consult history');
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
