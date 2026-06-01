@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import {
   DATA_DIR,
   MATERIAL_ROOT,
@@ -22,6 +22,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 5174);
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const OPERATOR_PACKET_DIR = path.join(DATA_DIR, 'operator-packets');
+const AI_CONSULT_DIR = path.join(DATA_DIR, 'ai-consults');
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -1286,6 +1287,100 @@ function writeOperatorPacket() {
   return { path: packetPath, text, counts: data.counts };
 }
 
+function localAssistantCommand() {
+  if (process.env.SOUREN_LOCAL_AI_DISABLED === '1') return null;
+  if (process.env.LOCAL_CLAUDE_COMMAND) {
+    return { mode: 'shell', command: process.env.LOCAL_CLAUDE_COMMAND, label: process.env.LOCAL_CLAUDE_COMMAND };
+  }
+  try {
+    const found = execFileSync('/bin/zsh', ['-lc', 'command -v claude || command -v clude || command -v claude-code || true'], { encoding: 'utf8' }).trim();
+    if (!found) return null;
+    return { mode: 'exec', command: found.split('\n')[0], label: found.split('\n')[0] };
+  } catch {
+    return null;
+  }
+}
+
+function consultPrompt(packetText) {
+  return [
+    '你是这个“素人种草运营工作台”的本地顾问。',
+    '请只基于下面的系统工作包判断：',
+    '1. 今天最该优先处理的 3-5 件事。',
+    '2. 哪些任务可能卡住，原因是什么。',
+    '3. 对系统本身下一步最值得补的功能建议。',
+    '4. 输出要短、具体、可执行。',
+    '',
+    packetText
+  ].join('\n');
+}
+
+function runLocalAssistant(input, timeoutMs = 60000) {
+  const command = localAssistantCommand();
+  if (!command) {
+    return Promise.resolve({
+      status: 'unavailable',
+      command: null,
+      stdout: '',
+      stderr: '未找到 claude / clude / claude-code。可安装本地命令，或设置 LOCAL_CLAUDE_COMMAND。'
+    });
+  }
+  return new Promise((resolve) => {
+    const args = command.mode === 'shell' ? ['-lc', command.command] : [];
+    const bin = command.mode === 'shell' ? '/bin/zsh' : command.command;
+    const child = spawn(bin, args, { cwd: ROOT_DIR, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill('SIGTERM');
+      resolve({ status: 'timeout', command: command.label, stdout, stderr: `${stderr}\n本地 AI 顾问调用超时。`.trim() });
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ status: 'error', command: command.label, stdout, stderr: error.message });
+    });
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ status: code === 0 ? 'completed' : 'error', command: command.label, stdout, stderr, exitCode: code });
+    });
+    child.stdin.end(input);
+  });
+}
+
+async function writeAiConsult() {
+  const packet = writeOperatorPacket();
+  const result = await runLocalAssistant(consultPrompt(packet.text));
+  fs.mkdirSync(AI_CONSULT_DIR, { recursive: true });
+  const stamp = now().replace(/[: ]/g, '-').replace(/\./g, '-');
+  const consultPath = path.join(AI_CONSULT_DIR, `${stamp}_本地AI顾问.md`);
+  const text = [
+    '# 本地AI顾问记录',
+    '',
+    `时间：${now()}`,
+    `状态：${result.status}`,
+    `命令：${result.command || '未找到'}`,
+    `工作包：${packet.path}`,
+    '',
+    '## 建议输出',
+    '',
+    result.stdout?.trim() || '无输出。',
+    '',
+    '## 错误/提示',
+    '',
+    result.stderr?.trim() || '无。'
+  ].join('\n');
+  fs.writeFileSync(consultPath, text);
+  return { ...result, packetPath: packet.path, consultPath, text };
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, rootDir: ROOT_DIR, materialRoot: MATERIAL_ROOT, imageKeyReady: Boolean(process.env.IMAGE_API_KEY) });
 });
@@ -1296,6 +1391,10 @@ app.get('/api/dashboard', (_req, res) => {
 
 app.post('/api/dashboard/operator-packet', (_req, res) => {
   res.json(writeOperatorPacket());
+});
+
+app.post('/api/dashboard/ai-consult', async (_req, res) => {
+  res.json(await writeAiConsult());
 });
 
 app.post('/api/dashboard/generate-today', (_req, res) => {

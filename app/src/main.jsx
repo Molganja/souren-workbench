@@ -276,6 +276,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
               (result) => `已生成交付包：${result.deliveryCount}`
             )}>批量生成今日交付包</button>
             <button onClick={() => copyOperatorPacket(onCopy)}>复制AI工作包</button>
+            <button onClick={() => askLocalAi(onAct)}>请本地AI建议</button>
           </div>
         </div>
         <div className="stats">
@@ -1171,6 +1172,18 @@ async function copyVerifyChecklist(task, onCopy) {
 async function copyOperatorPacket(onCopy) {
   const result = await request('/dashboard/operator-packet', { method: 'POST' });
   onCopy(result.text, 'AI工作包已复制并保存');
+}
+
+async function askLocalAi(onAct) {
+  await onAct(
+    () => request('/dashboard/ai-consult', { method: 'POST' }),
+    (result) => {
+      if (result.status === 'completed') return '本地AI建议已保存';
+      if (result.status === 'unavailable') return '未找到本地AI命令，已保存工作包';
+      if (result.status === 'timeout') return '本地AI调用超时，已保存记录';
+      return '本地AI调用失败，已保存记录';
+    }
+  );
 }
 
 function SlotCard({ slot, candidates, caze, onAct, onCopy }) {

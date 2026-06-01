@@ -47,7 +47,7 @@ async function main() {
 
   const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
     cwd: APP_DIR,
-    env: { ...process.env, PORT: String(TEST_PORT), SOUREN_ROOT_DIR: ROOT_DIR },
+    env: { ...process.env, PORT: String(TEST_PORT), SOUREN_ROOT_DIR: ROOT_DIR, SOUREN_LOCAL_AI_DISABLED: '1' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   server.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -270,6 +270,10 @@ async function main() {
     assert(fs.existsSync(operatorPacket.path), 'operator packet file missing');
     assert(operatorPacket.text.includes('素人系统运营工作包') && operatorPacket.text.includes('Codex 下一步优先级'), 'operator packet missing core sections');
     assert(operatorPacket.text.includes('发给 验收兼职改名') && operatorPacket.text.includes('对接 咨询D'), 'operator packet missing recipient routing');
+    const aiConsult = await api('/dashboard/ai-consult', { method: 'POST' });
+    assert(aiConsult.status === 'unavailable', 'disabled local AI consult should be unavailable');
+    assert(fs.existsSync(aiConsult.consultPath), 'AI consult record file missing');
+    assert(aiConsult.text.includes('本地AI顾问记录') && aiConsult.text.includes(operatorPacket.path.slice(0, operatorPacket.path.lastIndexOf('/'))), 'AI consult record missing context');
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
