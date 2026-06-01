@@ -83,6 +83,9 @@ async function main() {
     const scan = await api(`/cases/${caze.id}/scan-assets`, { method: 'POST' });
     assert(scan.inserted === 1, 'asset scan did not insert one file');
     await api(`/assets/${scan.assets[0].id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: '可用' }) });
+    const withGaps = await api(`/cases/${caze.id}`);
+    assert(Array.isArray(withGaps.materialGaps) && withGaps.materialGaps.length > 0, 'material gaps missing');
+    assert(Array.isArray(withGaps.healthReasons), 'health reasons missing');
 
     const manualSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -122,6 +125,9 @@ async function main() {
     const exported = await api('/export');
     assert(exported.cases.length === 1, 'export missing case');
     assert(exported.metrics.length === 1, 'export missing metrics');
+    const config = await api('/config');
+    assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
+    assert(config.stageRatios.起号期, 'config ratios missing');
 
     const finalDetail = await api(`/cases/${caze.id}`);
     assert(finalDetail.metrics.length === 1, 'case metrics missing');

@@ -152,6 +152,11 @@ button.primary, .button.primary {
   line-height: 1.7;
 }
 
+.healthLine {
+  color: var(--orange) !important;
+  font-weight: 650;
+}
+
 .eyebrow {
   color: var(--blue) !important;
   font-weight: 700;
@@ -464,6 +469,52 @@ button.primary, .button.primary {
 .assetRow span, .templateRow span, .assetRow small, .templateRow small {
   color: var(--muted);
   word-break: break-all;
+}
+
+.gapList {
+  display: grid;
+  gap: 10px;
+}
+
+.gapRow {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: start;
+}
+
+.gapRow.required {
+  border-color: #f5c2b8;
+  background: #fff8f6;
+}
+
+.gapRow strong,
+.gapRow span,
+.gapRow small {
+  display: block;
+}
+
+.gapRow span,
+.gapRow small {
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.gapRow small {
+  grid-column: 1 / -1;
+}
+
+.gapRow em {
+  font-style: normal;
+  color: var(--orange);
+  font-weight: 700;
+  font-size: 12px;
+  background: var(--orange-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 .modalBackdrop {

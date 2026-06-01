@@ -37,20 +37,23 @@ function App() {
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseDetail, setCaseDetail] = useState(null);
   const [viralTemplates, setViralTemplates] = useState([]);
+  const [config, setConfig] = useState(null);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(true);
   const [caseFormOpen, setCaseFormOpen] = useState(false);
   const [viralFormOpen, setViralFormOpen] = useState(false);
 
   async function refresh() {
-    const [dash, caseRows, viralRows] = await Promise.all([
+    const [dash, caseRows, viralRows, configData] = await Promise.all([
       request('/dashboard'),
       request('/cases'),
-      request('/viral-templates')
+      request('/viral-templates'),
+      request('/config')
     ]);
     setDashboard(dash);
     setCases(caseRows);
     setViralTemplates(viralRows);
+    setConfig(configData);
     if (selectedCaseId) {
       const detail = await request(`/cases/${selectedCaseId}`);
       setCaseDetail(detail);
@@ -103,6 +106,7 @@ function App() {
       <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>今日中控台</button>
       <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
       <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款模板</button>
+      <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>配置</button>
     </div>
   );
 
@@ -133,6 +137,9 @@ function App() {
         )}
         {!loading && view === 'viral' && (
           <ViralView templates={viralTemplates} onNew={() => setViralFormOpen(true)} onAct={act} />
+        )}
+        {!loading && view === 'settings' && config && (
+          <SettingsView config={config} />
         )}
       </main>
       {caseFormOpen && (
@@ -286,7 +293,7 @@ function CasesView({ cases, onOpenCase, onNew }) {
 }
 
 function CaseDetail({ detail, onAct, onBack }) {
-  const { case: caze, slots, candidates, assets, imageTasks, verifyTasks, metrics = [] } = detail;
+  const { case: caze, slots, candidates, assets, imageTasks, verifyTasks, metrics = [], materialGaps = [], healthReasons = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const [slotFormOpen, setSlotFormOpen] = useState(false);
   const candidatesBySlot = useMemo(() => {
@@ -305,6 +312,7 @@ function CaseDetail({ detail, onAct, onBack }) {
           <p className="eyebrow">{caze.caseCode}</p>
           <h1>{caze.weixinNick}</h1>
           <p>{caze.project} · {caze.stage} · {personaText(caze.persona)}</p>
+          {healthReasons.length > 0 && <p className="healthLine">当前提示：{healthReasons.join(' / ')}</p>}
           <p className="path">素材目录：{caze.localCaseDir}</p>
         </div>
         <div className="headerActions">
@@ -368,6 +376,26 @@ function CaseDetail({ detail, onAct, onBack }) {
             </div>
           )}
         </div>
+        <div className="panel">
+          <div className="sectionHead"><h2>素材缺口</h2><span>{materialGaps.filter((gap) => gap.status !== '已满足').length} 项待处理</span></div>
+          {materialGaps.length === 0 ? <div className="empty">暂无素材模板</div> : (
+            <div className="gapList">
+              {materialGaps.map((gap) => (
+                <div className={`gapRow ${gap.status === '必补' ? 'required' : ''}`} key={gap.key}>
+                  <div>
+                    <strong>{gap.label}</strong>
+                    <span>{gap.stage} · {gap.count} 个素材</span>
+                  </div>
+                  <em>{gap.status}</em>
+                  <small>{gap.suggestion}</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="twoCol">
         <div className="panel">
           <div className="sectionHead">
             <h2>Image 任务</h2>
@@ -520,6 +548,55 @@ function ViralView({ templates, onNew, onAct }) {
         </div>
       )}
     </section>
+  );
+}
+
+function SettingsView({ config }) {
+  return (
+    <div className="stack">
+      <section className="hero">
+        <div>
+          <p className="eyebrow">系统配置</p>
+          <h1>运行状态与模板</h1>
+          <p>这里显示当前工作台实际采用的阶段、内容比例、素材模板和本地目录。后续可继续扩展成可编辑配置。</p>
+        </div>
+        <div className="stats">
+          <Metric label="Image Key" value={config.imageKeyReady ? 'ON' : '空'} />
+          <Metric label="LLM Key" value={config.llmKeyReady ? 'ON' : '空'} />
+          <Metric label="阶段" value={config.stages.length} />
+          <Metric label="内容类" value={config.contentKinds.length} />
+          <Metric label="模板" value={Object.keys(config.materialTemplates).length} />
+        </div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead"><h2>本地素材根目录</h2></div>
+        <div className="path">{config.materialRoot}</div>
+      </section>
+      <section className="twoCol">
+        <div className="panel">
+          <div className="sectionHead"><h2>生命周期内容比例</h2></div>
+          <div className="templateList">
+            {Object.entries(config.stageRatios).map(([stage, ratios]) => (
+              <div className="templateRow" key={stage}>
+                <strong>{stage}</strong>
+                <span>{Object.entries(ratios).map(([kind, value]) => `${kind} ${Math.round(value * 100)}%`).join(' / ')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="panel">
+          <div className="sectionHead"><h2>素材模板</h2></div>
+          <div className="templateList">
+            {Object.entries(config.materialTemplates).map(([project, items]) => (
+              <div className="templateRow" key={project}>
+                <strong>{project}</strong>
+                <span>{items.map((item) => `${item.label}${item.required ? '*' : ''}`).join(' / ')}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 

@@ -38,6 +38,26 @@ const STAGE_RATIOS = {
   收尾期: { 日常养号: 0.4, 爆款提权: 0.3, 素人种草: 0.3 }
 };
 
+const MATERIAL_TEMPLATES = {
+  吸脂: [
+    { key: 'pre-front', label: '术前正面/基准照', stage: '术前', required: true, match: ['术前', '基准'] },
+    { key: 'consult', label: '面诊/探店素材', stage: '面诊', required: false, match: ['面诊', '探店'] },
+    { key: 'd1', label: '术后 D1 素材', stage: 'D1', required: false, match: ['D1'] },
+    { key: 'd3', label: '术后 D3 素材', stage: 'D3', required: false, match: ['D3'] },
+    { key: 'd7', label: '术后 D7 素材', stage: 'D7', required: false, match: ['D7'] },
+    { key: 'd14', label: '术后 D14 素材', stage: 'D14', required: false, match: ['D14'] },
+    { key: 'd30', label: '术后 D30 素材', stage: 'D30', required: false, match: ['D30'] },
+    { key: 'compare', label: '对比素材', stage: '对比', required: true, match: ['对比'] },
+    { key: 'daily', label: '日常穿搭/生活素材', stage: '未分组', required: false, match: ['日常', '穿搭', '生活', '未分组'] }
+  ],
+  默认: [
+    { key: 'before', label: '前期/基准素材', stage: '术前', required: true, match: ['术前', '基准'] },
+    { key: 'process', label: '过程素材', stage: '未分组', required: false, match: ['D1', 'D3', 'D7', '过程', '未分组'] },
+    { key: 'result', label: '结果/对比素材', stage: '对比', required: true, match: ['对比', '结果'] },
+    { key: 'daily', label: '日常素材', stage: '未分组', required: false, match: ['日常', '生活', '未分组'] }
+  ]
+};
+
 function rowCase(row) {
   if (!row) return null;
   return {
@@ -335,6 +355,53 @@ function inferAssetKind(file) {
   return '截图';
 }
 
+function materialTemplate(project) {
+  return MATERIAL_TEMPLATES[project] || MATERIAL_TEMPLATES.默认;
+}
+
+function materialGaps(project, assets) {
+  return materialTemplate(project).map((item) => {
+    const matched = assets.filter((asset) => {
+      const haystack = `${asset.stage} ${asset.path}`.toLowerCase();
+      return item.match.some((word) => haystack.includes(String(word).toLowerCase()));
+    });
+    return {
+      ...item,
+      count: matched.length,
+      status: matched.length > 0 ? '已满足' : item.required ? '必补' : '可补',
+      suggestion:
+        matched.length > 0
+          ? '已有素材'
+          : item.required
+            ? `请把${item.label}放入 00-原始素材 或 01-已筛选素材 后重新扫描`
+            : `可补充${item.label}，或创建 Image/剪辑任务作为辅助`
+    };
+  });
+}
+
+function caseHealth(caze, caseSlots, caseAssets, metrics, today) {
+  const reasons = [];
+  const pendingVerify = caseSlots.filter((s) => s.status === '已汇报').length;
+  const futureSlots = caseSlots.filter((s) => s.date >= today).length;
+  const recentGrass = caseSlots.filter((s) => s.contentKind === '素人种草' && s.date >= addDays(today, -7)).length;
+  const recentViral = caseSlots.filter((s) => s.contentKind === '爆款提权' && s.date >= addDays(today, -7)).length;
+  const gaps = materialGaps(caze.project, caseAssets);
+  const requiredMissing = gaps.filter((gap) => gap.required && gap.count === 0).length;
+  const latest = metrics[0];
+  const prev = metrics[1];
+
+  if (pendingVerify >= 2) reasons.push('待核对堆积');
+  if (futureSlots === 0) reasons.push('缺少排期');
+  if (caseAssets.length === 0) reasons.push('素材未扫描');
+  if (requiredMissing > 0) reasons.push(`必补素材 ${requiredMissing} 项`);
+  if (recentGrass >= 4 && recentViral === 0) reasons.push('种草偏密，需要爆款提权');
+  if (latest?.plays != null && prev?.plays != null && latest.plays < prev.plays * 0.6) reasons.push('播放下滑');
+  if (caze.healthStatus !== '健康') reasons.push(caze.healthStatus);
+
+  const status = reasons.length === 0 ? '健康' : reasons.includes('播放下滑') ? '偏冷' : reasons[0];
+  return { status, reasons, gaps };
+}
+
 function inferStage(filePath) {
   const text = filePath.toLowerCase();
   if (text.includes('术前')) return '术前';
@@ -361,6 +428,7 @@ function dashboard() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
   const assets = all('SELECT * FROM assets ORDER BY created_at DESC').map(rowAsset);
+  const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const withCase = (slot) => ({ ...slot, case: byCase[slot.caseId] });
@@ -383,15 +451,9 @@ function dashboard() {
       .map((caze) => {
         const caseSlots = slots.filter((s) => s.caseId === caze.id);
         const caseAssets = assets.filter((a) => a.caseId === caze.id);
-        const pendingVerify = caseSlots.filter((s) => s.status === '已汇报').length;
-        const futureSlots = caseSlots.filter((s) => s.date >= today).length;
-        const assetGap = caseAssets.length === 0;
-        const reasons = [];
-        if (pendingVerify >= 2) reasons.push('待核对堆积');
-        if (futureSlots === 0) reasons.push('缺少排期');
-        if (assetGap) reasons.push('素材未扫描');
-        if (caze.healthStatus !== '健康') reasons.push(caze.healthStatus);
-        return { ...caze, reasons };
+        const caseMetrics = metrics.filter((m) => m.caseId === caze.id);
+        const health = caseHealth(caze, caseSlots, caseAssets, caseMetrics, today);
+        return { ...caze, healthStatus: health.status, reasons: health.reasons };
       })
       .filter((caze) => caze.reasons.length > 0)
   };
@@ -480,7 +542,20 @@ app.get('/api/cases/:id', (req, res) => {
   const imageTasks = all('SELECT * FROM image_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowImageTask);
   const verifyTasks = all('SELECT * FROM verify_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowVerify);
   const metrics = all('SELECT * FROM metrics WHERE case_id = ? ORDER BY date DESC, created_at DESC', [caze.id]).map(rowMetric);
-  res.json({ case: caze, slots, candidates, assets, imageTasks, verifyTasks, metrics });
+  const health = caseHealth(caze, slots, assets, metrics, new Date().toISOString().slice(0, 10));
+  res.json({ case: { ...caze, healthStatus: health.status }, slots, candidates, assets, imageTasks, verifyTasks, metrics, materialGaps: health.gaps, healthReasons: health.reasons });
+});
+
+app.get('/api/config', (_req, res) => {
+  res.json({
+    stages: STAGES,
+    contentKinds: CONTENT_KINDS,
+    stageRatios: STAGE_RATIOS,
+    materialTemplates: MATERIAL_TEMPLATES,
+    imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
+    llmKeyReady: Boolean(process.env.LLM_API_KEY),
+    materialRoot: MATERIAL_ROOT
+  });
 });
 
 app.post('/api/cases/:id/scan-assets', (req, res) => {
