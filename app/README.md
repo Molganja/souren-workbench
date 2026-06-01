@@ -4,6 +4,16 @@
 
 ## 启动
 
+最简单方式：双击项目根目录的：
+
+```text
+启动素人工作台.command
+```
+
+它会自动检查环境、安装依赖、构建前端、启动本地服务并打开浏览器。
+
+命令行方式：
+
 ```bash
 cd /Users/licc/Desktop/素人系统/app
 npm install
@@ -74,11 +84,26 @@ LLM_API_KEY=
 
 ```bash
 cd /Users/licc/Desktop/素人系统/app
+npm run doctor
 npm run check
 npm run test:e2e
 ```
 
 `test:e2e` 会临时创建测试数据库和素材目录，跑完后自动清理。
+
+## 批量导入样例
+
+样例文件：
+
+```text
+/Users/licc/Desktop/素人系统/app/samples/bulk-import-example.csv
+```
+
+可直接复制其中内容到「案例库 → 批量导入」。字段顺序：
+
+```text
+微信昵称, 抖音号, 抖音主页链接, 项目, 阶段, 城市, 年龄, 职业, 语气, 动机故事
+```
 
 ## 新增实用操作
 
