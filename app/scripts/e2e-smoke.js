@@ -208,6 +208,7 @@ async function main() {
     assert(deliveryDashboardSlot?.selectedCandidate?.operatorInstruction, 'dashboard missing ready delivery copy data');
     assert(deliveryDashboardSlot.case.staff === '咨询D', 'dashboard missing contact staff');
     assert(deliveryDashboardSlot.selectedCandidate.operatorInstruction.includes('对接人：咨询D'), 'operator instruction missing contact staff');
+    assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitReport), 'dashboard work split counts missing');
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',

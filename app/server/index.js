@@ -922,6 +922,7 @@ function dashboard() {
   const assets = all('SELECT * FROM assets ORDER BY created_at DESC').map(rowAsset);
   const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
   const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
+  const viralTemplates = all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const verifyBySlot = Object.fromEntries(verifyTasks.map((item) => [item.planItemId, item]));
@@ -941,8 +942,13 @@ function dashboard() {
       cases: cases.length,
       pendingGenerate: slots.filter((s) => s.status === '待生成').length,
       pendingChoose: slots.filter((s) => s.status === '候选待选').length,
+      locked: slots.filter((s) => s.status === '已锁定').length,
       readyDelivery: slots.filter((s) => s.status === '可交付').length,
+      sentWaitReport: slots.filter((s) => s.status === '已派发').length,
       pendingVerify: slots.filter((s) => s.status === '已汇报').length,
+      pendingViral: viralTemplates.filter((item) => String(item.rawText || '').startsWith('待用青豆')
+        || String(item.hotStructure || '').startsWith('待青豆')
+        || item.category === '待分析').length,
       blocked: slots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
     },
     todaySlots: slots.filter((s) => s.date <= today && ['待生成', '候选待选', '已锁定', '可交付'].includes(s.status)).map(withCase),
