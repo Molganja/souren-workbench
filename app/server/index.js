@@ -60,6 +60,21 @@ const MATERIAL_TEMPLATES = {
   ]
 };
 
+const RANDOM_CASE_PROFILES = {
+  cities: ['成都', '杭州', '重庆', '西安', '长沙', '武汉', '南京', '苏州', '广州', '深圳'],
+  ages: [23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
+  occupations: ['上班族', '自由职业', '美业顾问', '行政', '设计师', '护士', '教师', '运营', '店员', '宝妈'],
+  tones: ['自然', '轻松', '克制', '真实记录', '生活化', '碎碎念'],
+  motivations: [
+    '想把状态变化记录下来',
+    '想做一点真实生活记录',
+    '想看看自己坚持更新后的变化',
+    '想把纠结和决策过程讲清楚',
+    '想用普通人的方式记录恢复过程',
+    '想让账号看起来更像真实日常'
+  ]
+};
+
 const DEFAULT_CONTENT_SEEDS = [
   {
     project: '通用',
@@ -336,6 +351,20 @@ function pickWeighted(weights) {
   return entries[0][0];
 }
 
+function pickRandom(items) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function randomPersona(input = {}) {
+  return {
+    city: input.city || pickRandom(RANDOM_CASE_PROFILES.cities),
+    age: input.age || pickRandom(RANDOM_CASE_PROFILES.ages),
+    occupation: input.occupation || pickRandom(RANDOM_CASE_PROFILES.occupations),
+    tone: input.tone || pickRandom(RANDOM_CASE_PROFILES.tones),
+    motivation: input.motivation || pickRandom(RANDOM_CASE_PROFILES.motivations)
+  };
+}
+
 function inferGoal(kind, stage) {
   if (kind === '素人种草') return `${stage}种草：围绕案例体验、恢复节点和答疑推进`;
   if (kind === '爆款提权') return '提账号权重：套用爆款结构做人设化内容';
@@ -493,7 +522,7 @@ function createCaseFromBody(body = {}) {
   const created = now();
   const project = body.project || '吸脂';
   const stage = body.stage || '起号期';
-  const persona = body.persona || {};
+  const persona = randomPersona(body.persona || {});
   const date = created.slice(0, 10).replaceAll('-', '');
   const seq = all('SELECT id FROM cases').length + 1;
   const caseCode = body.caseCode || `XZ-${date}-${String(seq).padStart(3, '0')}`;
@@ -507,7 +536,7 @@ function createCaseFromBody(body = {}) {
     [
       id,
       caseCode,
-      body.weixinNick || '未命名兼职',
+      body.weixinNick || `${persona.city}${persona.occupation}`,
       body.douyinId || '',
       body.douyinUrl || '',
       project,
@@ -1373,20 +1402,21 @@ app.delete('/api/content-seeds/:id', (req, res) => {
 app.post('/api/viral-templates', (req, res) => {
   const body = req.body || {};
   const id = uid('viral');
+  const linkOnly = Boolean(body.sourceLink) && !String(body.rawText || '').trim();
   run(
     `INSERT INTO viral_templates
     (id, title, raw_text, source_link, category, hot_structure, suitable_personas, forbidden_personas, rewrite_policy, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
-      body.title || '未命名爆款模板',
-      body.rawText || '',
+      body.title || (linkOnly ? `待分析爆款链接 ${new Date().toISOString().slice(0, 10)}` : '未命名爆款模板'),
+      body.rawText || (linkOnly ? '待用青豆提取原视频文案' : ''),
       body.sourceLink || '',
-      body.category || '情绪',
-      body.hotStructure || '开头提出共鸣问题，中段列出3个细节，结尾引导评论',
+      body.category || (linkOnly ? '待分析' : '情绪'),
+      body.hotStructure || (linkOnly ? '待青豆提取后补充：标题、正文、爆点结构、适合人设和下一步建议' : '开头提出共鸣问题，中段列出3个细节，结尾引导评论'),
       JSON.stringify(body.suitablePersonas || []),
       JSON.stringify(body.forbiddenPersonas || []),
-      body.rewritePolicy || '结构模仿',
+      body.rewritePolicy || (linkOnly ? '仅参考' : '结构模仿'),
       now(),
       now()
     ]
@@ -1397,6 +1427,9 @@ app.post('/api/viral-templates', (req, res) => {
 app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
   const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
   if (!viral) return res.status(404).json({ error: 'viral template not found' });
+  if (viral.rawText.startsWith('待用青豆') || viral.hotStructure.startsWith('待青豆')) {
+    return res.status(409).json({ error: '这个爆款链接还没完成青豆提取和结构分析，先不要批量生成' });
+  }
   const body = req.body || {};
   const cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase);
   const created = [];

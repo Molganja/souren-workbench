@@ -78,6 +78,11 @@ async function main() {
       })
     });
     assert(filteredViral.suitablePersonas.length === 2 && filteredViral.forbiddenPersonas.length === 1, 'viral persona filters not saved');
+    const linkOnlyViral = await api('/viral-templates', {
+      method: 'POST',
+      body: JSON.stringify({ sourceLink: 'https://www.douyin.com/video/link-only-smoke' })
+    });
+    assert(linkOnlyViral.rawText.includes('待用青豆') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
     const seed = await api('/content-seeds', {
       method: 'POST',
       body: JSON.stringify({
@@ -110,14 +115,14 @@ async function main() {
     const caze = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({
-        weixinNick: '验收兼职',
         douyinId: 'smoke_dy',
         douyinUrl: 'https://www.douyin.com/',
         project: '吸脂',
         stage: '起号期',
-        persona: { city: '成都', age: 25, occupation: '上班族', tone: '自然', motivation: '记录状态变化' }
+        persona: { city: '成都', occupation: '上班族' }
       })
     });
+    assert(caze.weixinNick.includes('成都') && caze.persona.age && caze.persona.tone && caze.persona.motivation, 'case random defaults missing');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
     const manifestPath = path.join(caze.localCaseDir, 'case.json');
     assert(fs.existsSync(manifestPath), 'case manifest missing');
@@ -207,6 +212,13 @@ async function main() {
     assert(viralBulk.createdCount === 2, 'viral bulk generation failed');
     const filteredBulk = await api(`/viral-templates/${filteredViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-03' }) });
     assert(filteredBulk.createdCount === 1 && filteredBulk.skippedCount >= 1, 'viral persona filter bulk generation failed');
+    let pendingRejected = false;
+    try {
+      await api(`/viral-templates/${linkOnlyViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-04' }) });
+    } catch (error) {
+      pendingRejected = /409/.test(error.message) || /青豆/.test(error.message);
+    }
+    assert(pendingRejected, 'pending link-only viral template allowed bulk generation');
 
     const exported = await api('/export');
     assert(exported.cases.length === 2, 'export missing cases');

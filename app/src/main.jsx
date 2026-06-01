@@ -5,6 +5,13 @@ import './styles.css';
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const KINDS = ['素人种草', '日常养号', '爆款提权'];
 const API = '/api';
+const RANDOM_CASE_PROFILES = {
+  cities: ['成都', '杭州', '重庆', '西安', '长沙', '武汉', '南京', '苏州', '广州', '深圳'],
+  ages: [23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
+  occupations: ['上班族', '自由职业', '美业顾问', '行政', '设计师', '护士', '教师', '运营', '店员', '宝妈'],
+  tones: ['自然', '轻松', '克制', '真实记录', '生活化', '碎碎念'],
+  motivations: ['想把状态变化记录下来', '想做一点真实生活记录', '想看看自己坚持更新后的变化', '想把纠结和决策过程讲清楚', '想用普通人的方式记录恢复过程']
+};
 
 async function request(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
@@ -28,6 +35,25 @@ function statusClass(status) {
   if (['已派发', '已汇报'].includes(status)) return 'report';
   if (['已核对'].includes(status)) return 'ok';
   return 'bad';
+}
+
+function pickRandom(items) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function randomCaseDefaults() {
+  const city = pickRandom(RANDOM_CASE_PROFILES.cities);
+  const occupation = pickRandom(RANDOM_CASE_PROFILES.occupations);
+  return {
+    weixinNick: `${city}${occupation}${Math.floor(10 + Math.random() * 90)}`,
+    persona: {
+      city,
+      age: pickRandom(RANDOM_CASE_PROFILES.ages),
+      occupation,
+      tone: pickRandom(RANDOM_CASE_PROFILES.tones),
+      motivation: pickRandom(RANDOM_CASE_PROFILES.motivations)
+    }
+  };
 }
 
 function App() {
@@ -1056,19 +1082,20 @@ function bulkGenerateViral(template, onAct) {
 }
 
 function CaseForm({ initial, onClose, onSubmit }) {
+  const defaults = useMemo(() => initial ? null : randomCaseDefaults(), [initial]);
   const [form, setForm] = useState(() => ({
-    weixinNick: initial?.weixinNick || '',
+    weixinNick: initial?.weixinNick || defaults?.weixinNick || '',
     douyinId: initial?.douyinId || '',
     douyinUrl: initial?.douyinUrl || '',
     project: initial?.project || '吸脂',
     stage: initial?.stage || '起号期',
     staff: initial?.staff || '',
     persona: {
-      city: initial?.persona?.city || '',
-      age: initial?.persona?.age || '',
-      occupation: initial?.persona?.occupation || '',
-      tone: initial?.persona?.tone || '',
-      motivation: initial?.persona?.motivation || ''
+      city: initial?.persona?.city || defaults?.persona.city || '',
+      age: initial?.persona?.age || defaults?.persona.age || '',
+      occupation: initial?.persona?.occupation || defaults?.persona.occupation || '',
+      tone: initial?.persona?.tone || defaults?.persona.tone || '',
+      motivation: initial?.persona?.motivation || defaults?.persona.motivation || ''
     }
   }));
   function update(key, value) {
@@ -1077,8 +1104,13 @@ function CaseForm({ initial, onClose, onSubmit }) {
   function updatePersona(key, value) {
     setForm((prev) => ({ ...prev, persona: { ...prev.persona, [key]: value } }));
   }
+  function reroll() {
+    const next = randomCaseDefaults();
+    setForm((prev) => ({ ...prev, weixinNick: next.weixinNick, persona: next.persona }));
+  }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
+      {!initial && <div className="hintBox">这里默认随机生成人设。工作人员只需要补微信昵称、抖音号或主页链接；不确定就直接创建，后面再改。</div>}
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
@@ -1092,6 +1124,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
         <label className="wide">动机故事<textarea value={form.persona.motivation} onChange={(e) => updatePersona('motivation', e.target.value)} /></label>
       </div>
       <div className="modalActions">
+        {!initial && <button onClick={reroll}>随机换一组</button>}
         <button onClick={onClose}>取消</button>
         <button className="primary" onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>{initial ? '保存' : '创建'}</button>
       </div>
@@ -1155,23 +1188,24 @@ function ViralForm({ onClose, onSubmit }) {
     title: '',
     rawText: '',
     sourceLink: '',
-    category: '情绪',
-    hotStructure: '开头提出共鸣问题，中段列出3个细节，结尾引导评论',
+    category: '待分析',
+    hotStructure: '',
     suitableText: '',
     forbiddenText: '',
-    rewritePolicy: '结构模仿'
+    rewritePolicy: '仅参考'
   });
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
   return (
     <Modal title="录入爆款模板" onClose={onClose}>
+      <div className="hintBox">工作人员可以只贴爆款视频链接。链接会先进入待分析，后续由我用青豆提文案、拆结构，再补成可批量生成的模板。</div>
       <div className="formGrid">
-        <label className="wide">爆款标题<input value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
-        <label className="wide">正文/口播<textarea rows="5" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
-        <label>来源链接<input value={form.sourceLink} onChange={(e) => update('sourceLink', e.target.value)} /></label>
+        <label className="wide">爆款视频链接<input placeholder="先贴抖音作品链接即可" value={form.sourceLink} onChange={(e) => update('sourceLink', e.target.value)} /></label>
+        <label className="wide">爆款标题<input placeholder="可留空，青豆分析后再补" value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
+        <label className="wide">正文/口播<textarea rows="5" placeholder="可留空，后续由青豆提取" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
         <label>类别<select value={form.category} onChange={(e) => update('category', e.target.value)}>
-          {['情绪', '职场', '穿搭', '美食', '本地生活', '清单', '反差故事'].map((item) => <option key={item}>{item}</option>)}
+          {['待分析', '情绪', '职场', '穿搭', '美食', '本地生活', '清单', '反差故事'].map((item) => <option key={item}>{item}</option>)}
         </select></label>
         <label>改写策略<select value={form.rewritePolicy} onChange={(e) => update('rewritePolicy', e.target.value)}>
           {['结构模仿', '话题模仿', '仅参考'].map((item) => <option key={item}>{item}</option>)}
