@@ -667,7 +667,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy }) {
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
-        {slot.status === '已锁定' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
+        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), (result) => result.blocked ? '缺少素材，已标记素材阻塞' : '交付包已生成')}>生成交付包</button>}
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
@@ -737,7 +737,7 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy }) {
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>}
-        {slot.status === '已锁定' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
+        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), (result) => result.blocked ? '缺少素材，已标记素材阻塞' : '交付包已生成')}>生成交付包</button>}
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
@@ -1069,7 +1069,7 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy }) {
         {!selected && ['待生成', '候选待选', '素材阻塞', '异常'].includes(slot.status) && (
           <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
         )}
-        {selected && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
+        {selected && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), (result) => result.blocked ? '缺少素材，已标记素材阻塞' : '交付包已生成')}>生成交付包</button>}
         {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已派发')}>标记派发</button>}

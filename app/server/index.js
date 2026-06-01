@@ -508,7 +508,7 @@ function createCandidate(slot, caze, variant, viral = null, seed = null) {
 }
 
 function generateCandidatesForSlot(slot) {
-  if (!slot || slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
+  if (!slot || slot.selectedCandidateId || ['已锁定', '素材阻塞', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
     return [];
   }
   const caze = caseById(slot.caseId);
@@ -1104,7 +1104,7 @@ function dashboard() {
       requiredMaterialGaps: caseHealthRows.reduce((sum, item) => sum + item.requiredGapCount, 0),
       blocked: slots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
     },
-    todaySlots: slots.filter((s) => s.date <= today && ['待生成', '候选待选', '已锁定', '可交付'].includes(s.status)).map(withCase),
+    todaySlots: slots.filter((s) => s.date <= today && ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付'].includes(s.status)).map(withCase),
     pendingGenerate: slots.filter((s) => s.status === '待生成').slice(0, 30).map(withCase),
     pendingChoose: slots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
     readyDelivery: slots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
@@ -1158,7 +1158,7 @@ app.post('/api/dashboard/deliver-today', (req, res) => {
   const delivered = [];
   slots.forEach((slot) => {
     const result = createDeliveryForSlot(slot);
-    if (result) delivered.push(result);
+    if (result && !result.blocked) delivered.push(result);
   });
   res.json({ deliveryCount: delivered.length, deliveries: delivered });
 });
@@ -1187,7 +1187,7 @@ app.post('/api/dashboard/prepare-today', (_req, res) => {
     }
     if (current.status === '已锁定') {
       const result = createDeliveryForSlot(current);
-      if (result) {
+      if (result && !result.blocked) {
         deliveries.push(result);
         deliveryCount += 1;
       }
@@ -1472,6 +1472,23 @@ function createDeliveryForSlot(slot) {
   const assetLines = copied.length
     ? copied.map((item) => `${item.order}. ${item.fileName}｜${item.kind}｜${item.stage}｜${item.source}\n   原路径：${item.originalPath}`).join('\n')
     : '本次未复制素材，请先在案例详情扫描并标记可用素材，或创建 Image/剪辑任务补齐。';
+  if (!copied.length) {
+    fs.writeFileSync(path.join(deliveryDir, '00-素材阻塞说明.txt'), [
+      `案例：${caze.caseCode} / ${caze.weixinNick}`,
+      `内容：${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.stage}`,
+      `标题：${candidate.title}`,
+      '',
+      '当前不能标记为可交付：本次没有复制到任何可用素材。',
+      '',
+      '下一步：',
+      '1. 把图片或视频放入 00-原始素材 或 01-已筛选素材',
+      '2. 回到系统点击“扫描素材”',
+      '3. 把可用素材标记为“可用”',
+      '4. 再重新生成交付包'
+    ].join('\n'));
+    run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['素材阻塞', deliveryDir, now(), slot.id]);
+    return { blocked: true, reason: 'missing_assets', deliveryDir, copiedAssets: copied, slot: slotById(slot.id) };
+  }
   fs.writeFileSync(path.join(deliveryDir, '05-素材顺序清单.txt'), assetLines);
   fs.writeFileSync(path.join(deliveryDir, '06-发布要求.txt'), [
     `类型：${slot.contentKind}`,

@@ -156,6 +156,14 @@ async function main() {
     assert(minimalCase.slotsCreated === 3, 'minimal case did not auto generate slots');
     const minimalDetail = await api(`/cases/${minimalCase.id}`);
     assert(minimalDetail.slots.length === 3 && minimalDetail.slots.every((item) => item.status === '待生成'), 'minimal case slots missing');
+    const noAssetSlot = minimalDetail.slots[0];
+    const noAssetDrafts = await api(`/slots/${noAssetSlot.id}/generate-candidates`, { method: 'POST' });
+    await api(`/candidates/${noAssetDrafts[0].id}/select`, { method: 'POST' });
+    const blockedDelivery = await api(`/slots/${noAssetSlot.id}/delivery`, { method: 'POST' });
+    assert(blockedDelivery.blocked && blockedDelivery.slot.status === '素材阻塞', 'delivery without assets was not blocked');
+    assert(fs.existsSync(path.join(blockedDelivery.deliveryDir, '00-素材阻塞说明.txt')), 'blocked delivery note missing');
+    const blockedDashboard = await api('/dashboard');
+    assert(blockedDashboard.todaySlots.some((item) => item.id === noAssetSlot.id && item.status === '素材阻塞'), 'blocked slot missing from dashboard');
     const manifestPath = path.join(caze.localCaseDir, 'case.json');
     assert(fs.existsSync(manifestPath), 'case manifest missing');
     const editedCase = await api(`/cases/${caze.id}`, {
