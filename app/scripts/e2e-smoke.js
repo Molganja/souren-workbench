@@ -173,6 +173,7 @@ async function main() {
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) });
     const detailBeforeVerify = await api(`/cases/${caze.id}`);
     assert(detailBeforeVerify.verifyTasks.length === 1, 'verify task missing');
+    assert(detailBeforeVerify.verifyTasks[0].expectedAssets.length >= 1, 'verify task expected assets missing');
     await api(`/verify-tasks/${detailBeforeVerify.verifyTasks[0].id}`, {
       method: 'PATCH',
       body: JSON.stringify({

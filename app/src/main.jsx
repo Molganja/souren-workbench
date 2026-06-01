@@ -775,7 +775,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
               <div className="taskRow" key={task.id}>
                 <div className="taskMain">
                   <div className="rowTitle"><strong>{task.expectedTitle || '待核对内容'}</strong><span className={`status ${statusClass(task.status)}`}>{task.status}</span></div>
-                  <p>{task.expectedPublishDate} · {task.resultNote || '等待打开抖音核对'}</p>
+                  <p>{task.expectedPublishDate} · 预期素材 {task.expectedAssets?.length || 0} 个 · {task.resultNote || '等待打开抖音核对'}</p>
                 </div>
                 <div className="rowActions">
                   {task.douyinUrl && <a className="button" href={task.douyinUrl} target="_blank">打开抖音</a>}

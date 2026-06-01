@@ -1064,13 +1064,16 @@ app.patch('/api/slots/:id/status', (req, res) => {
   if (status === '已汇报') {
     const caze = caseById(slot.caseId);
     const selected = rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId]));
+    const expectedAssets = slot.deliveryDir && fs.existsSync(path.join(slot.deliveryDir, '05-素材顺序清单.txt'))
+      ? fs.readFileSync(path.join(slot.deliveryDir, '05-素材顺序清单.txt'), 'utf8').split('\n').filter((line) => /^\d+\./.test(line.trim()))
+      : [];
     const exists = get('SELECT id FROM verify_tasks WHERE plan_item_id = ?', [slot.id]);
     if (!exists) {
       run(
         `INSERT INTO verify_tasks
         (id, case_id, plan_item_id, douyin_url, expected_title, expected_publish_date, expected_assets, status, result_note, metrics_snapshot, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, '[]', 'pending', '', NULL, ?, ?)`,
-        [uid('verify'), caze.id, slot.id, caze.douyinUrl, selected?.title || '', slot.date, now(), now()]
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', '', NULL, ?, ?)`,
+        [uid('verify'), caze.id, slot.id, caze.douyinUrl, selected?.title || '', slot.date, JSON.stringify(expectedAssets), now(), now()]
       );
     }
   }
