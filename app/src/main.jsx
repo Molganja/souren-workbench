@@ -95,6 +95,20 @@ function App() {
     }
   }
 
+  async function copyText(text, message = '已复制') {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    }
+    showToast(message);
+  }
+
   async function openCase(id) {
     setSelectedCaseId(id);
     setView('case');
@@ -134,7 +148,7 @@ function App() {
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} />
         )}
         {!loading && view === 'case' && caseDetail && (
-          <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} />
+          <CaseDetail detail={caseDetail} onAct={act} onCopy={copyText} onBack={() => setView('cases')} />
         )}
         {!loading && view === 'viral' && (
           <ViralView templates={viralTemplates} onNew={() => setViralFormOpen(true)} onAct={act} />
@@ -306,7 +320,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk }) {
   );
 }
 
-function CaseDetail({ detail, onAct, onBack }) {
+function CaseDetail({ detail, onAct, onCopy, onBack }) {
   const { case: caze, slots, candidates, assets, imageTasks, verifyTasks, metrics = [], materialGaps = [], healthReasons = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const [slotFormOpen, setSlotFormOpen] = useState(false);
@@ -364,7 +378,7 @@ function CaseDetail({ detail, onAct, onBack }) {
         {slots.length === 0 ? <div className="empty">还没有排期槽位</div> : (
           <div className="slotList">
             {slots.map((slot) => (
-              <SlotCard key={slot.id} slot={slot} candidates={candidatesBySlot[slot.id] || []} onAct={onAct} />
+              <SlotCard key={slot.id} slot={slot} candidates={candidatesBySlot[slot.id] || []} onAct={onAct} onCopy={onCopy} />
             ))}
           </div>
         )}
@@ -402,6 +416,18 @@ function CaseDetail({ detail, onAct, onBack }) {
                   </div>
                   <em>{gap.status}</em>
                   <small>{gap.suggestion}</small>
+                  {gap.status !== '已满足' && (
+                    <div className="inlineActions gapActions">
+                      <button onClick={() => onAct(() => request('/image-tasks', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                          caseId: caze.id,
+                          purpose: gap.label,
+                          prompt: `为${personaText(caze.persona)}生成/整理一张用于「${gap.label}」的${caze.project}内容辅助图，适合抖音图文发布，画面自然，手机拍摄质感。`
+                        })
+                      }), '已按素材缺口创建 Image 任务')}>创建 Image 任务</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -482,7 +508,7 @@ function CaseDetail({ detail, onAct, onBack }) {
   );
 }
 
-function SlotCard({ slot, candidates, onAct }) {
+function SlotCard({ slot, candidates, onAct, onCopy }) {
   const selected = candidates.find((item) => item.selected);
   return (
     <div className="slotCard">
@@ -500,6 +526,7 @@ function SlotCard({ slot, candidates, onAct }) {
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '进入待核对')}>兼职已汇报</button>}
+        {slot.status !== '已核对' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
       </div>
       {slot.deliveryDir && <div className="path">交付包：{slot.deliveryDir}</div>}
       {candidates.length > 0 && (
@@ -512,7 +539,11 @@ function SlotCard({ slot, candidates, onAct }) {
               </div>
               <h3>{draft.title}</h3>
               <p>{draft.publishText}</p>
-              <button onClick={() => onAct(() => request(`/candidates/${draft.id}/select`, { method: 'POST' }), '已锁定候选')}>{draft.selected ? '已选择' : '选择这条'}</button>
+              <div className="inlineActions">
+                <button onClick={() => onAct(() => request(`/candidates/${draft.id}/select`, { method: 'POST' }), '已锁定候选')}>{draft.selected ? '已选择' : '选择这条'}</button>
+                <button onClick={() => onCopy(draft.operatorInstruction, '执行说明已复制')}>复制执行说明</button>
+                <button onClick={() => onCopy(`${draft.title}\n\n${draft.publishText}`, '发布文案已复制')}>复制发布文案</button>
+              </div>
             </div>
           ))}
         </div>

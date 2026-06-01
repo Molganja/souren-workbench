@@ -97,6 +97,11 @@ async function main() {
     const withGaps = await api(`/cases/${caze.id}`);
     assert(Array.isArray(withGaps.materialGaps) && withGaps.materialGaps.length > 0, 'material gaps missing');
     assert(Array.isArray(withGaps.healthReasons), 'health reasons missing');
+    const gapImage = await api('/image-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label, prompt: `补${withGaps.materialGaps[0].label}` })
+    });
+    assert(gapImage.purpose === withGaps.materialGaps[0].label, 'gap image task failed');
 
     const manualSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -125,6 +130,8 @@ async function main() {
         metricsSnapshot: { fans: '100', plays: '2000', likes: '88', comments: '9' }
       })
     });
+    const abnormalSlot = await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
+    assert(abnormalSlot.status === '异常', 'manual abnormal status failed');
 
     const imageTask = await api('/image-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, purpose: '封面图' }) });
     assert(imageTask.status === 'waiting_key' || imageTask.status === 'draft', 'image task status invalid');

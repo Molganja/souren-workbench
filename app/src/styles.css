@@ -507,6 +507,11 @@ button.primary, .button.primary {
   grid-column: 1 / -1;
 }
 
+.gapActions {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+}
+
 .gapRow em {
   font-style: normal;
   color: var(--orange);
