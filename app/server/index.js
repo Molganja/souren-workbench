@@ -1426,6 +1426,30 @@ app.post('/api/viral-templates', (req, res) => {
   res.json(rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [id])));
 });
 
+app.patch('/api/viral-templates/:id', (req, res) => {
+  const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
+  if (!viral) return res.status(404).json({ error: 'viral template not found' });
+  const body = req.body || {};
+  run(
+    `UPDATE viral_templates
+    SET title = ?, raw_text = ?, source_link = ?, category = ?, hot_structure = ?, suitable_personas = ?, forbidden_personas = ?, rewrite_policy = ?, updated_at = ?
+    WHERE id = ?`,
+    [
+      body.title ?? viral.title,
+      body.rawText ?? viral.rawText,
+      body.sourceLink ?? viral.sourceLink,
+      body.category ?? viral.category,
+      body.hotStructure ?? viral.hotStructure,
+      JSON.stringify(body.suitablePersonas ?? viral.suitablePersonas),
+      JSON.stringify(body.forbiddenPersonas ?? viral.forbiddenPersonas),
+      body.rewritePolicy ?? viral.rewritePolicy,
+      now(),
+      viral.id
+    ]
+  );
+  res.json(rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [viral.id])));
+});
+
 app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
   const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
   if (!viral) return res.status(404).json({ error: 'viral template not found' });

@@ -323,6 +323,8 @@ button.primary, .button.primary {
 .status.report { background: var(--purple-soft); color: var(--purple); }
 .status.ok { background: var(--green-soft); color: var(--green); }
 .status.bad { background: var(--red-soft); color: var(--red); }
+.status.s-pending { background: var(--orange-soft); color: var(--orange); }
+.status.s-ready { background: var(--green-soft); color: var(--green); }
 
 .empty {
   border: 1px dashed var(--line);

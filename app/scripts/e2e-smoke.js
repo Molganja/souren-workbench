@@ -223,6 +223,20 @@ async function main() {
       pendingRejected = /409/.test(error.message) || /青豆/.test(error.message);
     }
     assert(pendingRejected, 'pending link-only viral template allowed bulk generation');
+    const analyzedViral = await api(`/viral-templates/${linkOnlyViral.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        title: '青豆分析后的链接',
+        rawText: '青豆提取：真实生活开头，三段转折，评论提问。',
+        category: '情绪',
+        hotStructure: '生活场景开头 + 三段状态变化 + 评论区提问',
+        suitablePersonas: ['成都'],
+        rewritePolicy: '结构模仿'
+      })
+    });
+    assert(analyzedViral.title === '青豆分析后的链接' && analyzedViral.category === '情绪', 'viral analysis patch failed');
+    const analyzedBulk = await api(`/viral-templates/${analyzedViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-05' }) });
+    assert(analyzedBulk.createdCount === 1, 'analyzed viral link did not generate filtered slots');
 
     const exported = await api('/export');
     assert(exported.cases.length === 2, 'export missing cases');

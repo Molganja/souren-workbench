@@ -72,6 +72,7 @@ function App() {
   const [caseFormOpen, setCaseFormOpen] = useState(false);
   const [bulkCaseOpen, setBulkCaseOpen] = useState(false);
   const [viralFormOpen, setViralFormOpen] = useState(false);
+  const [editingViral, setEditingViral] = useState(null);
   const [seedFormOpen, setSeedFormOpen] = useState(false);
 
   async function refresh() {
@@ -175,7 +176,18 @@ function App() {
           <CaseDetail detail={caseDetail} onAct={act} onCopy={copyText} onBack={() => setView('cases')} />
         )}
         {!loading && view === 'viral' && (
-          <ViralView templates={viralTemplates} onNew={() => setViralFormOpen(true)} onAct={act} />
+          <ViralView
+            templates={viralTemplates}
+            onNew={() => {
+              setEditingViral(null);
+              setViralFormOpen(true);
+            }}
+            onEdit={(item) => {
+              setEditingViral(item);
+              setViralFormOpen(true);
+            }}
+            onAct={act}
+          />
         )}
         {!loading && view === 'seeds' && (
           <SeedView seeds={contentSeeds} onNew={() => setSeedFormOpen(true)} onAct={act} />
@@ -207,11 +219,20 @@ function App() {
       )}
       {viralFormOpen && (
         <ViralForm
-          onClose={() => setViralFormOpen(false)}
-          onSubmit={(payload) => act(async () => {
-            await request('/viral-templates', { method: 'POST', body: JSON.stringify(payload) });
+          initial={editingViral}
+          onClose={() => {
+            setEditingViral(null);
             setViralFormOpen(false);
-          }, '爆款链接已记录')}
+          }}
+          onSubmit={(payload) => act(async () => {
+            if (editingViral) {
+              await request(`/viral-templates/${editingViral.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+            } else {
+              await request('/viral-templates', { method: 'POST', body: JSON.stringify(payload) });
+            }
+            setEditingViral(null);
+            setViralFormOpen(false);
+          }, editingViral ? '爆款分析已更新' : '爆款链接已记录')}
         />
       )}
       {seedFormOpen && (
@@ -923,24 +944,34 @@ function verifyWithMetrics(task, onAct) {
   );
 }
 
-function ViralView({ templates, onNew, onAct }) {
+function ViralView({ templates, onNew, onEdit, onAct }) {
+  const pending = templates.filter((item) => isPendingViral(item)).length;
   return (
     <section className="panel">
       <div className="sectionHead">
         <h2>爆款链接</h2>
-        <button className="button primary" onClick={onNew}>粘贴爆款链接</button>
+        <div className="inlineActions">
+          <span>{pending} 条待分析</span>
+          <button className="button primary" onClick={onNew}>粘贴爆款链接</button>
+        </div>
       </div>
       <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会作为待分析任务，由我后续用青豆提文案、拆结构、判断适合哪些账号，再生成同类型候选。</div>
       {templates.length === 0 ? <div className="empty">还没有待分析链接。先粘贴作品链接即可，不需要填写模板内容。</div> : (
         <div className="templateList">
           {templates.map((item) => (
             <div className="templateRow" key={item.id}>
-              <strong>{item.title}</strong>
+              <div className="rowTitle">
+                <strong>{item.title}</strong>
+                <span className={`status ${isPendingViral(item) ? 's-pending' : 's-ready'}`}>{isPendingViral(item) ? '待青豆分析' : '可生成'}</span>
+              </div>
               <span>{item.category} · {item.rewritePolicy}</span>
+              {item.sourceLink && <small>来源：{item.sourceLink}</small>}
               <p>{item.hotStructure}</p>
               <small>{item.rawText}</small>
               <div className="inlineActions">
-                <button onClick={() => bulkGenerateViral(item, onAct)}>给所有账号生成今日爆款候选</button>
+                {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
+                <button onClick={() => onEdit(item)}>{isPendingViral(item) ? '补分析结果' : '编辑分析'}</button>
+                <button disabled={isPendingViral(item)} onClick={() => bulkGenerateViral(item, onAct)}>给所有账号生成今日爆款候选</button>
               </div>
             </div>
           ))}
@@ -948,6 +979,12 @@ function ViralView({ templates, onNew, onAct }) {
       )}
     </section>
   );
+}
+
+function isPendingViral(item) {
+  return String(item.rawText || '').startsWith('待用青豆')
+    || String(item.hotStructure || '').startsWith('待青豆')
+    || item.category === '待分析';
 }
 
 function SeedView({ seeds, onNew, onAct }) {
@@ -1185,23 +1222,23 @@ function SlotForm({ caze, onClose, onSubmit }) {
   );
 }
 
-function ViralForm({ onClose, onSubmit }) {
-  const [form, setForm] = useState({
-    title: '',
-    rawText: '',
-    sourceLink: '',
-    category: '待分析',
-    hotStructure: '',
-    suitableText: '',
-    forbiddenText: '',
-    rewritePolicy: '仅参考'
-  });
+function ViralForm({ initial, onClose, onSubmit }) {
+  const [form, setForm] = useState(() => ({
+    title: initial?.title || '',
+    rawText: initial?.rawText || '',
+    sourceLink: initial?.sourceLink || '',
+    category: initial?.category || '待分析',
+    hotStructure: initial?.hotStructure || '',
+    suitableText: initial?.suitablePersonas?.join(',') || '',
+    forbiddenText: initial?.forbiddenPersonas?.join(',') || '',
+    rewritePolicy: initial?.rewritePolicy || '仅参考'
+  }));
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
   return (
-    <Modal title="粘贴爆款链接" onClose={onClose}>
-      <div className="hintBox">工作人员只需要贴抖音作品链接。标题、正文、爆点结构这些可以留空，后续由我用青豆提取和分析。</div>
+    <Modal title={initial ? '补爆款分析' : '粘贴爆款链接'} onClose={onClose}>
+      <div className="hintBox">{initial ? '这里用于把青豆提取结果、结构分析和适合账号补回系统。补完后，这条爆款链接就可以批量生成人设化候选。' : '工作人员只需要贴抖音作品链接。标题、正文、爆点结构这些可以留空，后续由我用青豆提取和分析。'}</div>
       <div className="formGrid">
         <label className="wide">爆款视频链接<input placeholder="先贴抖音作品链接即可" value={form.sourceLink} onChange={(e) => update('sourceLink', e.target.value)} /></label>
         <label className="wide">备注标题<input placeholder="可留空；需要区分来源时再写" value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
@@ -1222,7 +1259,7 @@ function ViralForm({ onClose, onSubmit }) {
           ...form,
           suitablePersonas: form.suitableText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean),
           forbiddenPersonas: form.forbiddenText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean)
-        })}>保存</button>
+        })}>{initial ? '保存分析' : '保存'}</button>
       </div>
     </Modal>
   );
