@@ -378,6 +378,10 @@ button.primary, .button.primary {
   white-space: nowrap;
 }
 
+.scheduleFilters {
+  grid-template-columns: minmax(260px, 1fr) 130px 140px 140px auto;
+}
+
 .caseHeader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

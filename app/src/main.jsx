@@ -34,6 +34,7 @@ function App() {
   const [view, setView] = useState('dashboard');
   const [dashboard, setDashboard] = useState(null);
   const [review, setReview] = useState(null);
+  const [schedule, setSchedule] = useState(null);
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseDetail, setCaseDetail] = useState(null);
@@ -48,9 +49,10 @@ function App() {
   const [seedFormOpen, setSeedFormOpen] = useState(false);
 
   async function refresh() {
-    const [dash, reviewData, caseRows, viralRows, seedRows, configData] = await Promise.all([
+    const [dash, reviewData, scheduleData, caseRows, viralRows, seedRows, configData] = await Promise.all([
       request('/dashboard'),
       request('/review'),
+      request('/schedule'),
       request('/cases'),
       request('/viral-templates'),
       request('/content-seeds'),
@@ -58,6 +60,7 @@ function App() {
     ]);
     setDashboard(dash);
     setReview(reviewData);
+    setSchedule(scheduleData);
     setCases(caseRows);
     setViralTemplates(viralRows);
     setContentSeeds(seedRows);
@@ -127,6 +130,7 @@ function App() {
     <div className="nav">
       <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>今日中控台</button>
       <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}>数据复盘</button>
+      <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>排期规划</button>
       <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
       <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款模板</button>
       <button className={view === 'seeds' ? 'active' : ''} onClick={() => setView('seeds')}>内容种子</button>
@@ -156,6 +160,9 @@ function App() {
         )}
         {!loading && view === 'review' && review && (
           <ReviewView data={review} onOpenCase={openCase} />
+        )}
+        {!loading && view === 'schedule' && schedule && (
+          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} />
         )}
         {!loading && view === 'cases' && (
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
@@ -373,6 +380,111 @@ function ReviewView({ data, onOpenCase }) {
 function signed(value) {
   if (value == null) return '—';
   return value >= 0 ? `+${value}` : String(value);
+}
+
+function ScheduleView({ data, onOpenCase, onAct }) {
+  const [range, setRange] = useState('14');
+  const [status, setStatus] = useState('全部状态');
+  const [kind, setKind] = useState('全部内容');
+  const [query, setQuery] = useState('');
+  const endDate = addDaysLocal(data.today, Number(range));
+  const filtered = data.slots.filter((slot) => {
+    const caze = slot.case || {};
+    const q = query.trim().toLowerCase();
+    const haystack = `${caze.weixinNick || ''} ${caze.caseCode || ''} ${caze.douyinId || ''} ${slot.goal}`.toLowerCase();
+    return slot.date >= data.today
+      && slot.date <= endDate
+      && (status === '全部状态' || slot.status === status)
+      && (kind === '全部内容' || slot.contentKind === kind)
+      && (!q || haystack.includes(q));
+  });
+  const days = Object.entries(filtered.reduce((acc, slot) => {
+    if (!acc[slot.date]) acc[slot.date] = [];
+    acc[slot.date].push(slot);
+    return acc;
+  }, {}));
+
+  return (
+    <div className="stack">
+      <section className="hero">
+        <div>
+          <p className="eyebrow">排期 {data.today}</p>
+          <h1>全局排期规划</h1>
+          <p>按日期查看所有兼职/账号未来要发什么，集中处理待生成、待选择、待交付和待核对。</p>
+        </div>
+        <div className="stats reviewStats">
+          <Metric label="总排期" value={data.counts.total} />
+          <Metric label="待生成" value={data.counts.pendingGenerate} />
+          <Metric label="待选择" value={data.counts.pendingChoose} />
+          <Metric label="已锁定" value={data.counts.locked} />
+          <Metric label="待核对" value={data.counts.pendingVerify} />
+        </div>
+      </section>
+      <section className="panel">
+        <div className="filters scheduleFilters">
+          <input placeholder="搜索账号 / 抖音号 / 案例编号 / 目标" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <select value={range} onChange={(e) => setRange(e.target.value)}>
+            <option value="7">未来 7 天</option>
+            <option value="14">未来 14 天</option>
+            <option value="30">未来 30 天</option>
+            <option value="60">未来 60 天</option>
+          </select>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            {['全部状态', '待生成', '候选待选', '已锁定', '可交付', '已派发', '已汇报', '已核对', '异常'].map((item) => <option key={item}>{item}</option>)}
+          </select>
+          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            {['全部内容', ...KINDS].map((item) => <option key={item}>{item}</option>)}
+          </select>
+          <span>{filtered.length} 条</span>
+        </div>
+      </section>
+      {days.length === 0 ? <div className="empty">当前筛选条件下没有排期</div> : days.map(([date, items]) => (
+        <section className="panel" key={date}>
+          <div className="sectionHead"><h2>{date}</h2><span>{items.length} 条</span></div>
+          <div className="taskList">
+            {items.map((slot) => (
+              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function ScheduleRow({ slot, onOpenCase, onAct }) {
+  const caze = slot.case || {};
+  return (
+    <div className="taskRow">
+      <div className="dateBox">
+        <strong>{slot.timeWindow || '全天'}</strong>
+        <span>{slot.stage}</span>
+      </div>
+      <div className="taskMain">
+        <div className="rowTitle">
+          <button className="linkButton" onClick={() => caze.id && onOpenCase(caze.id)}>{caze.weixinNick || '未命名账号'}</button>
+          <span className={`kind k-${slot.contentKind}`}>{slot.contentKind}</span>
+          <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
+        </div>
+        <p>{slot.selectedCandidate?.title || slot.goal}</p>
+        <small>{caze.caseCode || '未建案例'} · 候选 {slot.candidateCount}</small>
+      </div>
+      <div className="rowActions">
+        {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
+        {slot.status === '已锁定' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
+        {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
+        {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
+        {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '已进入待核对')}>兼职已汇报</button>}
+        {slot.status === '已汇报' && caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音</a>}
+      </div>
+    </div>
+  );
+}
+
+function addDaysLocal(base, days) {
+  const date = new Date(`${base}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function Metric({ label, value }) {

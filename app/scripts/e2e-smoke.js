@@ -130,6 +130,9 @@ async function main() {
 
     const slots = await api(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 2 }) });
     assert(slots.created.length >= 1, 'generated slots missing');
+    const schedule = await api('/schedule');
+    assert(schedule.counts.total >= 1, 'schedule total missing');
+    assert(schedule.days.some((day) => day.items.some((item) => item.case?.id === caze.id)), 'schedule case slot missing');
     const slot = slots.created[0];
     const drafts = await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' });
     assert(drafts.length === 3, 'candidate count is not 3');

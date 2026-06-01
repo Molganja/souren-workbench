@@ -762,6 +762,40 @@ function reviewSummary() {
   };
 }
 
+function scheduleSummary() {
+  const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
+  const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, time_window ASC, created_at ASC').map(rowSlot);
+  const candidates = all('SELECT * FROM candidate_drafts ORDER BY created_at ASC').map(rowCandidate);
+  const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
+  const withMeta = slots.map((slot) => {
+    const slotCandidates = candidates.filter((item) => item.slotId === slot.id);
+    return {
+      ...slot,
+      case: byCase[slot.caseId] || null,
+      candidateCount: slotCandidates.length,
+      selectedCandidate: slotCandidates.find((item) => item.selected) || null
+    };
+  });
+  const byDate = withMeta.reduce((acc, slot) => {
+    if (!acc[slot.date]) acc[slot.date] = [];
+    acc[slot.date].push(slot);
+    return acc;
+  }, {});
+  return {
+    today: new Date().toISOString().slice(0, 10),
+    slots: withMeta,
+    days: Object.entries(byDate).map(([date, items]) => ({ date, items })),
+    counts: {
+      total: withMeta.length,
+      pendingGenerate: withMeta.filter((item) => item.status === '待生成').length,
+      pendingChoose: withMeta.filter((item) => item.status === '候选待选').length,
+      locked: withMeta.filter((item) => item.status === '已锁定').length,
+      readyDelivery: withMeta.filter((item) => item.status === '可交付').length,
+      pendingVerify: withMeta.filter((item) => item.status === '已汇报').length
+    }
+  };
+}
+
 function dashboard() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
@@ -807,6 +841,10 @@ app.get('/api/dashboard', (_req, res) => {
 
 app.get('/api/review', (_req, res) => {
   res.json(reviewSummary());
+});
+
+app.get('/api/schedule', (_req, res) => {
+  res.json(scheduleSummary());
 });
 
 app.get('/api/cases', (_req, res) => {
