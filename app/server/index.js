@@ -1026,6 +1026,7 @@ function dashboard() {
   const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
   const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
   const viralTemplates = all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral);
+  const imageTasks = all('SELECT * FROM image_tasks ORDER BY created_at DESC').map(rowImageTask);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const verifyBySlot = Object.fromEntries(verifyTasks.map((item) => [item.planItemId, item]));
@@ -1068,6 +1069,8 @@ function dashboard() {
       pendingViral: viralTemplates.filter((item) => String(item.rawText || '').startsWith('待用青豆')
         || String(item.hotStructure || '').startsWith('待青豆')
         || item.category === '待分析').length,
+      imageTasks: imageTasks.filter((item) => ['waiting_key', 'draft', 'review'].includes(item.status)).length,
+      imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
       materialGaps: caseHealthRows.reduce((sum, item) => sum + item.materialGaps.length, 0),
       requiredMaterialGaps: caseHealthRows.reduce((sum, item) => sum + item.requiredGapCount, 0),
       blocked: slots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
@@ -1077,6 +1080,10 @@ function dashboard() {
     pendingChoose: slots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
     readyDelivery: slots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
     pendingVerify: slots.filter((s) => s.status === '已汇报').slice(0, 30).map(withCase),
+    imageTasks: imageTasks
+      .filter((item) => ['waiting_key', 'draft', 'review'].includes(item.status))
+      .slice(0, 20)
+      .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     abnormalCases: caseHealthRows
       .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0)
       .sort((a, b) => (b.requiredGapCount + b.materialGaps.length + b.reasons.length) - (a.requiredGapCount + a.materialGaps.length + a.reasons.length))

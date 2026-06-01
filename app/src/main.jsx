@@ -283,6 +283,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
           <Metric label="等回传" value={data.counts.sentWaitReport} />
           <Metric label="待核对" value={data.counts.pendingVerify} />
           <Metric label="必补素材" value={data.counts.requiredMaterialGaps || 0} />
+          <Metric label="图片任务" value={data.counts.imageTasks || 0} />
         </div>
       </section>
 
@@ -314,6 +315,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
       <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
       <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
       <TaskSection title="待抖音核对" items={data.pendingVerify} empty="没有待核对任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <ImageTaskSection items={data.imageTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
 
       <section className="panel">
         <div className="sectionHead">
@@ -337,6 +339,40 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
         )}
       </section>
     </div>
+  );
+}
+
+function ImageTaskSection({ items, onOpenCase, onAct, onCopy }) {
+  return (
+    <section className="panel">
+      <div className="sectionHead">
+        <h2>待图片处理</h2>
+        <span>{items.length} 条</span>
+      </div>
+      {items.length === 0 ? <div className="empty">没有待处理图片任务</div> : (
+        <div className="taskList">
+          {items.map((task) => (
+            <div className="taskRow" key={task.id}>
+              <div className="taskMain">
+                <div className="rowTitle">
+                  <button className="linkButton" onClick={() => task.case?.id && onOpenCase(task.case.id)}>{task.case?.weixinNick || '未知账号'}</button>
+                  <span className={`status ${statusClass(task.status)}`}>{task.status}</span>
+                </div>
+                <p>{task.purpose}</p>
+                <small>{task.prompt}</small>
+              </div>
+              <div className="rowActions">
+                <button onClick={() => copyImagePrompt(task, onCopy)}>复制 Prompt</button>
+                <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开输出目录')}>打开目录</button>
+                {['review', 'approved', 'rejected'].map((status) => (
+                  <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${status}`)}>{status}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
