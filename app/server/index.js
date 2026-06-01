@@ -703,6 +703,22 @@ function materialIntakeText(caze, gaps = []) {
   ].join('\n');
 }
 
+function imagePromptText(task) {
+  return [
+    'Image 生成任务',
+    `任务ID：${task.id}`,
+    `用途：${task.purpose}`,
+    `状态：${task.status}`,
+    `保存目录：${task.outputDir}`,
+    '',
+    'Prompt:',
+    task.prompt,
+    '',
+    'Negative prompt:',
+    task.negativePrompt || ''
+  ].join('\n');
+}
+
 function parseBulkCaseText(text) {
   return String(text || '')
     .split(/\r?\n/)
@@ -1522,6 +1538,12 @@ app.patch('/api/image-tasks/:id', (req, res) => {
     ]
   );
   res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id])));
+});
+
+app.get('/api/image-tasks/:id/prompt', (req, res) => {
+  const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
+  if (!task) return res.status(404).json({ error: 'image task not found' });
+  res.json({ text: imagePromptText(task) });
 });
 
 app.post('/api/clip-tasks', (req, res) => {

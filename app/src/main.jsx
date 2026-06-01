@@ -904,6 +904,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
                   <small>{task.prompt}</small>
                   <div className="inlineActions">
                     <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开输出目录')}>打开目录</button>
+                    <button onClick={() => copyImagePrompt(task, onCopy)}>复制 Prompt</button>
                     {['review', 'approved', 'rejected'].map((status) => (
                       <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${status}`)}>{status}</button>
                     ))}
@@ -965,6 +966,11 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
 async function copyMaterialIntakeNote(caze, onCopy) {
   const result = await request(`/cases/${caze.id}/material-intake-note`);
   onCopy(result.text, '补素材说明已复制');
+}
+
+async function copyImagePrompt(task, onCopy) {
+  const result = await request(`/image-tasks/${task.id}/prompt`);
+  onCopy(result.text, 'Image Prompt 已复制');
 }
 
 function SlotCard({ slot, candidates, caze, onAct, onCopy }) {
