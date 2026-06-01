@@ -7,6 +7,7 @@ const ROOT_DIR = path.resolve(APP_DIR, '..');
 const VERIFY_ROOT = path.join(ROOT_DIR, '.tmp-verify');
 const PORT = 5186;
 const BASE = `http://127.0.0.1:${PORT}/api`;
+const WITH_CONSULT = process.argv.includes('--consult');
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -23,8 +24,11 @@ function run(command, args, options = {}) {
   });
 }
 
-async function api(pathname) {
-  const res = await fetch(`${BASE}${pathname}`);
+async function api(pathname, options = {}) {
+  const res = await fetch(`${BASE}${pathname}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options
+  });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) throw new Error(`${pathname}: ${data?.error || res.status}`);
@@ -51,9 +55,11 @@ function assert(condition, message) {
 async function verifyRuntime() {
   fs.rmSync(VERIFY_ROOT, { recursive: true, force: true });
   fs.mkdirSync(VERIFY_ROOT, { recursive: true });
+  const env = { ...process.env, PORT: String(PORT), SOUREN_ROOT_DIR: VERIFY_ROOT };
+  if (!WITH_CONSULT) env.SOUREN_LOCAL_AI_DISABLED = '1';
   const child = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
     cwd: APP_DIR,
-    env: { ...process.env, PORT: String(PORT), SOUREN_ROOT_DIR: VERIFY_ROOT, SOUREN_LOCAL_AI_DISABLED: '1' },
+    env,
     stdio: ['ignore', 'pipe', 'pipe']
   });
   child.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -66,6 +72,13 @@ async function verifyRuntime() {
     const readiness = await api('/readiness');
     assert(readiness.summary.ready >= 8, 'readiness ready count too low');
     assert(readiness.checks.some((item) => item.key === 'operator-packet' && item.status === 'ready'), 'operator packet readiness missing');
+    if (WITH_CONSULT) {
+      const consult = await api('/dashboard/ai-consult', { method: 'POST' });
+      assert(['completed', 'unavailable', 'timeout', 'error'].includes(consult.status), 'AI consult status invalid');
+      assert(consult.consultPath && fs.existsSync(consult.consultPath), 'AI consult record missing');
+      assert(consult.packetPath && fs.existsSync(consult.packetPath), 'AI consult packet missing');
+      console.log(`OK local AI consult attempted: ${consult.status}`);
+    }
     console.log('OK runtime health/readiness verified');
   } finally {
     child.kill('SIGTERM');
@@ -79,7 +92,7 @@ async function main() {
   await run('npm', ['run', 'check']);
   await run('npm', ['run', 'test:e2e']);
   await verifyRuntime();
-  console.log('VERIFY PASS');
+  console.log(WITH_CONSULT ? 'VERIFY CONSULT PASS' : 'VERIFY PASS');
 }
 
 main().catch((error) => {

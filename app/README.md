@@ -108,10 +108,12 @@ npm run doctor
 npm run check
 npm run test:e2e
 npm run verify
+npm run verify:consult
 ```
 
 `test:e2e` 会临时创建测试数据库和素材目录，跑完后自动清理。
 `verify` 会顺序运行 doctor、build、E2E，并额外启动隔离服务检查 `/api/health` 和 `/api/readiness`。
+`verify:consult` 会在上述验收后尝试调用本地 AI 顾问，把当前工作包发给 `claude`/`clude`/`LOCAL_CLAUDE_COMMAND`，并保存顾问记录。
 
 ## 批量导入样例
 

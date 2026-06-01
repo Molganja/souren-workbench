@@ -12,7 +12,8 @@
     "check": "npm run build",
     "doctor": "node --no-warnings scripts/system-check.js",
     "test:e2e": "node --no-warnings scripts/e2e-smoke.js",
-    "verify": "node --no-warnings scripts/verify-release.js"
+    "verify": "node --no-warnings scripts/verify-release.js",
+    "verify:consult": "node --no-warnings scripts/verify-release.js --consult"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
