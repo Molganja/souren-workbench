@@ -605,6 +605,7 @@ function materialGaps(project, assets) {
 
 function caseHealth(caze, caseSlots, caseAssets, metrics, today) {
   const reasons = [];
+  const actions = [];
   const pendingVerify = caseSlots.filter((s) => s.status === '已汇报').length;
   const futureSlots = caseSlots.filter((s) => s.date >= today).length;
   const recentGrass = caseSlots.filter((s) => s.contentKind === '素人种草' && s.date >= addDays(today, -7)).length;
@@ -614,16 +615,37 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today) {
   const latest = metrics[0];
   const prev = metrics[1];
 
-  if (pendingVerify >= 2) reasons.push('待核对堆积');
-  if (futureSlots === 0) reasons.push('缺少排期');
-  if (caseAssets.length === 0) reasons.push('素材未扫描');
-  if (requiredMissing > 0) reasons.push(`必补素材 ${requiredMissing} 项`);
-  if (recentGrass >= 4 && recentViral === 0) reasons.push('种草偏密，需要爆款提权');
-  if (latest?.plays != null && prev?.plays != null && latest.plays < prev.plays * 0.6) reasons.push('播放下滑');
-  if (caze.healthStatus !== '健康') reasons.push(caze.healthStatus);
+  if (pendingVerify >= 2) {
+    reasons.push('待核对堆积');
+    actions.push('先处理核对队列，回填播放/点赞/评论后再判断下一轮内容');
+  }
+  if (futureSlots === 0) {
+    reasons.push('缺少排期');
+    actions.push('补未来 7-30 天排期，起号期优先日常养号和爆款提权');
+  }
+  if (caseAssets.length === 0) {
+    reasons.push('素材未扫描');
+    actions.push('打开素材目录，把原始素材放入 00-原始素材 后扫描素材');
+  }
+  if (requiredMissing > 0) {
+    reasons.push(`必补素材 ${requiredMissing} 项`);
+    actions.push('优先处理必补素材缺口，缺口旁可创建 Image/剪辑任务');
+  }
+  if (recentGrass >= 4 && recentViral === 0) {
+    reasons.push('种草偏密，需要爆款提权');
+    actions.push('下一条改发爆款提权，降低连续种草密度');
+  }
+  if (latest?.plays != null && prev?.plays != null && latest.plays < prev.plays * 0.6) {
+    reasons.push('播放下滑');
+    actions.push('增加爆款提权或互动版内容，暂缓高密度种草');
+  }
+  if (caze.healthStatus !== '健康') {
+    reasons.push(caze.healthStatus);
+    actions.push('按人工标记状态优先处理，必要时手动新增临时槽位');
+  }
 
   const status = reasons.length === 0 ? '健康' : reasons.includes('播放下滑') ? '偏冷' : reasons[0];
-  return { status, reasons, gaps };
+  return { status, reasons, actions: Array.from(new Set(actions)), gaps };
 }
 
 function inferStage(filePath) {
@@ -728,6 +750,7 @@ function reviewSummary() {
       readySlots: caseSlots.filter((item) => ['可交付', '已派发', '已汇报', '已核对'].includes(item.status)).length,
       pendingVerify: caseSlots.filter((item) => item.status === '已汇报').length,
       materialGaps: health.gaps.length,
+      actions: health.actions,
       latestMetric: latest,
       delta: latest && prev ? {
         fans: (latest.fans || 0) - (prev.fans || 0),
@@ -855,7 +878,7 @@ function dashboard() {
         const caseAssets = assets.filter((a) => a.caseId === caze.id);
         const caseMetrics = metrics.filter((m) => m.caseId === caze.id);
         const health = caseHealth(caze, caseSlots, caseAssets, caseMetrics, today);
-        return { ...caze, healthStatus: health.status, reasons: health.reasons };
+        return { ...caze, healthStatus: health.status, reasons: health.reasons, actions: health.actions };
       })
       .filter((caze) => caze.reasons.length > 0)
   };
@@ -952,7 +975,19 @@ app.get('/api/cases/:id', (req, res) => {
   const verifyTasks = all('SELECT * FROM verify_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowVerify);
   const metrics = all('SELECT * FROM metrics WHERE case_id = ? ORDER BY date DESC, created_at DESC', [caze.id]).map(rowMetric);
   const health = caseHealth(caze, slots, assets, metrics, new Date().toISOString().slice(0, 10));
-  res.json({ case: { ...caze, healthStatus: health.status }, slots, candidates, assets, imageTasks, clipTasks, verifyTasks, metrics, materialGaps: health.gaps, healthReasons: health.reasons });
+  res.json({
+    case: { ...caze, healthStatus: health.status },
+    slots,
+    candidates,
+    assets,
+    imageTasks,
+    clipTasks,
+    verifyTasks,
+    metrics,
+    materialGaps: health.gaps,
+    healthReasons: health.reasons,
+    healthActions: health.actions
+  });
 });
 
 app.get('/api/config', (_req, res) => {

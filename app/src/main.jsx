@@ -262,6 +262,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
                 <strong>{item.weixinNick}</strong>
                 <span>{item.caseCode} · {item.project}</span>
                 <em>{item.reasons.join(' / ')}</em>
+                {item.actions?.[0] && <small>{item.actions[0]}</small>}
               </button>
             ))}
           </div>
@@ -328,6 +329,7 @@ function ReviewView({ data, onOpenCase }) {
                 <strong>{item.weixinNick}</strong>
                 <span>{item.caseCode} · {item.project} · {item.stage}</span>
                 <em>{[...item.reasons, item.pendingVerify ? `待核对 ${item.pendingVerify}` : '', item.materialGaps ? `素材缺口 ${item.materialGaps}` : ''].filter(Boolean).join(' / ')}</em>
+                {item.actions?.[0] && <small>{item.actions[0]}</small>}
               </button>
             ))}
           </div>
@@ -603,7 +605,7 @@ function deleteCase(item, onAct) {
 }
 
 function CaseDetail({ detail, onAct, onCopy, onBack }) {
-  const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], verifyTasks, metrics = [], materialGaps = [], healthReasons = [] } = detail;
+  const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], verifyTasks, metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const [slotFormOpen, setSlotFormOpen] = useState(false);
   const candidatesBySlot = useMemo(() => {
@@ -623,6 +625,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
           <h1>{caze.weixinNick}</h1>
           <p>{caze.project} · {caze.stage} · {personaText(caze.persona)}</p>
           {healthReasons.length > 0 && <p className="healthLine">当前提示：{healthReasons.join(' / ')}</p>}
+          {healthActions.length > 0 && <p className="healthLine">建议动作：{healthActions.join(' / ')}</p>}
           <p className="path">素材目录：{caze.localCaseDir}</p>
         </div>
         <div className="headerActions">

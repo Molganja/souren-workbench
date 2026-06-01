@@ -122,6 +122,7 @@ async function main() {
     const withGaps = await api(`/cases/${caze.id}`);
     assert(Array.isArray(withGaps.materialGaps) && withGaps.materialGaps.length > 0, 'material gaps missing');
     assert(Array.isArray(withGaps.healthReasons), 'health reasons missing');
+    assert(Array.isArray(withGaps.healthActions) && withGaps.healthActions.length > 0, 'health actions missing');
     const gapImage = await api('/image-tasks', {
       method: 'POST',
       body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label, prompt: `补${withGaps.materialGaps[0].label}` })
