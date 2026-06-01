@@ -882,14 +882,17 @@ function scheduleSummary() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, time_window ASC, created_at ASC').map(rowSlot);
   const candidates = all('SELECT * FROM candidate_drafts ORDER BY created_at ASC').map(rowCandidate);
+  const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
+  const verifyBySlot = Object.fromEntries(verifyTasks.map((item) => [item.planItemId, item]));
   const withMeta = slots.map((slot) => {
     const slotCandidates = candidates.filter((item) => item.slotId === slot.id);
     return {
       ...slot,
       case: byCase[slot.caseId] || null,
       candidateCount: slotCandidates.length,
-      selectedCandidate: slotCandidates.find((item) => item.selected) || null
+      selectedCandidate: slotCandidates.find((item) => item.selected) || null,
+      verifyTask: verifyBySlot[slot.id] || null
     };
   });
   const byDate = withMeta.reduce((acc, slot) => {
@@ -918,15 +921,18 @@ function dashboard() {
   const candidates = all('SELECT * FROM candidate_drafts ORDER BY created_at ASC').map(rowCandidate);
   const assets = all('SELECT * FROM assets ORDER BY created_at DESC').map(rowAsset);
   const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
+  const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
+  const verifyBySlot = Object.fromEntries(verifyTasks.map((item) => [item.planItemId, item]));
   const withCase = (slot) => {
     const slotCandidates = candidates.filter((item) => item.slotId === slot.id);
     return {
       ...slot,
       case: byCase[slot.caseId],
       candidateCount: slotCandidates.length,
-      selectedCandidate: slotCandidates.find((item) => item.selected) || null
+      selectedCandidate: slotCandidates.find((item) => item.selected) || null,
+      verifyTask: verifyBySlot[slot.id] || null
     };
   };
   return {
@@ -1197,6 +1203,9 @@ app.patch('/api/slots/:id/status', (req, res) => {
   if (status === '已汇报') {
     const caze = caseById(slot.caseId);
     const selected = rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId]));
+    const reportedUrl = String(req.body?.douyinUrl || '').trim();
+    const verifyUrl = reportedUrl || caze.douyinUrl;
+    const reportNote = req.body?.resultNote || req.body?.reportNote || (reportedUrl ? `兼职回传作品链接：${reportedUrl}` : '');
     const expectedAssets = slot.deliveryDir && fs.existsSync(path.join(slot.deliveryDir, '05-素材顺序清单.txt'))
       ? fs.readFileSync(path.join(slot.deliveryDir, '05-素材顺序清单.txt'), 'utf8').split('\n').filter((line) => /^\d+\./.test(line.trim()))
       : [];
@@ -1205,8 +1214,13 @@ app.patch('/api/slots/:id/status', (req, res) => {
       run(
         `INSERT INTO verify_tasks
         (id, case_id, plan_item_id, douyin_url, expected_title, expected_publish_date, expected_assets, status, result_note, metrics_snapshot, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', '', NULL, ?, ?)`,
-        [uid('verify'), caze.id, slot.id, caze.douyinUrl, selected?.title || '', slot.date, JSON.stringify(expectedAssets), now(), now()]
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?, ?)`,
+        [uid('verify'), caze.id, slot.id, verifyUrl, selected?.title || '', slot.date, JSON.stringify(expectedAssets), reportNote, now(), now()]
+      );
+    } else if (reportedUrl || reportNote) {
+      run(
+        'UPDATE verify_tasks SET douyin_url = ?, result_note = ?, updated_at = ? WHERE plan_item_id = ?',
+        [verifyUrl, reportNote, now(), slot.id]
       );
     }
   }

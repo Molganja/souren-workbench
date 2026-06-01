@@ -232,10 +232,24 @@ async function main() {
     assert(batchDelivered.deliveryCount >= 1, 'dashboard batch delivery did not create delivery packages');
 
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
-    await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) });
+    await api(`/slots/${slot.id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: '已汇报',
+        douyinUrl: 'https://www.douyin.com/video/smoke-published',
+        resultNote: '兼职回传作品链接：https://www.douyin.com/video/smoke-published'
+      })
+    });
     const detailBeforeVerify = await api(`/cases/${caze.id}`);
     assert(detailBeforeVerify.verifyTasks.length === 1, 'verify task missing');
     assert(detailBeforeVerify.verifyTasks[0].expectedAssets.length >= 1, 'verify task expected assets missing');
+    assert(detailBeforeVerify.verifyTasks[0].douyinUrl === 'https://www.douyin.com/video/smoke-published', 'verify task did not store reported douyin url');
+    const verifySchedule = await api('/schedule');
+    const verifyScheduleSlot = verifySchedule.slots.find((item) => item.id === slot.id);
+    assert(verifyScheduleSlot?.verifyTask?.douyinUrl === 'https://www.douyin.com/video/smoke-published', 'schedule missing reported douyin url');
+    const verifyDashboard = await api('/dashboard');
+    const verifyDashboardSlot = verifyDashboard.pendingVerify.find((item) => item.id === slot.id);
+    assert(verifyDashboardSlot?.verifyTask?.douyinUrl === 'https://www.douyin.com/video/smoke-published', 'dashboard missing reported douyin url');
     await api(`/verify-tasks/${detailBeforeVerify.verifyTasks[0].id}`, {
       method: 'PATCH',
       body: JSON.stringify({

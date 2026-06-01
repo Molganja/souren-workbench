@@ -522,6 +522,7 @@ function ScheduleView({ data, onOpenCase, onAct, onCopy }) {
 
 function ScheduleRow({ slot, onOpenCase, onAct, onCopy }) {
   const caze = slot.case || {};
+  const douyinUrl = slot.verifyTask?.douyinUrl || caze.douyinUrl;
   return (
     <div className="taskRow">
       <div className="dateBox">
@@ -544,8 +545,8 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy }) {
         {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
-        {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '已进入待核对')}>兼职已汇报</button>}
-        {slot.status === '已汇报' && caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音</a>}
+        {slot.status === '已派发' && <button onClick={() => markReported(slot, onAct)}>兼职已汇报</button>}
+        {slot.status === '已汇报' && douyinUrl && <a className="button" href={douyinUrl} target="_blank">打开抖音</a>}
       </div>
     </div>
   );
@@ -586,6 +587,7 @@ function TaskSection({ title, items, empty, onOpenCase, onAct, onCopy }) {
 
 function TaskRow({ slot, onOpenCase, onAct, onCopy }) {
   const caze = slot.case || {};
+  const douyinUrl = slot.verifyTask?.douyinUrl || caze.douyinUrl;
   return (
     <div className="taskRow">
       <div className="dateBox">
@@ -608,10 +610,27 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy }) {
         {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
-        {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '已进入待核对')}>兼职已汇报</button>}
-        {slot.status === '已汇报' && caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音</a>}
+        {slot.status === '已派发' && <button onClick={() => markReported(slot, onAct)}>兼职已汇报</button>}
+        {slot.status === '已汇报' && douyinUrl && <a className="button" href={douyinUrl} target="_blank">打开抖音</a>}
       </div>
     </div>
+  );
+}
+
+function markReported(slot, onAct) {
+  const link = window.prompt('粘贴兼职回传的抖音作品链接；如果只有截图或还没拿到链接，可以留空。', slot.case?.douyinUrl || '');
+  if (link === null) return;
+  const note = link.trim() ? `兼职回传作品链接：${link.trim()}` : '兼职已汇报，待补作品链接或截图';
+  onAct(
+    () => request(`/slots/${slot.id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: '已汇报',
+        douyinUrl: link.trim(),
+        resultNote: note
+      })
+    }),
+    '已进入待核对'
   );
 }
 
@@ -903,7 +922,7 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy }) {
         {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已派发')}>标记派发</button>}
-        {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '进入待核对')}>兼职已汇报</button>}
+        {slot.status === '已派发' && <button onClick={() => markReported({ ...slot, case: caze }, onAct)}>兼职已汇报</button>}
         {slot.status !== '已核对' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
       </div>
       {slot.deliveryDir && <div className="path">交付包：{slot.deliveryDir}</div>}
