@@ -397,6 +397,9 @@ async function main() {
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');
     assert(config.backups.length >= 2, 'config backup list missing');
+    assert(config.localAi && config.localAi.ready === false, 'config local AI status missing');
+    const health = await api('/health');
+    assert(health.localAi && health.localAi.ready === false, 'health local AI status missing');
 
     const finalDetail = await api(`/cases/${caze.id}`);
     assert(finalDetail.metrics.length === 1, 'case metrics missing');

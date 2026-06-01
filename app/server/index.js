@@ -1344,6 +1344,13 @@ function localAssistantCommand() {
   }
 }
 
+function localAiStatus() {
+  const command = localAssistantCommand();
+  return command
+    ? { ready: true, command: command.label }
+    : { ready: false, command: null, message: '未找到 claude / clude / claude-code，可安装本地命令或设置 LOCAL_CLAUDE_COMMAND' };
+}
+
 function consultPrompt(packetText) {
   return [
     '你是这个“素人种草运营工作台”的本地顾问。',
@@ -1425,7 +1432,13 @@ async function writeAiConsult() {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rootDir: ROOT_DIR, materialRoot: MATERIAL_ROOT, imageKeyReady: Boolean(process.env.IMAGE_API_KEY) });
+  res.json({
+    ok: true,
+    rootDir: ROOT_DIR,
+    materialRoot: MATERIAL_ROOT,
+    imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
+    localAi: localAiStatus()
+  });
 });
 
 app.get('/api/dashboard', (_req, res) => {
@@ -1609,6 +1622,7 @@ app.get('/api/config', (_req, res) => {
     materialTemplates: MATERIAL_TEMPLATES,
     imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
     llmKeyReady: Boolean(process.env.LLM_API_KEY),
+    localAi: localAiStatus(),
     materialRoot: MATERIAL_ROOT,
     backupDir: BACKUP_DIR,
     backups: backupList().slice(0, 10)
