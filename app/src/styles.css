@@ -285,6 +285,23 @@ button.primary, .button.primary {
   color: var(--ink);
 }
 
+.deliveryMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.deliveryMeta span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: #f8fafb;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .taskMain small {
   color: var(--muted);
 }

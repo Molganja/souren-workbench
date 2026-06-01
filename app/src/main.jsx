@@ -269,6 +269,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
           <Metric label="待生成" value={data.counts.pendingGenerate} />
           <Metric label="待选择" value={data.counts.pendingChoose} />
           <Metric label="待交付" value={data.counts.readyDelivery} />
+          <Metric label="等回传" value={data.counts.sentWaitReport} />
           <Metric label="待核对" value={data.counts.pendingVerify} />
         </div>
       </section>
@@ -283,7 +284,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
             {contactGroups.map((group) => (
               <div className="contactCard" key={group.name}>
                 <strong>{group.name}</strong>
-                <span>{group.items.length} 条任务</span>
+                <span>{group.items.length} 条任务 · 可交付 {group.readyDelivery} · 等回传 {group.sentWaitReport} · 待核对 {group.pendingVerify}</span>
                 <small>{group.items.slice(0, 4).map((slot) => `${slot.case?.weixinNick || '未命名'}-${slot.contentKind}`).join(' / ')}</small>
               </div>
             ))}
@@ -328,7 +329,13 @@ function groupTodayByContact(slots) {
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(slot);
   });
-  return Array.from(groups, ([name, items]) => ({ name, items }))
+  return Array.from(groups, ([name, items]) => ({
+    name,
+    items,
+    readyDelivery: items.filter((slot) => slot.status === '可交付').length,
+    sentWaitReport: items.filter((slot) => slot.status === '已派发').length,
+    pendingVerify: items.filter((slot) => slot.status === '已汇报').length
+  }))
     .sort((a, b) => b.items.length - a.items.length);
 }
 
@@ -602,6 +609,10 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy }) {
           <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
         </div>
         <p>{slot.goal}</p>
+        <div className="deliveryMeta">
+          <span>发给：{caze.weixinNick || '未命名兼职'}</span>
+          <span>对接：{caze.staff || '未填对接人'}</span>
+        </div>
         <small>{caseContactLine(caze)} · {slot.stage}</small>
       </div>
       <div className="rowActions">
