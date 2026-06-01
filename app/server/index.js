@@ -720,6 +720,13 @@ app.patch('/api/cases/:id', (req, res) => {
   res.json(caseById(req.params.id));
 });
 
+app.delete('/api/cases/:id', (req, res) => {
+  const caze = caseById(req.params.id);
+  if (!caze) return res.status(404).json({ error: 'case not found' });
+  run('DELETE FROM cases WHERE id = ?', [caze.id]);
+  res.json({ deleted: true, id: caze.id });
+});
+
 app.get('/api/cases/:id', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });

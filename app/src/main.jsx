@@ -150,7 +150,7 @@ function App() {
           <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} />
         )}
         {!loading && view === 'cases' && (
-          <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} />
+          <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
         )}
         {!loading && view === 'case' && caseDetail && (
           <CaseDetail detail={caseDetail} onAct={act} onCopy={copyText} onBack={() => setView('cases')} />
@@ -312,7 +312,19 @@ function TaskRow({ slot, onOpenCase, onAct }) {
   );
 }
 
-function CasesView({ cases, onOpenCase, onNew, onBulk }) {
+function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
+  const [query, setQuery] = useState('');
+  const [stageFilter, setStageFilter] = useState('全部阶段');
+  const [healthFilter, setHealthFilter] = useState('全部状态');
+  const filtered = cases.filter((item) => {
+    const q = query.trim().toLowerCase();
+    const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.project} ${personaText(item.persona)}`.toLowerCase();
+    const matchQuery = !q || haystack.includes(q);
+    const matchStage = stageFilter === '全部阶段' || item.stage === stageFilter;
+    const matchHealth = healthFilter === '全部状态' || item.healthStatus === healthFilter;
+    return matchQuery && matchStage && matchHealth;
+  });
+  const healthOptions = ['全部状态', ...Array.from(new Set(cases.map((item) => item.healthStatus).filter(Boolean)))];
   return (
     <section className="panel">
       <div className="sectionHead">
@@ -322,19 +334,37 @@ function CasesView({ cases, onOpenCase, onNew, onBulk }) {
           <button className="button primary" onClick={onNew}>新建案例</button>
         </div>
       </div>
-      {cases.length === 0 ? <div className="empty">还没有案例</div> : (
+      <div className="filters">
+        <input placeholder="搜索微信昵称 / 抖音号 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
+          {['全部阶段', ...STAGES].map((item) => <option key={item}>{item}</option>)}
+        </select>
+        <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
+          {healthOptions.map((item) => <option key={item}>{item}</option>)}
+        </select>
+        <span>{filtered.length} / {cases.length}</span>
+      </div>
+      {cases.length === 0 ? <div className="empty">还没有案例</div> : filtered.length === 0 ? <div className="empty">没有匹配的案例</div> : (
         <div className="caseGrid">
-          {cases.map((item) => (
-            <button key={item.id} className="caseTile" onClick={() => onOpenCase(item.id)}>
-              <strong>{item.weixinNick}</strong>
-              <span>{item.caseCode} · {item.project} · {item.stage}</span>
-              <em>{item.douyinId || '未填抖音号'} · {item.healthStatus}</em>
-            </button>
+          {filtered.map((item) => (
+            <div key={item.id} className="caseTile caseTileBox">
+              <button className="caseTileMain" onClick={() => onOpenCase(item.id)}>
+                <strong>{item.weixinNick}</strong>
+                <span>{item.caseCode} · {item.project} · {item.stage}</span>
+                <em>{item.douyinId || '未填抖音号'} · {item.healthStatus}</em>
+              </button>
+              <button className="dangerButton" onClick={() => deleteCase(item, onAct)}>删除</button>
+            </div>
           ))}
         </div>
       )}
     </section>
   );
+}
+
+function deleteCase(item, onAct) {
+  if (!window.confirm(`删除案例「${item.weixinNick}」？数据库记录会删除，本地素材目录不会自动删除。`)) return;
+  onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), '案例已删除');
 }
 
 function CaseDetail({ detail, onAct, onCopy, onBack }) {

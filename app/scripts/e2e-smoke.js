@@ -90,6 +90,9 @@ async function main() {
     });
     assert(bulk.createdCount === 2, 'bulk import did not create two cases');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
+    await api(`/cases/${bulk.cases[1].id}`, { method: 'DELETE' });
+    const afterDelete = await api('/cases');
+    assert(afterDelete.length === 1 && afterDelete[0].id === bulk.cases[0].id, 'case delete failed');
 
     const caze = await api('/cases', {
       method: 'POST',
@@ -158,10 +161,10 @@ async function main() {
     await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
 
     const viralBulk = await api(`/viral-templates/${viral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-02' }) });
-    assert(viralBulk.createdCount === 3, 'viral bulk generation failed');
+    assert(viralBulk.createdCount === 2, 'viral bulk generation failed');
 
     const exported = await api('/export');
-    assert(exported.cases.length === 3, 'export missing cases');
+    assert(exported.cases.length === 2, 'export missing cases');
     assert(exported.metrics.length === 1, 'export missing metrics');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
