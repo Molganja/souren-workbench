@@ -721,6 +721,31 @@ function imagePromptText(task) {
   ].join('\n');
 }
 
+function verifyChecklistText(task) {
+  return [
+    '抖音发布核对清单',
+    `作品链接：${task.douyinUrl || '未填，先让兼职补链接或截图'}`,
+    `预期标题：${task.expectedTitle || '未记录'}`,
+    `预期发布日期：${task.expectedPublishDate || '未记录'}`,
+    '',
+    '需要核对：',
+    '1. 是否已经发布',
+    '2. 发布时间是否和排期一致',
+    '3. 标题/正文是否和交付包一致',
+    '4. 图片/视频素材是否匹配，顺序是否正确',
+    '5. 是否有违规、缺图、错图、错文案、未按要求发布',
+    '6. 记录播放、点赞、评论、粉丝',
+    '7. 评论区是否有可转化问题',
+    '',
+    '预期素材：',
+    task.expectedAssets?.length ? task.expectedAssets.map((item, index) => `${index + 1}. ${item}`).join('\n') : '未记录素材清单',
+    '',
+    '回填到系统：',
+    '核对正常 -> 点“核对并回填”',
+    '内容不匹配 -> 点“异常”，备注具体问题'
+  ].join('\n');
+}
+
 function parseBulkCaseText(text) {
   return String(text || '')
     .split(/\r?\n/)
@@ -1807,6 +1832,12 @@ app.patch('/api/verify-tasks/:id', (req, res) => {
     }
   }
   res.json(rowVerify(get('SELECT * FROM verify_tasks WHERE id = ?', [task.id])));
+});
+
+app.get('/api/verify-tasks/:id/checklist', (req, res) => {
+  const task = rowVerify(get('SELECT * FROM verify_tasks WHERE id = ?', [req.params.id]));
+  if (!task) return res.status(404).json({ error: 'verify task not found' });
+  res.json({ text: verifyChecklistText(task) });
 });
 
 app.get('/api/export', (_req, res) => {

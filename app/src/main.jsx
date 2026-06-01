@@ -673,6 +673,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy }) {
         {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => markReported(slot, onAct)}>兼职已汇报</button>}
+        {slot.status === '已汇报' && slot.verifyTask && <button onClick={() => copyVerifyChecklist(slot.verifyTask, onCopy)}>复制核对清单</button>}
         {slot.status === '已汇报' && douyinUrl && <a className="button" href={douyinUrl} target="_blank">打开抖音</a>}
       </div>
     </div>
@@ -742,6 +743,7 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy }) {
         {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => markReported(slot, onAct)}>兼职已汇报</button>}
+        {slot.status === '已汇报' && slot.verifyTask && <button onClick={() => copyVerifyChecklist(slot.verifyTask, onCopy)}>复制核对清单</button>}
         {slot.status === '已汇报' && douyinUrl && <a className="button" href={douyinUrl} target="_blank">打开抖音</a>}
       </div>
     </div>
@@ -1000,6 +1002,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
                 </div>
                 <div className="rowActions">
                   {task.douyinUrl && <a className="button" href={task.douyinUrl} target="_blank">打开抖音</a>}
+                  <button onClick={() => copyVerifyChecklist(task, onCopy)}>复制核对清单</button>
                   <button onClick={() => verifyWithMetrics(task, onAct)}>核对并回填</button>
                   <button onClick={() => onAct(() => request(`/verify-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'mismatch', resultNote: '内容或发布时间不匹配' }) }), '已标记异常')}>异常</button>
                 </div>
@@ -1043,6 +1046,11 @@ async function copyMaterialIntakeNote(caze, onCopy) {
 async function copyImagePrompt(task, onCopy) {
   const result = await request(`/image-tasks/${task.id}/prompt`);
   onCopy(result.text, 'Image Prompt 已复制');
+}
+
+async function copyVerifyChecklist(task, onCopy) {
+  const result = await request(`/verify-tasks/${task.id}/checklist`);
+  onCopy(result.text, '核对清单已复制');
 }
 
 function SlotCard({ slot, candidates, caze, onAct, onCopy }) {

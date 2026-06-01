@@ -291,6 +291,9 @@ async function main() {
     assert(detailBeforeVerify.verifyTasks.length === 1, 'verify task missing');
     assert(detailBeforeVerify.verifyTasks[0].expectedAssets.length >= 1, 'verify task expected assets missing');
     assert(detailBeforeVerify.verifyTasks[0].douyinUrl === 'https://www.douyin.com/video/smoke-published', 'verify task did not store reported douyin url');
+    const verifyChecklist = await api(`/verify-tasks/${detailBeforeVerify.verifyTasks[0].id}/checklist`);
+    assert(verifyChecklist.text.includes('抖音发布核对清单') && verifyChecklist.text.includes('https://www.douyin.com/video/smoke-published'), 'verify checklist missing link');
+    assert(verifyChecklist.text.includes('预期素材') && verifyChecklist.text.includes('回填到系统'), 'verify checklist missing assets or follow-up');
     const verifySchedule = await api('/schedule');
     const verifyScheduleSlot = verifySchedule.slots.find((item) => item.id === slot.id);
     assert(verifyScheduleSlot?.verifyTask?.douyinUrl === 'https://www.douyin.com/video/smoke-published', 'schedule missing reported douyin url');
