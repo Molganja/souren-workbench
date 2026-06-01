@@ -286,7 +286,12 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
       <section className="panel">
         <div className="sectionHead">
           <h2>今日对接清单</h2>
-          <span>{contactGroups.length} 个对接人</span>
+          <div className="headerActions">
+            <span>{contactGroups.length} 个对接人</span>
+            {contactGroups.length > 0 && (
+              <button onClick={() => onCopy(buildContactChecklist(data.today, contactGroups), '今日对接清单已复制')}>复制清单</button>
+            )}
+          </div>
         </div>
         {contactGroups.length === 0 ? <div className="empty">今天没有需要对接的任务</div> : (
           <div className="contactGrid">
@@ -346,6 +351,35 @@ function groupTodayByContact(slots) {
     pendingVerify: items.filter((slot) => slot.status === '已汇报').length
   }))
     .sort((a, b) => b.items.length - a.items.length);
+}
+
+function buildContactChecklist(date, groups) {
+  const lines = [`${date} 今日对接清单`];
+  groups.forEach((group) => {
+    lines.push('', `【${group.name}】${group.items.length} 条`);
+    group.items.forEach((slot, index) => {
+      const caze = slot.case || {};
+      lines.push([
+        `${index + 1}. 发给：${caze.weixinNick || '未命名兼职'}`,
+        `账号：${caze.douyinId || '未填抖音号'}`,
+        `内容：${slot.contentKind}`,
+        `状态：${slot.status}`,
+        `动作：${nextActionText(slot)}`
+      ].join('｜'));
+      if (slot.deliveryDir) lines.push(`   交付包：${slot.deliveryDir}`);
+    });
+  });
+  return lines.join('\n');
+}
+
+function nextActionText(slot) {
+  if (slot.status === '待生成') return '生成候选稿';
+  if (slot.status === '候选待选') return '选择一条候选';
+  if (slot.status === '已锁定') return '生成交付包';
+  if (slot.status === '可交付') return '复制文案和素材发微信';
+  if (slot.status === '已派发') return '等待兼职回传';
+  if (slot.status === '已汇报') return '打开抖音核对';
+  return '查看任务';
 }
 
 function ReviewView({ data, onOpenCase }) {
