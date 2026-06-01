@@ -312,8 +312,8 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
             {contactGroups.map((group) => (
               <div className="contactCard" key={group.name}>
                 <strong>{group.name}</strong>
-                <span>{group.items.length} 条任务 · 可交付 {group.readyDelivery} · 等回传 {group.sentWaitReport} · 待核对 {group.pendingVerify}</span>
-                <small>{group.items.slice(0, 4).map((slot) => `${slot.case?.weixinNick || '未命名'}-${slot.contentKind}`).join(' / ')}</small>
+                <span>{group.items.length} 条任务 · {contactStatusSummary(group)}</span>
+                <small>{group.items.slice(0, 6).map((slot) => `${slot.case?.weixinNick || '未命名'}-${slot.contentKind}-${slot.status}`).join(' / ')}</small>
               </div>
             ))}
           </div>
@@ -537,11 +537,32 @@ function groupTodayByContact(slots) {
   return Array.from(groups, ([name, items]) => ({
     name,
     items,
+    pendingGenerate: items.filter((slot) => slot.status === '待生成').length,
+    pendingChoose: items.filter((slot) => slot.status === '候选待选').length,
+    locked: items.filter((slot) => slot.status === '已锁定').length,
+    blocked: items.filter((slot) => slot.status === '素材阻塞').length,
     readyDelivery: items.filter((slot) => slot.status === '可交付').length,
     sentWaitReport: items.filter((slot) => slot.status === '已派发').length,
-    pendingVerify: items.filter((slot) => slot.status === '已汇报').length
+    pendingVerify: items.filter((slot) => slot.status === '已汇报').length,
+    verified: items.filter((slot) => slot.status === '已核对').length
   }))
     .sort((a, b) => b.items.length - a.items.length);
+}
+
+function contactStatusSummary(group) {
+  return [
+    ['待生成', group.pendingGenerate],
+    ['待选', group.pendingChoose],
+    ['已锁定', group.locked],
+    ['阻塞', group.blocked],
+    ['可交付', group.readyDelivery],
+    ['等回传', group.sentWaitReport],
+    ['待核对', group.pendingVerify],
+    ['已核对', group.verified]
+  ]
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => `${label} ${count}`)
+    .join(' · ') || '暂无待办';
 }
 
 function buildContactChecklist(date, groups) {

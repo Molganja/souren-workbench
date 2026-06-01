@@ -1111,7 +1111,7 @@ function dashboard() {
       requiredMaterialGaps: caseHealthRows.reduce((sum, item) => sum + item.requiredGapCount, 0),
       blocked: slots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
     },
-    todaySlots: slots.filter((s) => s.date <= today && ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付'].includes(s.status)).map(withCase),
+    todaySlots: slots.filter((s) => s.date <= today && OPERATOR_FLOW.some(([status]) => status === s.status)).map(withCase),
     pendingGenerate: slots.filter((s) => s.status === '待生成').slice(0, 30).map(withCase),
     pendingChoose: slots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
     readyDelivery: slots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
