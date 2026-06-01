@@ -232,8 +232,13 @@ async function main() {
     assert(lockedRejected, 'locked slot allowed candidate regeneration');
     const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
     assert(fs.existsSync(path.join(clip.outputDir, '剪辑任务单.txt')), 'clip brief file missing');
+    const clipDashboard = await api('/dashboard');
+    assert(clipDashboard.counts.clipTasks >= 1, 'dashboard clip task count missing');
+    assert(clipDashboard.clipTasks.some((item) => item.id === clip.id && item.case?.id === caze.id), 'dashboard clip task list missing case task');
     const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
     assert(reviewedClip.status === 'approved', 'clip status update failed');
+    const clipDashboardAfter = await api('/dashboard');
+    assert(!clipDashboardAfter.clipTasks.some((item) => item.id === clip.id), 'approved clip task still shown as pending');
     const delivery = await api(`/slots/${slot.id}/delivery`, { method: 'POST' });
     const wxChecklistPath = path.join(delivery.deliveryDir, '00-微信发送清单.txt');
     assert(fs.existsSync(wxChecklistPath), 'delivery package missing WeChat checklist');

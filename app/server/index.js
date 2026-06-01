@@ -31,6 +31,8 @@ const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const ALLOWED_OPEN_ROOTS = [ROOT_DIR];
+const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review'];
+const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
 
 const STAGE_RATIOS = {
   起号期: { 日常养号: 0.5, 爆款提权: 0.4, 素人种草: 0.1 },
@@ -957,7 +959,7 @@ function reviewSummary() {
       verified: verifyTasks.filter((item) => item.status === 'verified').length,
       metrics: metrics.length,
       imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
-      clipPending: clipTasks.filter((item) => ['draft', 'review'].includes(item.status)).length
+      clipPending: clipTasks.filter((item) => OPEN_CLIP_STATUSES.includes(item.status)).length
     },
     statusStats: groupCount(slots, (item) => item.status),
     contentKindStats: CONTENT_KINDS.map((kind) => ({
@@ -1027,6 +1029,7 @@ function dashboard() {
   const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
   const viralTemplates = all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral);
   const imageTasks = all('SELECT * FROM image_tasks ORDER BY created_at DESC').map(rowImageTask);
+  const clipTasks = all('SELECT * FROM clip_tasks ORDER BY created_at DESC').map(rowClipTask);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const verifyBySlot = Object.fromEntries(verifyTasks.map((item) => [item.planItemId, item]));
@@ -1069,8 +1072,9 @@ function dashboard() {
       pendingViral: viralTemplates.filter((item) => String(item.rawText || '').startsWith('待用青豆')
         || String(item.hotStructure || '').startsWith('待青豆')
         || item.category === '待分析').length,
-      imageTasks: imageTasks.filter((item) => ['waiting_key', 'draft', 'review'].includes(item.status)).length,
+      imageTasks: imageTasks.filter((item) => OPEN_IMAGE_STATUSES.includes(item.status)).length,
       imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
+      clipTasks: clipTasks.filter((item) => OPEN_CLIP_STATUSES.includes(item.status)).length,
       materialGaps: caseHealthRows.reduce((sum, item) => sum + item.materialGaps.length, 0),
       requiredMaterialGaps: caseHealthRows.reduce((sum, item) => sum + item.requiredGapCount, 0),
       blocked: slots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
@@ -1081,7 +1085,11 @@ function dashboard() {
     readyDelivery: slots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
     pendingVerify: slots.filter((s) => s.status === '已汇报').slice(0, 30).map(withCase),
     imageTasks: imageTasks
-      .filter((item) => ['waiting_key', 'draft', 'review'].includes(item.status))
+      .filter((item) => OPEN_IMAGE_STATUSES.includes(item.status))
+      .slice(0, 20)
+      .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
+    clipTasks: clipTasks
+      .filter((item) => OPEN_CLIP_STATUSES.includes(item.status))
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     abnormalCases: caseHealthRows
