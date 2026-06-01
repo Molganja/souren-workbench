@@ -3,17 +3,19 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 const TEST_PORT = 5184;
+const TEST_AI_PORT = 5185;
 const BASE = `http://127.0.0.1:${TEST_PORT}/api`;
 const APP_DIR = path.resolve(import.meta.dirname, '..');
 const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
 const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
+const AI_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-ai');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function api(pathname, options = {}) {
-  const res = await fetch(`${BASE}${pathname}`, {
+async function api(pathname, options = {}, base = BASE) {
+  const res = await fetch(`${base}${pathname}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options
   });
@@ -23,17 +25,53 @@ async function api(pathname, options = {}) {
   return data;
 }
 
-async function waitForServer(child) {
+async function waitForServer(child, base = BASE) {
   for (let i = 0; i < 40; i += 1) {
     if (child.exitCode !== null) throw new Error('server exited early');
     try {
-      await api('/health');
+      await api('/health', {}, base);
       return;
     } catch {
       await sleep(250);
     }
   }
   throw new Error('server did not start');
+}
+
+async function localAiSuccessSmoke() {
+  fs.rmSync(path.join(AI_ROOT_DIR, 'data'), { recursive: true, force: true });
+  fs.rmSync(path.join(AI_ROOT_DIR, '素材库'), { recursive: true, force: true });
+  fs.mkdirSync(AI_ROOT_DIR, { recursive: true });
+  const readerCode = [
+    "let input='';",
+    "process.stdin.on('data', c => input += c);",
+    "process.stdin.on('end', () => {",
+    "  const ok = input.includes('素人系统运营工作包') && input.includes('当前代码进度') && input.includes('app/server/index.js');",
+    "  console.log(ok ? 'LOCAL_AI_OK' : 'LOCAL_AI_MISSING');",
+    "});"
+  ].join('');
+  const localCommand = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(readerCode)}`;
+  const aiBase = `http://127.0.0.1:${TEST_AI_PORT}/api`;
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: { ...process.env, PORT: String(TEST_AI_PORT), SOUREN_ROOT_DIR: AI_ROOT_DIR, LOCAL_CLAUDE_COMMAND: localCommand },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  try {
+    await waitForServer(server, aiBase);
+    const health = await api('/health', {}, aiBase);
+    assert(health.localAi.ready === true, 'fake local AI should be ready');
+    const consult = await api('/dashboard/ai-consult', { method: 'POST' }, aiBase);
+    assert(consult.status === 'completed', 'fake local AI consult should complete');
+    assert(consult.stdout.includes('LOCAL_AI_OK'), 'fake local AI did not receive operator packet through stdin');
+    assert(fs.existsSync(consult.consultPath), 'completed AI consult record missing');
+  } finally {
+    server.kill('SIGTERM');
+    await sleep(300);
+    fs.rmSync(AI_ROOT_DIR, { recursive: true, force: true });
+  }
 }
 
 function assert(condition, message) {
@@ -279,6 +317,7 @@ async function main() {
     assert(consultHistory.some((item) => item.path === aiConsult.consultPath && item.status === 'unavailable'), 'AI consult history missing record');
     const dashboardWithConsult = await api('/dashboard');
     assert(dashboardWithConsult.aiConsults.some((item) => item.path === aiConsult.consultPath), 'dashboard missing AI consult history');
+    await localAiSuccessSmoke();
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -417,6 +456,7 @@ async function main() {
     server.kill('SIGTERM');
     await sleep(300);
     fs.rmSync(ROOT_DIR, { recursive: true, force: true });
+    fs.rmSync(AI_ROOT_DIR, { recursive: true, force: true });
   }
 }
 
