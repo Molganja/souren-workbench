@@ -60,11 +60,26 @@ case.json
 `app/.env` 里预留：
 
 ```env
+PORT=5174
 IMAGE_API_KEY=
 LLM_API_KEY=
+LOCAL_CLAUDE_COMMAND=
+SOUREN_LOCAL_AI_DISABLED=0
 ```
 
 当前 v1 会创建 Image 任务和 prompt。`IMAGE_API_KEY` 为空时，任务状态为 `waiting_key`，不会影响其他流程。
+
+本地 AI 顾问默认自动查找 `claude`、`clude`、`claude-code`。如果命令不在 PATH 里，可以填写 `LOCAL_CLAUDE_COMMAND`，例如：
+
+```env
+LOCAL_CLAUDE_COMMAND=/opt/homebrew/bin/claude
+```
+
+如果只想生成 AI 工作包、不想调用本地命令：
+
+```env
+SOUREN_LOCAL_AI_DISABLED=1
+```
 
 ## 当前闭环
 

@@ -52,9 +52,14 @@ http://127.0.0.1:5174
 在 `app/.env` 里预留：
 
 ```env
+PORT=5174
 IMAGE_API_KEY=
 LLM_API_KEY=
+LOCAL_CLAUDE_COMMAND=
+SOUREN_LOCAL_AI_DISABLED=0
 ```
+
+本地 AI 顾问默认会自动查找 `claude`、`clude`、`claude-code`。如果你的命令不在 PATH 里，可以把 `LOCAL_CLAUDE_COMMAND` 写成完整命令；如果临时不想调用本地 AI，把 `SOUREN_LOCAL_AI_DISABLED=1`。
 
 当前 key 为空时，文案、排期、交付包和核对流程仍可正常使用。
 
