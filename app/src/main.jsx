@@ -34,6 +34,7 @@ function statusClass(status) {
   if (['已锁定', '可交付'].includes(status)) return 'ready';
   if (['已派发', '已汇报'].includes(status)) return 'report';
   if (['已核对'].includes(status)) return 'ok';
+  if (['素材阻塞', '异常'].includes(status)) return 'bad';
   return 'bad';
 }
 
@@ -282,6 +283,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
           <Metric label="待交付" value={data.counts.readyDelivery} />
           <Metric label="等回传" value={data.counts.sentWaitReport} />
           <Metric label="待核对" value={data.counts.pendingVerify} />
+          <Metric label="阻塞" value={data.counts.blocked || 0} />
           <Metric label="必补素材" value={data.counts.requiredMaterialGaps || 0} />
           <Metric label="图片任务" value={data.counts.imageTasks || 0} />
           <Metric label="剪辑任务" value={data.counts.clipTasks || 0} />
@@ -662,7 +664,7 @@ function ScheduleView({ data, onOpenCase, onAct, onCopy }) {
             <option value="60">未来 60 天</option>
           </select>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            {['全部状态', '待生成', '候选待选', '已锁定', '可交付', '已派发', '已汇报', '已核对', '异常'].map((item) => <option key={item}>{item}</option>)}
+            {['全部状态', '待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已汇报', '已核对', '异常'].map((item) => <option key={item}>{item}</option>)}
           </select>
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
             {['全部内容', ...KINDS].map((item) => <option key={item}>{item}</option>)}
