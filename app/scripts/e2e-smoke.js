@@ -167,6 +167,16 @@ async function main() {
     assert(gapImage.purpose === withGaps.materialGaps[0].label, 'gap image task failed');
     assert(fs.existsSync(path.join(gapImage.outputDir, `${gapImage.id}-图片任务说明.txt`)), 'image task brief missing');
 
+    const prepareSlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-01', contentKind: '日常养号', stage: '起号期', goal: '一键准备验收' })
+    });
+    const prepared = await api('/dashboard/prepare-today', { method: 'POST' });
+    assert(prepared.generatedCount >= 1 && prepared.selectedCount >= 1 && prepared.deliveryCount >= 1, 'dashboard prepare today did not complete the chain');
+    const preparedDetail = await api(`/cases/${caze.id}`);
+    const preparedSlot = preparedDetail.slots.find((item) => item.id === prepareSlot.id);
+    assert(preparedSlot.status === '可交付' && preparedSlot.deliveryDir, 'prepared slot not ready for delivery');
+
     const manualSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
       body: JSON.stringify({ date: '2026-06-01', contentKind: '素人种草', stage: '起号期', goal: '手动槽位验收' })

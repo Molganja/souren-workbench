@@ -518,6 +518,16 @@ function generateCandidatesForSlot(slot) {
   return all('SELECT * FROM candidate_drafts WHERE slot_id = ? ORDER BY created_at ASC', [slot.id]).map(rowCandidate);
 }
 
+function selectRecommendedCandidate(slotId) {
+  const drafts = all('SELECT * FROM candidate_drafts WHERE slot_id = ? ORDER BY created_at ASC', [slotId]).map(rowCandidate);
+  if (!drafts.length) return null;
+  const candidate = drafts.find((item) => item.variant === '稳妥版') || drafts[0];
+  run('UPDATE candidate_drafts SET selected = 0 WHERE slot_id = ?', [candidate.slotId]);
+  run('UPDATE candidate_drafts SET selected = 1 WHERE id = ?', [candidate.id]);
+  run('UPDATE plan_slots SET selected_candidate_id = ?, status = ?, updated_at = ? WHERE id = ?', [candidate.id, '已锁定', now(), candidate.slotId]);
+  return rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [candidate.id]));
+}
+
 function createSlotForCase(caze, input = {}) {
   const contentKind = CONTENT_KINDS.includes(input.contentKind) ? input.contentKind : '日常养号';
   const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
@@ -1006,6 +1016,39 @@ app.post('/api/dashboard/deliver-today', (req, res) => {
     if (result) delivered.push(result);
   });
   res.json({ deliveryCount: delivered.length, deliveries: delivered });
+});
+
+app.post('/api/dashboard/prepare-today', (_req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const dueSlots = all(
+    'SELECT * FROM plan_slots WHERE date <= ? AND status IN (?, ?, ?) ORDER BY date ASC, created_at ASC',
+    [today, '待生成', '候选待选', '已锁定']
+  ).map(rowSlot);
+  let generatedCount = 0;
+  let selectedCount = 0;
+  let deliveryCount = 0;
+  const deliveries = [];
+  dueSlots.forEach((slot) => {
+    let current = slotById(slot.id);
+    if (current.status === '待生成') {
+      const drafts = generateCandidatesForSlot(current);
+      if (drafts.length) generatedCount += 1;
+      current = slotById(slot.id);
+    }
+    if (current.status === '候选待选') {
+      const selected = selectRecommendedCandidate(current.id);
+      if (selected) selectedCount += 1;
+      current = slotById(slot.id);
+    }
+    if (current.status === '已锁定') {
+      const result = createDeliveryForSlot(current);
+      if (result) {
+        deliveries.push(result);
+        deliveryCount += 1;
+      }
+    }
+  });
+  res.json({ generatedCount, selectedCount, deliveryCount, deliveries });
 });
 
 app.get('/api/review', (_req, res) => {
