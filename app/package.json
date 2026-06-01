@@ -11,6 +11,7 @@
     "start": "node --no-warnings server/index.js",
     "check": "npm run build",
     "doctor": "node --no-warnings scripts/system-check.js",
+    "consult": "node --no-warnings scripts/consult-local-ai.js",
     "test:e2e": "node --no-warnings scripts/e2e-smoke.js",
     "verify": "node --no-warnings scripts/verify-release.js",
     "verify:consult": "node --no-warnings scripts/verify-release.js --consult",

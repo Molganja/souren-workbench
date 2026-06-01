@@ -76,6 +76,15 @@ Codex/AI 后续处理：
 - `复制AI工作包`：生成 Markdown，并复制到剪贴板。
 - `请本地AI建议`：生成工作包，并尝试调用本地 `claude`、`clude`、`claude-code` 或 `LOCAL_CLAUDE_COMMAND`。
 
+命令行也可以直接执行：
+
+```bash
+cd /Users/licc/Desktop/素人系统/app
+npm run consult
+```
+
+这个命令会调用当前运行中的服务；如果服务没开，会临时启动服务，生成工作包并尝试调用本地 AI 顾问。
+
 工作包保存到：
 
 ```text
@@ -118,4 +127,3 @@ npm run verify:github
 - `IMAGE_API_KEY` 为空：图片任务会进入 `waiting_key`，不影响文案、排期、交付、核对。
 - 本地 `clude/Claude` 未安装：AI 工作包和顾问记录仍可生成，但不会得到真实建议。
 - GitHub 写权限未配置：本地系统可用，但远端 main 不会自动同步。
-
