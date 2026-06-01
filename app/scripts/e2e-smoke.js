@@ -146,11 +146,14 @@ async function main() {
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
     const minimalCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', staff: '咨询Z' })
+      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', staff: '咨询Z', generateSlots: true, days: 3 })
     });
     assert(minimalCase.weixinNick && minimalCase.weixinNick !== '未命名兼职', 'minimal case did not generate nick');
     assert(minimalCase.staff === '咨询Z' && minimalCase.persona.city && minimalCase.persona.motivation, 'minimal case defaults missing');
     assert(!minimalCase.localCaseDir.includes('未命名'), 'minimal case directory used unnamed segment');
+    assert(minimalCase.slotsCreated === 3, 'minimal case did not auto generate slots');
+    const minimalDetail = await api(`/cases/${minimalCase.id}`);
+    assert(minimalDetail.slots.length === 3 && minimalDetail.slots.every((item) => item.status === '待生成'), 'minimal case slots missing');
     const manifestPath = path.join(caze.localCaseDir, 'case.json');
     assert(fs.existsSync(manifestPath), 'case manifest missing');
     const editedCase = await api(`/cases/${caze.id}`, {

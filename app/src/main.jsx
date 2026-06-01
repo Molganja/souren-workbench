@@ -200,11 +200,12 @@ function App() {
         <CaseForm
           onClose={() => setCaseFormOpen(false)}
           onSubmit={(payload) => act(async () => {
-            const created = await request('/cases', { method: 'POST', body: JSON.stringify(payload) });
+            const created = await request('/cases', { method: 'POST', body: JSON.stringify({ ...payload, generateSlots: true, days: 14 }) });
             setCaseFormOpen(false);
             setSelectedCaseId(created.id);
             setView('case');
-          }, '案例已创建，素材目录已生成')}
+            return created;
+          }, (created) => `案例已创建，排期 ${created.slotsCreated || 0} 条`)}
         />
       )}
       {bulkCaseOpen && (

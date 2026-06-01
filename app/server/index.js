@@ -552,6 +552,26 @@ function createSlotForCase(caze, input = {}) {
   return slotById(slotId);
 }
 
+function generateSlotsForCase(caze, input = {}) {
+  const days = Number(input.days || 30);
+  const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+  const created = [];
+  for (let i = 0; i < days; i += 1) {
+    const date = addDays(startDate, i);
+    const exists = get('SELECT id FROM plan_slots WHERE case_id = ? AND date = ?', [caze.id, date]);
+    if (exists) continue;
+    const stage = stageForDay(caze.stage, i);
+    const contentKind = pickWeighted(STAGE_RATIOS[stage] || STAGE_RATIOS.起号期);
+    created.push(createSlotForCase(caze, {
+      date,
+      timeWindow: timeWindowFor(i),
+      contentKind,
+      stage
+    }));
+  }
+  return created;
+}
+
 function createCaseFromBody(body = {}) {
   const id = uid('case');
   const created = now();
@@ -1065,7 +1085,10 @@ app.get('/api/cases', (_req, res) => {
 });
 
 app.post('/api/cases', (req, res) => {
-  res.json(createCaseFromBody(req.body || {}));
+  const body = req.body || {};
+  const created = createCaseFromBody(body);
+  const slots = body.generateSlots ? generateSlotsForCase(created, { days: body.days || 14, startDate: body.startDate }) : [];
+  res.json({ ...created, slotsCreated: slots.length });
 });
 
 app.post('/api/cases/bulk', (req, res) => {
@@ -1075,16 +1098,7 @@ app.post('/api/cases/bulk', (req, res) => {
   const created = rows.map((row) => createCaseFromBody(row));
   if (body.generateSlots) {
     created.forEach((caze) => {
-      for (let i = 0; i < Number(body.days || 7); i += 1) {
-        const stage = stageForDay(caze.stage, i);
-        const contentKind = pickWeighted(STAGE_RATIOS[stage] || STAGE_RATIOS.起号期);
-        createSlotForCase(caze, {
-          date: addDays(new Date().toISOString().slice(0, 10), i),
-          timeWindow: timeWindowFor(i),
-          contentKind,
-          stage
-        });
-      }
+      generateSlotsForCase(caze, { days: body.days || 7 });
     });
   }
   res.json({ createdCount: created.length, cases: created });
@@ -1199,25 +1213,7 @@ app.post('/api/cases/:id/scan-assets', (req, res) => {
 app.post('/api/cases/:id/generate-slots', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });
-  const days = Number(req.body?.days || 30);
-  const startDate = req.body?.startDate || new Date().toISOString().slice(0, 10);
-  const created = [];
-  for (let i = 0; i < days; i += 1) {
-    const date = addDays(startDate, i);
-    const exists = get('SELECT id FROM plan_slots WHERE case_id = ? AND date = ?', [caze.id, date]);
-    if (exists) continue;
-    const stage = stageForDay(caze.stage, i);
-    const contentKind = pickWeighted(STAGE_RATIOS[stage] || STAGE_RATIOS.起号期);
-    const slotId = uid('slot');
-    run(
-      `INSERT INTO plan_slots
-      (id, case_id, date, time_window, content_kind, goal, stage, status, selected_candidate_id, delivery_dir, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, '待生成', NULL, NULL, ?, ?)`,
-      [slotId, caze.id, date, timeWindowFor(i), contentKind, inferGoal(contentKind, stage), stage, now(), now()]
-    );
-    created.push(slotById(slotId));
-  }
-  res.json({ created });
+  res.json({ created: generateSlotsForCase(caze, req.body || {}) });
 });
 
 app.post('/api/cases/:id/slots', (req, res) => {
