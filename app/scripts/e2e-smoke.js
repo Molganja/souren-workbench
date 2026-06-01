@@ -266,6 +266,10 @@ async function main() {
     assert(deliveryDashboardSlot.case.staff === '咨询D', 'dashboard missing contact staff');
     assert(deliveryDashboardSlot.selectedCandidate.operatorInstruction.includes('对接人：咨询D'), 'operator instruction missing contact staff');
     assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitReport), 'dashboard work split counts missing');
+    const operatorPacket = await api('/dashboard/operator-packet', { method: 'POST' });
+    assert(fs.existsSync(operatorPacket.path), 'operator packet file missing');
+    assert(operatorPacket.text.includes('素人系统运营工作包') && operatorPacket.text.includes('Codex 下一步优先级'), 'operator packet missing core sections');
+    assert(operatorPacket.text.includes('发给 验收兼职改名') && operatorPacket.text.includes('对接 咨询D'), 'operator packet missing recipient routing');
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',

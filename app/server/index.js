@@ -21,6 +21,7 @@ import {
 const app = express();
 const PORT = Number(process.env.PORT || 5174);
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const OPERATOR_PACKET_DIR = path.join(DATA_DIR, 'operator-packets');
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -1128,12 +1129,173 @@ function dashboard() {
   };
 }
 
+const OPERATOR_FLOW = [
+  ['待生成', '系统生成 3 条候选稿'],
+  ['候选待选', '运营选择一条锁定'],
+  ['已锁定', '系统生成微信交付包'],
+  ['素材阻塞', '补素材或创建图片/剪辑任务'],
+  ['可交付', '复制文案和素材发微信'],
+  ['已派发', '等待兼职回传作品链接'],
+  ['已汇报', '打开抖音核对并回填数据'],
+  ['已核对', '进入账号复盘']
+];
+
+function slotNextAction(slot) {
+  if (slot.status === '待生成') return '生成候选稿';
+  if (slot.status === '候选待选') return '选择一条候选';
+  if (slot.status === '已锁定') return '生成交付包';
+  if (slot.status === '素材阻塞') return '补素材后重新生成交付包';
+  if (slot.status === '可交付') return '复制文案和素材发微信';
+  if (slot.status === '已派发') return '等待兼职回传';
+  if (slot.status === '已汇报') return '打开抖音核对';
+  if (slot.status === '已核对') return '进入账号复盘';
+  return '查看任务';
+}
+
+function slotPacketLine(slot) {
+  const caze = slot.case || {};
+  return `- 发给 ${caze.weixinNick || '未命名兼职'}｜对接 ${caze.staff || '未填对接人'}｜账号 ${caze.douyinId || '未填抖音号'}｜${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.status}｜${slotNextAction(slot)}${slot.deliveryDir ? `｜交付包 ${slot.deliveryDir}` : ''}`;
+}
+
+function operatorPacketMarkdown(data) {
+  const flowGroups = OPERATOR_FLOW
+    .map(([status, action]) => ({ status, action, items: data.todaySlots.filter((slot) => slot.status === status) }))
+    .filter((group) => group.items.length > 0);
+  const contacts = new Map();
+  data.todaySlots.forEach((slot) => {
+    const name = slot.case?.staff || '未填对接人';
+    if (!contacts.has(name)) contacts.set(name, []);
+    contacts.get(name).push(slot);
+  });
+  const priorities = [];
+  if (data.counts.pendingGenerate) priorities.push(`生成候选稿：${data.counts.pendingGenerate} 个槽位`);
+  if (data.counts.pendingChoose) priorities.push(`选择并锁定候选：${data.counts.pendingChoose} 个槽位`);
+  if (data.counts.blocked || data.counts.requiredMaterialGaps) priorities.push(`处理素材阻塞/必补素材：阻塞 ${data.counts.blocked || 0}，必补 ${data.counts.requiredMaterialGaps || 0}`);
+  if (data.counts.readyDelivery) priorities.push(`微信交付：${data.counts.readyDelivery} 个交付包可发送`);
+  if (data.counts.sentWaitReport) priorities.push(`催回传：${data.counts.sentWaitReport} 个已派发任务`);
+  if (data.counts.pendingVerify) priorities.push(`抖音核对：${data.counts.pendingVerify} 个待核对`);
+  if (data.counts.pendingViral) priorities.push(`青豆分析爆款链接：${data.counts.pendingViral} 条待分析`);
+  if (data.counts.imageTasks) priorities.push(`处理 Image 任务：${data.counts.imageTasks} 个打开任务`);
+  if (data.counts.clipTasks) priorities.push(`处理剪辑任务：${data.counts.clipTasks} 个打开任务`);
+
+  const lines = [
+    '# 素人系统运营工作包',
+    '',
+    `生成时间：${now()}`,
+    `系统根目录：${ROOT_DIR}`,
+    `真实案例素材目录：${MATERIAL_ROOT}`,
+    `数据库：${path.join(DATA_DIR, 'souren.sqlite')}`,
+    '',
+    '## 当前计数',
+    '',
+    `- 案例：${data.counts.cases}`,
+    `- 待生成：${data.counts.pendingGenerate}`,
+    `- 待选择：${data.counts.pendingChoose}`,
+    `- 已锁定：${data.counts.locked}`,
+    `- 素材阻塞/异常：${data.counts.blocked || 0}`,
+    `- 可微信交付：${data.counts.readyDelivery}`,
+    `- 等回传：${data.counts.sentWaitReport}`,
+    `- 待核对：${data.counts.pendingVerify}`,
+    `- 待爆款分析：${data.counts.pendingViral || 0}`,
+    `- 图片任务：${data.counts.imageTasks || 0}`,
+    `- 剪辑任务：${data.counts.clipTasks || 0}`,
+    '',
+    '## Codex 下一步优先级',
+    '',
+    ...(priorities.length ? priorities.map((item, index) => `${index + 1}. ${item}`) : ['当前没有打开任务。']),
+    '',
+    '## 今日链路',
+    ''
+  ];
+
+  if (!flowGroups.length) {
+    lines.push('今天没有到期任务。');
+  } else {
+    flowGroups.forEach((group) => {
+      lines.push(`### ${group.status}｜${group.items.length}｜${group.action}`, '');
+      group.items.slice(0, 20).forEach((slot) => lines.push(slotPacketLine(slot)));
+      lines.push('');
+    });
+  }
+
+  lines.push('## 按对接人', '');
+  if (!contacts.size) {
+    lines.push('今天没有需要对接的人。', '');
+  } else {
+    Array.from(contacts, ([name, items]) => ({ name, items }))
+      .sort((a, b) => b.items.length - a.items.length)
+      .forEach((group) => {
+        lines.push(`### ${group.name}｜${group.items.length} 条`, '');
+        group.items.forEach((slot) => lines.push(slotPacketLine(slot)));
+        lines.push('');
+      });
+  }
+
+  lines.push('## 待爆款分析', '');
+  if (!data.pendingViralTemplates?.length) {
+    lines.push('无。', '');
+  } else {
+    data.pendingViralTemplates.forEach((item) => {
+      lines.push(`- ${item.title}｜${item.sourceLink || '未填链接'}｜状态：待青豆提取和结构分析`);
+    });
+    lines.push('');
+  }
+
+  lines.push('## 图片任务', '');
+  if (!data.imageTasks?.length) {
+    lines.push('无。', '');
+  } else {
+    data.imageTasks.forEach((item) => {
+      lines.push(`- ${item.case?.weixinNick || '未知账号'}｜${item.purpose}｜${item.status}｜目录 ${item.outputDir}`);
+    });
+    lines.push('');
+  }
+
+  lines.push('## 剪辑任务', '');
+  if (!data.clipTasks?.length) {
+    lines.push('无。', '');
+  } else {
+    data.clipTasks.forEach((item) => {
+      lines.push(`- ${item.case?.weixinNick || '未知账号'}｜${item.title}｜${item.status}｜目录 ${item.outputDir}`);
+    });
+    lines.push('');
+  }
+
+  lines.push('## 异常账号和素材缺口', '');
+  if (!data.abnormalCases?.length) {
+    lines.push('无。');
+  } else {
+    data.abnormalCases.slice(0, 30).forEach((item) => {
+      lines.push(`- ${item.weixinNick}｜对接 ${item.staff || '未填'}｜${item.caseCode}｜${item.reasons.join(' / ') || '素材缺口'}`);
+      if (item.materialGaps?.length) lines.push(`  缺口：${item.materialGaps.map((gap) => `${gap.status}-${gap.label}`).join(' / ')}`);
+      if (item.actions?.length) lines.push(`  建议：${item.actions.join(' / ')}`);
+      lines.push(`  目录：${item.localCaseDir}`);
+    });
+  }
+
+  return lines.join('\n');
+}
+
+function writeOperatorPacket() {
+  const data = dashboard();
+  const text = operatorPacketMarkdown(data);
+  fs.mkdirSync(OPERATOR_PACKET_DIR, { recursive: true });
+  const fileName = `${data.today}_${now().replace(/[: ]/g, '-').replace(/\./g, '-')}_运营工作包.md`;
+  const packetPath = path.join(OPERATOR_PACKET_DIR, fileName);
+  fs.writeFileSync(packetPath, text);
+  return { path: packetPath, text, counts: data.counts };
+}
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, rootDir: ROOT_DIR, materialRoot: MATERIAL_ROOT, imageKeyReady: Boolean(process.env.IMAGE_API_KEY) });
 });
 
 app.get('/api/dashboard', (_req, res) => {
   res.json(dashboard());
+});
+
+app.post('/api/dashboard/operator-packet', (_req, res) => {
+  res.json(writeOperatorPacket());
 });
 
 app.post('/api/dashboard/generate-today', (_req, res) => {

@@ -275,6 +275,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
               () => request('/dashboard/deliver-today', { method: 'POST' }),
               (result) => `已生成交付包：${result.deliveryCount}`
             )}>批量生成今日交付包</button>
+            <button onClick={() => copyOperatorPacket(onCopy)}>复制AI工作包</button>
           </div>
         </div>
         <div className="stats">
@@ -1165,6 +1166,11 @@ async function copyImagePrompt(task, onCopy) {
 async function copyVerifyChecklist(task, onCopy) {
   const result = await request(`/verify-tasks/${task.id}/checklist`);
   onCopy(result.text, '核对清单已复制');
+}
+
+async function copyOperatorPacket(onCopy) {
+  const result = await request('/dashboard/operator-packet', { method: 'POST' });
+  onCopy(result.text, 'AI工作包已复制并保存');
 }
 
 function SlotCard({ slot, candidates, caze, onAct, onCopy }) {
