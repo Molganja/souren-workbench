@@ -432,6 +432,13 @@ function pickContentSeed(slot, caze) {
   return weighted[Math.floor(Math.random() * weighted.length)];
 }
 
+function latestReadyViral() {
+  const rows = all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral);
+  return rows.find((item) => !String(item.rawText || '').startsWith('待用青豆')
+    && !String(item.hotStructure || '').startsWith('待青豆')
+    && item.category !== '待分析') || null;
+}
+
 function draftText(kind, variant, caze, slot, viral, seed) {
   if (seed) return seedVariantText(fillVars(seed.contentTemplate, caze), variant);
   const p = caze.persona || {};
@@ -496,6 +503,19 @@ function createCandidate(slot, caze, variant, viral = null, seed = null) {
     ]
   );
   if (seed) run('UPDATE content_seeds SET usage_count = usage_count + 1, updated_at = ? WHERE id = ?', [now(), seed.id]);
+}
+
+function generateCandidatesForSlot(slot) {
+  if (!slot || slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
+    return [];
+  }
+  const caze = caseById(slot.caseId);
+  const viral = slot.contentKind === '爆款提权' ? latestReadyViral() : null;
+  const seed = slot.contentKind === '爆款提权' ? null : pickContentSeed(slot, caze);
+  run('DELETE FROM candidate_drafts WHERE slot_id = ? AND selected = 0', [slot.id]);
+  ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral, seed));
+  run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['候选待选', now(), slot.id]);
+  return all('SELECT * FROM candidate_drafts WHERE slot_id = ? ORDER BY created_at ASC', [slot.id]).map(rowCandidate);
 }
 
 function createSlotForCase(caze, input = {}) {
@@ -944,6 +964,38 @@ app.get('/api/dashboard', (_req, res) => {
   res.json(dashboard());
 });
 
+app.post('/api/dashboard/generate-today', (_req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const slots = all(
+    'SELECT * FROM plan_slots WHERE date <= ? AND status = ? ORDER BY date ASC, created_at ASC',
+    [today, '待生成']
+  ).map(rowSlot);
+  let candidateCount = 0;
+  const generated = [];
+  slots.forEach((slot) => {
+    const drafts = generateCandidatesForSlot(slot);
+    if (drafts.length) {
+      generated.push(slotById(slot.id));
+      candidateCount += drafts.length;
+    }
+  });
+  res.json({ slotCount: generated.length, candidateCount, slots: generated });
+});
+
+app.post('/api/dashboard/deliver-today', (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const slots = all(
+    'SELECT * FROM plan_slots WHERE date <= ? AND status = ? AND selected_candidate_id IS NOT NULL ORDER BY date ASC, created_at ASC',
+    [today, '已锁定']
+  ).map(rowSlot);
+  const delivered = [];
+  slots.forEach((slot) => {
+    const result = createDeliveryForSlot(slot);
+    if (result) delivered.push(result);
+  });
+  res.json({ deliveryCount: delivered.length, deliveries: delivered });
+});
+
 app.get('/api/review', (_req, res) => {
   res.json(reviewSummary());
 });
@@ -1125,13 +1177,7 @@ app.post('/api/slots/:id/generate-candidates', (req, res) => {
   if (slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
     return res.status(409).json({ error: '该槽位已锁定，不能重新生成候选' });
   }
-  const caze = caseById(slot.caseId);
-  const viral = rowViral(get('SELECT * FROM viral_templates ORDER BY created_at DESC LIMIT 1'));
-  const seed = slot.contentKind === '爆款提权' ? null : pickContentSeed(slot, caze);
-  run('DELETE FROM candidate_drafts WHERE slot_id = ? AND selected = 0', [slot.id]);
-  ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, slot.contentKind === '爆款提权' ? viral : null, seed));
-  run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['候选待选', now(), slot.id]);
-  res.json(all('SELECT * FROM candidate_drafts WHERE slot_id = ? ORDER BY created_at ASC', [slot.id]).map(rowCandidate));
+  res.json(generateCandidatesForSlot(slot));
 });
 
 app.post('/api/candidates/:id/select', (req, res) => {
@@ -1167,12 +1213,11 @@ app.patch('/api/slots/:id/status', (req, res) => {
   res.json(slotById(slot.id));
 });
 
-app.post('/api/slots/:id/delivery', (req, res) => {
-  const slot = slotById(req.params.id);
-  if (!slot) return res.status(404).json({ error: 'slot not found' });
+function createDeliveryForSlot(slot) {
+  if (!slot) return null;
   const caze = caseById(slot.caseId);
   const candidate = rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId]));
-  if (!candidate) return res.status(400).json({ error: 'select a candidate first' });
+  if (!candidate) return null;
   const folder = `${slot.date}_${safeSegment(slot.stage)}_${safeSegment(slot.contentKind)}`;
   const deliveryDir = path.join(caze.localCaseDir, '03-交付给兼职', folder);
   fs.mkdirSync(deliveryDir, { recursive: true });
@@ -1245,7 +1290,15 @@ app.post('/api/slots/:id/delivery', (req, res) => {
     ].join('\n'));
   }
   run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['可交付', deliveryDir, now(), slot.id]);
-  res.json({ deliveryDir, copiedAssets: copied, slot: slotById(slot.id) });
+  return { deliveryDir, copiedAssets: copied, slot: slotById(slot.id) };
+}
+
+app.post('/api/slots/:id/delivery', (req, res) => {
+  const slot = slotById(req.params.id);
+  if (!slot) return res.status(404).json({ error: 'slot not found' });
+  const result = createDeliveryForSlot(slot);
+  if (!result) return res.status(400).json({ error: 'select a candidate first' });
+  res.json(result);
 });
 
 app.post('/api/image-tasks', (req, res) => {

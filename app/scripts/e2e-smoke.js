@@ -126,6 +126,8 @@ async function main() {
     await api(`/cases/${bulk.cases[1].id}`, { method: 'DELETE' });
     const afterDelete = await api('/cases');
     assert(afterDelete.length === 1 && afterDelete[0].id === bulk.cases[0].id, 'case delete failed');
+    const batchGenerated = await api('/dashboard/generate-today', { method: 'POST' });
+    assert(batchGenerated.slotCount >= 1 && batchGenerated.candidateCount >= 3, 'dashboard batch generate did not create candidates');
 
     const caze = await api('/cases', {
       method: 'POST',
@@ -219,6 +221,15 @@ async function main() {
     assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '04-剪辑要求.txt')), 'video delivery missing edit brief');
     assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '07-成片回收说明.txt')), 'video delivery missing final video return note');
     assert(videoDelivery.copiedAssets.some((asset) => asset.fileName.startsWith('08-')), 'video delivery asset numbering did not avoid task files');
+
+    const batchDeliverySlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-01', contentKind: '日常养号', stage: '起号期', goal: '批量交付包验收' })
+    });
+    const batchDeliveryDrafts = await api(`/slots/${batchDeliverySlot.id}/generate-candidates`, { method: 'POST' });
+    await api(`/candidates/${batchDeliveryDrafts[0].id}/select`, { method: 'POST' });
+    const batchDelivered = await api('/dashboard/deliver-today', { method: 'POST' });
+    assert(batchDelivered.deliveryCount >= 1, 'dashboard batch delivery did not create delivery packages');
 
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) });

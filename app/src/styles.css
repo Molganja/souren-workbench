@@ -289,11 +289,16 @@ button.primary, .button.primary {
   color: var(--muted);
 }
 
-.rowActions, .inlineActions, .headerActions {
+.rowActions, .inlineActions, .headerActions, .heroActions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.heroActions {
+  justify-content: flex-start;
+  margin-top: 14px;
 }
 
 .linkButton {
@@ -750,7 +755,7 @@ textarea {
   .metricLine {
     grid-template-columns: 1fr 1fr;
   }
-  .rowActions, .headerActions {
+  .rowActions, .headerActions, .heroActions {
     justify-content: flex-start;
   }
 }

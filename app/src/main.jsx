@@ -258,6 +258,10 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
           <p className="eyebrow">今日 {data.today}</p>
           <h1>运营中控台</h1>
           <p>先处理待生成、待选择和待交付，再核对兼职回传。这里按 40+ 账号的日常动作聚合，不需要逐个翻案例。</p>
+          <div className="heroActions">
+            <button onClick={() => onAct(() => request('/dashboard/generate-today', { method: 'POST' }), '今日待生成已批量生成候选')}>批量生成今日候选</button>
+            <button onClick={() => onAct(() => request('/dashboard/deliver-today', { method: 'POST' }), '今日已锁定内容已生成交付包')}>批量生成今日交付包</button>
+          </div>
         </div>
         <div className="stats">
           <Metric label="案例" value={data.counts.cases} />
