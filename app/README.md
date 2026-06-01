@@ -107,9 +107,11 @@ cd /Users/licc/Desktop/素人系统/app
 npm run doctor
 npm run check
 npm run test:e2e
+npm run verify
 ```
 
 `test:e2e` 会临时创建测试数据库和素材目录，跑完后自动清理。
+`verify` 会顺序运行 doctor、build、E2E，并额外启动隔离服务检查 `/api/health` 和 `/api/readiness`。
 
 ## 批量导入样例
 

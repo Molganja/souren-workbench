@@ -70,4 +70,5 @@ cd /Users/licc/Desktop/素人系统/app
 npm run doctor
 npm run check
 npm run test:e2e
+npm run verify
 ```
