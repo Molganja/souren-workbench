@@ -187,6 +187,7 @@ function App() {
               setViralFormOpen(true);
             }}
             onAct={act}
+            onCopy={copyText}
           />
         )}
         {!loading && view === 'seeds' && (
@@ -1023,8 +1024,9 @@ function verifyWithMetrics(task, onAct) {
   );
 }
 
-function ViralView({ templates, onNew, onEdit, onAct }) {
-  const pending = templates.filter((item) => isPendingViral(item)).length;
+function ViralView({ templates, onNew, onEdit, onAct, onCopy }) {
+  const sortedTemplates = [...templates].sort((a, b) => Number(isPendingViral(b)) - Number(isPendingViral(a)));
+  const pending = sortedTemplates.filter((item) => isPendingViral(item)).length;
   return (
     <section className="panel">
       <div className="sectionHead">
@@ -1035,9 +1037,9 @@ function ViralView({ templates, onNew, onEdit, onAct }) {
         </div>
       </div>
       <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会作为待分析任务，由我后续用青豆提文案、拆结构、判断适合哪些账号，再生成同类型候选。</div>
-      {templates.length === 0 ? <div className="empty">还没有待分析链接。先粘贴作品链接即可，不需要填写模板内容。</div> : (
+      {sortedTemplates.length === 0 ? <div className="empty">还没有待分析链接。先粘贴作品链接即可，不需要填写模板内容。</div> : (
         <div className="templateList">
-          {templates.map((item) => (
+          {sortedTemplates.map((item) => (
             <div className="templateRow" key={item.id}>
               <div className="rowTitle">
                 <strong>{item.title}</strong>
@@ -1049,6 +1051,7 @@ function ViralView({ templates, onNew, onEdit, onAct }) {
               <small>{item.rawText}</small>
               <div className="inlineActions">
                 {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
+                {isPendingViral(item) && <button onClick={() => copyQingdouTask(item, onCopy)}>复制青豆任务</button>}
                 <button onClick={() => onEdit(item)}>{isPendingViral(item) ? '补分析结果' : '编辑分析'}</button>
                 <button disabled={isPendingViral(item)} onClick={() => bulkGenerateViral(item, onAct)}>给所有账号生成今日爆款候选</button>
               </div>
@@ -1058,6 +1061,11 @@ function ViralView({ templates, onNew, onEdit, onAct }) {
       )}
     </section>
   );
+}
+
+async function copyQingdouTask(item, onCopy) {
+  const result = await request(`/viral-templates/${item.id}/qingdou-task`);
+  onCopy(result.text, '青豆分析任务已复制');
 }
 
 function isPendingViral(item) {

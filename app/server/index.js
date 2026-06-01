@@ -647,6 +647,31 @@ function viralSuitableForCase(viral, caze) {
   return suitable.every((rule) => tokens.some((token) => token.includes(rule)));
 }
 
+function qingdouTaskText(viral) {
+  return [
+    '青豆/轻抖爆款分析任务',
+    `链接：${viral.sourceLink || '未填'}`,
+    `系统记录ID：${viral.id}`,
+    '',
+    '需要提取：',
+    '1. 原视频标题或前3秒开头',
+    '2. 完整口播/字幕正文',
+    '3. 内容结构：开头钩子、转折点、主体段落、评论引导',
+    '4. 爆点判断：为什么值得改写成账号内容',
+    '5. 适合人设关键词：城市、职业、阶段、语气等',
+    '6. 禁用人设关键词：不适合套用的账号类型',
+    '',
+    '回填到系统：',
+    '标题 -> 备注标题',
+    '正文 -> 青豆提取结果',
+    '类别 -> 情绪/职场/穿搭/美食/本地生活/清单/反差故事',
+    '结构和建议 -> 分析结论',
+    '适合/禁用关键词 -> 对应输入框',
+    '',
+    '回填后再点“给所有账号生成今日爆款候选”。'
+  ].join('\n');
+}
+
 function parseBulkCaseText(text) {
   return String(text || '')
     .split(/\r?\n/)
@@ -1624,6 +1649,12 @@ app.patch('/api/viral-templates/:id', (req, res) => {
     ]
   );
   res.json(rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [viral.id])));
+});
+
+app.get('/api/viral-templates/:id/qingdou-task', (req, res) => {
+  const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
+  if (!viral) return res.status(404).json({ error: 'viral template not found' });
+  res.json({ text: qingdouTaskText(viral) });
 });
 
 app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {

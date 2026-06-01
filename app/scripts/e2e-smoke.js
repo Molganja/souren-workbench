@@ -85,6 +85,8 @@ async function main() {
       body: JSON.stringify({ sourceLink: 'https://www.douyin.com/video/link-only-smoke' })
     });
     assert(linkOnlyViral.rawText.includes('待用青豆') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
+    const qingdouTask = await api(`/viral-templates/${linkOnlyViral.id}/qingdou-task`);
+    assert(qingdouTask.text.includes('https://www.douyin.com/video/link-only-smoke') && qingdouTask.text.includes('回填到系统'), 'qingdou task text missing');
     const seed = await api('/content-seeds', {
       method: 'POST',
       body: JSON.stringify({
