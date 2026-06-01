@@ -20,6 +20,7 @@ import {
 
 const app = express();
 const PORT = Number(process.env.PORT || 5174);
+const REPO_DIR = path.resolve(process.cwd(), '..');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const OPERATOR_PACKET_DIR = path.join(DATA_DIR, 'operator-packets');
 const AI_CONSULT_DIR = path.join(DATA_DIR, 'ai-consults');
@@ -1201,7 +1202,44 @@ function slotPacketLine(slot) {
   return `- 发给 ${caze.weixinNick || '未命名兼职'}｜对接 ${caze.staff || '未填对接人'}｜账号 ${caze.douyinId || '未填抖音号'}｜${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.status}｜${slotNextAction(slot)}${slot.deliveryDir ? `｜交付包 ${slot.deliveryDir}` : ''}`;
 }
 
+function gitOutput(args) {
+  try {
+    return execFileSync('git', args, { cwd: REPO_DIR, encoding: 'utf8' }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function gitSnapshot() {
+  const commit = gitOutput(['rev-parse', '--short', 'HEAD']);
+  const branch = gitOutput(['branch', '--show-current']);
+  const status = gitOutput(['status', '--short']);
+  const recent = gitOutput(['log', '--oneline', '--max-count=8']);
+  const remote = gitOutput(['remote', 'get-url', 'origin']);
+  const importantFiles = [
+    'README.md',
+    'app/README.md',
+    'app/server/index.js',
+    'app/server/db.js',
+    'app/src/main.jsx',
+    'app/src/styles.css',
+    'app/scripts/e2e-smoke.js',
+    'app/scripts/system-check.js',
+    'app/package.json'
+  ].map((file) => ({ file, path: path.join(REPO_DIR, file), exists: fs.existsSync(path.join(REPO_DIR, file)) }));
+  return {
+    repoDir: REPO_DIR,
+    remote,
+    branch,
+    commit,
+    status: status || 'clean',
+    recent,
+    importantFiles
+  };
+}
+
 function operatorPacketMarkdown(data) {
+  const git = gitSnapshot();
   const flowGroups = OPERATOR_FLOW
     .map(([status, action]) => ({ status, action, items: data.todaySlots.filter((slot) => slot.status === status) }))
     .filter((group) => group.items.length > 0);
@@ -1229,6 +1267,20 @@ function operatorPacketMarkdown(data) {
     `系统根目录：${ROOT_DIR}`,
     `真实案例素材目录：${MATERIAL_ROOT}`,
     `数据库：${path.join(DATA_DIR, 'souren.sqlite')}`,
+    '',
+    '## 当前代码进度',
+    '',
+    `- 仓库目录：${git.repoDir}`,
+    `- 远端：${git.remote || '未配置'}`,
+    `- 分支：${git.branch || '未知'}`,
+    `- 当前提交：${git.commit || '未知'}`,
+    `- 工作树：${git.status}`,
+    '',
+    '关键文件：',
+    ...git.importantFiles.map((item) => `- ${item.exists ? '存在' : '缺失'}｜${item.file}｜${item.path}`),
+    '',
+    '最近提交：',
+    ...(git.recent ? git.recent.split('\n').map((line) => `- ${line}`) : ['- 无法读取 git log']),
     '',
     '## 当前计数',
     '',

@@ -269,6 +269,7 @@ async function main() {
     const operatorPacket = await api('/dashboard/operator-packet', { method: 'POST' });
     assert(fs.existsSync(operatorPacket.path), 'operator packet file missing');
     assert(operatorPacket.text.includes('素人系统运营工作包') && operatorPacket.text.includes('Codex 下一步优先级'), 'operator packet missing core sections');
+    assert(operatorPacket.text.includes('当前代码进度') && operatorPacket.text.includes('app/server/index.js'), 'operator packet missing git/file context');
     assert(operatorPacket.text.includes('发给 验收兼职改名') && operatorPacket.text.includes('对接 咨询D'), 'operator packet missing recipient routing');
     const aiConsult = await api('/dashboard/ai-consult', { method: 'POST' });
     assert(aiConsult.status === 'unavailable', 'disabled local AI consult should be unavailable');
