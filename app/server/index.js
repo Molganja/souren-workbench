@@ -470,6 +470,7 @@ function createCandidate(slot, caze, variant, viral = null, seed = null) {
   const operatorInstruction = [
     `今天发：${slot.contentKind}`,
     `账号：${caze.weixinNick} / ${caze.douyinId || '未填抖音号'}`,
+    `对接人：${caze.staff || '未填'}`,
     `时间窗：${slot.date} ${slot.timeWindow || ''}`,
     '发布前确认图片/视频顺序，发完让兼职回传作品链接或截图。'
   ].join('\n');
@@ -598,11 +599,12 @@ function parseBulkCaseText(text) {
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => {
       const parts = line.split(/,|\t/).map((item) => item.trim());
-      const [weixinNick, douyinId, douyinUrl, project, stage, city, age, occupation, tone, motivation] = parts;
+      const [weixinNick, douyinId, douyinUrl, project, stage, city, age, occupation, tone, motivation, staff] = parts;
       return {
         weixinNick,
         douyinId,
         douyinUrl,
+        staff: staff || '',
         project: project || '吸脂',
         stage: STAGES.includes(stage) ? stage : '起号期',
         persona: {

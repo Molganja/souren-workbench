@@ -101,12 +101,13 @@ async function main() {
     const bulk = await api('/cases/bulk', {
       method: 'POST',
       body: JSON.stringify({
-        text: '批量小林,bulk_dy_1,,吸脂,起号期,成都,25,上班族,自然,批量导入验证\n批量小陈,bulk_dy_2,,吸脂,起号期,杭州,27,自由职业,轻松,批量导入验证',
+        text: '批量小林,bulk_dy_1,,吸脂,起号期,成都,25,上班族,自然,批量导入验证,咨询A\n批量小陈,bulk_dy_2,,吸脂,起号期,杭州,27,自由职业,轻松,批量导入验证,咨询B',
         generateSlots: true,
         days: 2
       })
     });
     assert(bulk.createdCount === 2, 'bulk import did not create two cases');
+    assert(bulk.cases[0].staff === '咨询A' && bulk.cases[1].staff === '咨询B', 'bulk import staff missing');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
     await api(`/cases/${bulk.cases[1].id}`, { method: 'DELETE' });
     const afterDelete = await api('/cases');
@@ -119,6 +120,7 @@ async function main() {
         douyinUrl: 'https://www.douyin.com/',
         project: '吸脂',
         stage: '起号期',
+        staff: '咨询C',
         persona: { city: '成都', occupation: '上班族' }
       })
     });
@@ -128,10 +130,10 @@ async function main() {
     assert(fs.existsSync(manifestPath), 'case manifest missing');
     const editedCase = await api(`/cases/${caze.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ weixinNick: '验收兼职改名', persona: { ...caze.persona, city: '重庆' } })
+      body: JSON.stringify({ weixinNick: '验收兼职改名', staff: '咨询D', persona: { ...caze.persona, city: '重庆' } })
     });
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    assert(editedCase.weixinNick === '验收兼职改名' && manifest.weixinNick === '验收兼职改名', 'case manifest not synced after edit');
+    assert(editedCase.weixinNick === '验收兼职改名' && editedCase.staff === '咨询D' && manifest.staff === '咨询D', 'case manifest not synced after edit');
 
     fs.writeFileSync(path.join(caze.localCaseDir, '00-原始素材', 'D1-test.jpg'), 'fake image');
     const scan = await api(`/cases/${caze.id}/scan-assets`, { method: 'POST' });
@@ -187,6 +189,8 @@ async function main() {
     const deliveryDashboardSlot = deliveryDashboard.readyDelivery.find((item) => item.id === slot.id)
       || deliveryDashboard.todaySlots.find((item) => item.id === slot.id);
     assert(deliveryDashboardSlot?.selectedCandidate?.operatorInstruction, 'dashboard missing ready delivery copy data');
+    assert(deliveryDashboardSlot.case.staff === '咨询D', 'dashboard missing contact staff');
+    assert(deliveryDashboardSlot.selectedCandidate.operatorInstruction.includes('对接人：咨询D'), 'operator instruction missing contact staff');
 
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) });

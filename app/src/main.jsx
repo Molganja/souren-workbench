@@ -229,6 +229,7 @@ function App() {
 }
 
 function Dashboard({ data, onOpenCase, onAct, onCopy }) {
+  const contactGroups = groupTodayByContact(data.todaySlots);
   return (
     <div className="stack">
       <section className="hero">
@@ -244,6 +245,24 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
           <Metric label="待交付" value={data.counts.readyDelivery} />
           <Metric label="待核对" value={data.counts.pendingVerify} />
         </div>
+      </section>
+
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>今日对接清单</h2>
+          <span>{contactGroups.length} 个对接人</span>
+        </div>
+        {contactGroups.length === 0 ? <div className="empty">今天没有需要对接的任务</div> : (
+          <div className="contactGrid">
+            {contactGroups.map((group) => (
+              <div className="contactCard" key={group.name}>
+                <strong>{group.name}</strong>
+                <span>{group.items.length} 条任务</span>
+                <small>{group.items.slice(0, 4).map((slot) => `${slot.case?.weixinNick || '未命名'}-${slot.contentKind}`).join(' / ')}</small>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <TaskSection title="今天要处理" items={data.todaySlots} empty="今天没有到期任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
@@ -274,6 +293,17 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
       </section>
     </div>
   );
+}
+
+function groupTodayByContact(slots) {
+  const groups = new Map();
+  slots.forEach((slot) => {
+    const name = slot.case?.staff || '未填对接人';
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(slot);
+  });
+  return Array.from(groups, ([name, items]) => ({ name, items }))
+    .sort((a, b) => b.items.length - a.items.length);
 }
 
 function ReviewView({ data, onOpenCase }) {
@@ -388,6 +418,13 @@ function signed(value) {
   return value >= 0 ? `+${value}` : String(value);
 }
 
+function caseContactLine(caze = {}) {
+  return [
+    caze.caseCode || caze.douyinId || '未建案例',
+    caze.staff ? `对接：${caze.staff}` : '未填对接人'
+  ].filter(Boolean).join(' · ');
+}
+
 function ScheduleView({ data, onOpenCase, onAct, onCopy }) {
   const [range, setRange] = useState('14');
   const [status, setStatus] = useState('全部状态');
@@ -397,7 +434,7 @@ function ScheduleView({ data, onOpenCase, onAct, onCopy }) {
   const filtered = data.slots.filter((slot) => {
     const caze = slot.case || {};
     const q = query.trim().toLowerCase();
-    const haystack = `${caze.weixinNick || ''} ${caze.caseCode || ''} ${caze.douyinId || ''} ${slot.goal}`.toLowerCase();
+    const haystack = `${caze.weixinNick || ''} ${caze.caseCode || ''} ${caze.douyinId || ''} ${caze.staff || ''} ${slot.goal}`.toLowerCase();
     return slot.date >= data.today
       && slot.date <= endDate
       && (status === '全部状态' || slot.status === status)
@@ -428,7 +465,7 @@ function ScheduleView({ data, onOpenCase, onAct, onCopy }) {
       </section>
       <section className="panel">
         <div className="filters scheduleFilters">
-          <input placeholder="搜索账号 / 抖音号 / 案例编号 / 目标" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input placeholder="搜索账号 / 抖音号 / 案例编号 / 对接人 / 目标" value={query} onChange={(e) => setQuery(e.target.value)} />
           <select value={range} onChange={(e) => setRange(e.target.value)}>
             <option value="7">未来 7 天</option>
             <option value="14">未来 14 天</option>
@@ -473,7 +510,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy }) {
           <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
         </div>
         <p>{slot.selectedCandidate?.title || slot.goal}</p>
-        <small>{caze.caseCode || '未建案例'} · 候选 {slot.candidateCount}</small>
+        <small>{caseContactLine(caze)} · 候选 {slot.candidateCount}</small>
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
@@ -537,7 +574,7 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy }) {
           <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
         </div>
         <p>{slot.goal}</p>
-        <small>{caze.douyinId || '未填抖音号'} · {slot.stage}</small>
+        <small>{caseContactLine(caze)} · {slot.stage}</small>
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>}
@@ -559,7 +596,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
   const [healthFilter, setHealthFilter] = useState('全部状态');
   const filtered = cases.filter((item) => {
     const q = query.trim().toLowerCase();
-    const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.project} ${personaText(item.persona)}`.toLowerCase();
+    const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.staff || ''} ${item.project} ${personaText(item.persona)}`.toLowerCase();
     const matchQuery = !q || haystack.includes(q);
     const matchStage = stageFilter === '全部阶段' || item.stage === stageFilter;
     const matchHealth = healthFilter === '全部状态' || item.healthStatus === healthFilter;
@@ -576,7 +613,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
         </div>
       </div>
       <div className="filters">
-        <input placeholder="搜索微信昵称 / 抖音号 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input placeholder="搜索微信昵称 / 抖音号 / 对接人 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
         <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
           {['全部阶段', ...STAGES].map((item) => <option key={item}>{item}</option>)}
         </select>
@@ -592,7 +629,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
               <button className="caseTileMain" onClick={() => onOpenCase(item.id)}>
                 <strong>{item.weixinNick}</strong>
                 <span>{item.caseCode} · {item.project} · {item.stage}</span>
-                <em>{item.douyinId || '未填抖音号'} · {item.healthStatus}</em>
+                <em>{item.douyinId || '未填抖音号'} · {item.staff ? `对接：${item.staff}` : '未填对接人'} · {item.healthStatus}</em>
               </button>
               <button className="dangerButton" onClick={() => deleteCase(item, onAct)}>删除</button>
             </div>
@@ -627,7 +664,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
         <div>
           <p className="eyebrow">{caze.caseCode}</p>
           <h1>{caze.weixinNick}</h1>
-          <p>{caze.project} · {caze.stage} · {personaText(caze.persona)}</p>
+          <p>{caze.project} · {caze.stage} · {caze.staff ? `对接：${caze.staff}` : '未填对接人'} · {personaText(caze.persona)}</p>
           {healthReasons.length > 0 && <p className="healthLine">当前提示：{healthReasons.join(' / ')}</p>}
           {healthActions.length > 0 && <p className="healthLine">建议动作：{healthActions.join(' / ')}</p>}
           <p className="path">素材目录：{caze.localCaseDir}</p>
@@ -1074,9 +1111,10 @@ function CaseForm({ initial, onClose, onSubmit }) {
   }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {!initial && <div className="hintBox">这里默认随机生成人设。工作人员只需要补微信昵称、抖音号或主页链接；不确定就直接创建，后面再改。</div>}
+      {!initial && <div className="hintBox">这里默认随机生成人设。工作人员只需要补微信昵称、抖音号、主页链接和对接人；不确定就直接创建，后面再改。</div>}
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
+        <label>对接咨询/负责人<input placeholder="例如：咨询A / 小王" value={form.staff} onChange={(e) => update('staff', e.target.value)} /></label>
         <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
         <label className="wide">抖音主页链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
         <label>项目<input value={form.project} onChange={(e) => update('project', e.target.value)} /></label>
@@ -1097,14 +1135,14 @@ function CaseForm({ initial, onClose, onSubmit }) {
 }
 
 function BulkCaseForm({ onClose, onSubmit }) {
-  const [text, setText] = useState('小林,dy001,https://www.douyin.com/,吸脂,起号期,成都,25,上班族,自然,记录状态变化\n小陈,dy002,,吸脂,起号期,杭州,27,自由职业,轻松,想做生活记录');
+  const [text, setText] = useState('小林,dy001,https://www.douyin.com/,吸脂,起号期,成都,25,上班族,自然,记录状态变化,咨询A\n小陈,dy002,,吸脂,起号期,杭州,27,自由职业,轻松,想做生活记录,咨询B');
   const [generateSlots, setGenerateSlots] = useState(true);
   const [days, setDays] = useState(7);
   return (
     <Modal title="批量导入兼职/账号" onClose={onClose}>
       <div className="hintBox">
         每行一个账号，支持逗号或 Tab 分隔。字段顺序：
-        微信昵称, 抖音号, 抖音主页链接, 项目, 阶段, 城市, 年龄, 职业, 语气, 动机故事
+        微信昵称, 抖音号, 抖音主页链接, 项目, 阶段, 城市, 年龄, 职业, 语气, 动机故事, 对接咨询/负责人
       </div>
       <div className="formGrid">
         <label className="wide">导入内容<textarea rows="10" value={text} onChange={(e) => setText(e.target.value)} /></label>
