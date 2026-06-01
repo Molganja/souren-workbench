@@ -209,6 +209,11 @@ async function main() {
     const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
     assert(reviewedClip.status === 'approved', 'clip status update failed');
     const delivery = await api(`/slots/${slot.id}/delivery`, { method: 'POST' });
+    const wxChecklistPath = path.join(delivery.deliveryDir, '00-微信发送清单.txt');
+    assert(fs.existsSync(wxChecklistPath), 'delivery package missing WeChat checklist');
+    const wxChecklist = fs.readFileSync(wxChecklistPath, 'utf8');
+    assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('对接人：咨询D'), 'WeChat checklist missing recipient routing');
+    assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('回传要求'), 'WeChat checklist missing send or report instructions');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');
     assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');

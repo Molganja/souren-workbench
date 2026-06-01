@@ -1284,6 +1284,25 @@ function createDeliveryForSlot(slot) {
   const folder = `${slot.date}_${safeSegment(slot.stage)}_${safeSegment(slot.contentKind)}`;
   const deliveryDir = path.join(caze.localCaseDir, '03-交付给兼职', folder);
   fs.mkdirSync(deliveryDir, { recursive: true });
+  fs.writeFileSync(path.join(deliveryDir, '00-微信发送清单.txt'), [
+    `发给：${caze.weixinNick || '未命名兼职'}`,
+    `对接人：${caze.staff || '未填'}`,
+    `抖音号：${caze.douyinId || '未填'}`,
+    `案例：${caze.caseCode}`,
+    `内容：${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.stage}`,
+    `标题：${candidate.title}`,
+    '',
+    '发送顺序：',
+    '1. 复制并发送 01-发给兼职文案.txt',
+    '2. 复制并发送 02-抖音发布文案.txt',
+    '3. 按 05-素材顺序清单.txt 的顺序，把图片或视频拖进微信发送',
+    '4. 发完后在系统里标记「已派发」',
+    '',
+    '回传要求：',
+    '1. 兼职发布后回传作品链接，链接没有就先回传截图',
+    '2. 收到回传后在系统点「兼职已汇报」',
+    '3. 再打开抖音核对发布时间、内容和数据'
+  ].join('\n'));
   fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);
   const videoDelivery = isVideoDelivery(candidate.format);
@@ -1330,9 +1349,13 @@ function createDeliveryForSlot(slot) {
     `形式：${candidate.format}`,
     `日期：${slot.date}`,
     `时间窗：${slot.timeWindow || ''}`,
+    `发给：${caze.weixinNick || '未命名兼职'}`,
+    `对接人：${caze.staff || '未填'}`,
+    `账号：${caze.douyinId || '未填抖音号'}`,
     `标题：${candidate.title}`,
     '',
     '发送给兼职顺序：',
+    '0. 先看 00-微信发送清单.txt，确认收件人和对接人',
     '1. 先发 01-发给兼职文案.txt',
     '2. 再发 02-抖音发布文案.txt',
     '3. 按 05-素材顺序清单.txt 的顺序发送图片或视频',
