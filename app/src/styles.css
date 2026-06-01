@@ -213,13 +213,17 @@ button.primary, .button.primary {
   color: var(--muted);
 }
 
-.taskList, .slotList, .assetList, .templateList, .contactGrid {
+.taskList, .slotList, .assetList, .templateList, .contactGrid, .flowGrid {
   display: grid;
   gap: 10px;
 }
 
 .contactGrid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.flowGrid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
 .contactCard {
@@ -239,6 +243,42 @@ button.primary, .button.primary {
 .contactCard small {
   color: var(--ink);
   line-height: 1.5;
+}
+
+.flowCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.flowCard small {
+  color: var(--muted);
+}
+
+.flowItem {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fafbfc;
+  padding: 8px;
+  text-align: left;
+  display: grid;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.flowItem span {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.flowItem em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
 }
 
 .taskRow {

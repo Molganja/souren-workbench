@@ -254,6 +254,7 @@ function App() {
 
 function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
   const contactGroups = groupTodayByContact(data.todaySlots);
+  const flowGroups = buildTodayFlow(data.todaySlots);
   return (
     <div className="stack">
       <section className="hero">
@@ -299,6 +300,9 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
             {contactGroups.length > 0 && (
               <button onClick={() => onCopy(buildContactChecklist(data.today, contactGroups), '今日对接清单已复制')}>复制清单</button>
             )}
+            {data.todaySlots.length > 0 && (
+              <button onClick={() => onCopy(buildDailyBrief(data.today, contactGroups, flowGroups), '今日工作简报已复制')}>复制简报</button>
+            )}
           </div>
         </div>
         {contactGroups.length === 0 ? <div className="empty">今天没有需要对接的任务</div> : (
@@ -308,6 +312,32 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
                 <strong>{group.name}</strong>
                 <span>{group.items.length} 条任务 · 可交付 {group.readyDelivery} · 等回传 {group.sentWaitReport} · 待核对 {group.pendingVerify}</span>
                 <small>{group.items.slice(0, 4).map((slot) => `${slot.case?.weixinNick || '未命名'}-${slot.contentKind}`).join(' / ')}</small>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>今日链路复盘</h2>
+          <span>{data.todaySlots.length} 条任务</span>
+        </div>
+        {data.todaySlots.length === 0 ? <div className="empty">今天没有链路数据</div> : (
+          <div className="flowGrid">
+            {flowGroups.map((group) => (
+              <div className="flowCard" key={group.status}>
+                <div className="rowTitle">
+                  <span className={`status ${statusClass(group.status)}`}>{group.status}</span>
+                  <strong>{group.items.length}</strong>
+                </div>
+                <small>{group.action}</small>
+                {group.items.slice(0, 3).map((slot) => (
+                  <button key={slot.id} className="flowItem" onClick={() => onOpenCase(slot.case?.id)}>
+                    <span>{slot.case?.weixinNick || '未命名兼职'}</span>
+                    <em>{slot.case?.staff || '未填对接人'} · {slot.contentKind}</em>
+                  </button>
+                ))}
               </div>
             ))}
           </div>
@@ -487,13 +517,54 @@ function buildContactChecklist(date, groups) {
   return lines.join('\n');
 }
 
+const TODAY_FLOW = [
+  ['待生成', '系统生成 3 条候选稿'],
+  ['候选待选', '运营选择一条锁定'],
+  ['已锁定', '系统生成微信交付包'],
+  ['素材阻塞', '补素材或创建图片/剪辑任务'],
+  ['可交付', '复制文案和素材发微信'],
+  ['已派发', '等待兼职回传作品链接'],
+  ['已汇报', '打开抖音核对并回填数据'],
+  ['已核对', '进入账号复盘']
+];
+
+function buildTodayFlow(slots) {
+  return TODAY_FLOW
+    .map(([status, action]) => ({
+      status,
+      action,
+      items: slots.filter((slot) => slot.status === status)
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+function buildDailyBrief(date, contactGroups, flowGroups) {
+  const lines = [`${date} 今日工作简报`];
+  lines.push('', '【链路统计】');
+  flowGroups.forEach((group) => {
+    lines.push(`${group.status}：${group.items.length}｜${group.action}`);
+  });
+  lines.push('', '【按对接人】');
+  contactGroups.forEach((group) => {
+    lines.push(`${group.name}：${group.items.length} 条｜可交付 ${group.readyDelivery}｜等回传 ${group.sentWaitReport}｜待核对 ${group.pendingVerify}`);
+    group.items.forEach((slot, index) => {
+      const caze = slot.case || {};
+      lines.push(`  ${index + 1}. 发给 ${caze.weixinNick || '未命名兼职'}｜账号 ${caze.douyinId || '未填抖音号'}｜${slot.contentKind}｜${slot.status}｜${nextActionText(slot)}`);
+      if (slot.deliveryDir) lines.push(`     交付包：${slot.deliveryDir}`);
+    });
+  });
+  return lines.join('\n');
+}
+
 function nextActionText(slot) {
   if (slot.status === '待生成') return '生成候选稿';
   if (slot.status === '候选待选') return '选择一条候选';
   if (slot.status === '已锁定') return '生成交付包';
+  if (slot.status === '素材阻塞') return '补素材后重新生成交付包';
   if (slot.status === '可交付') return '复制文案和素材发微信';
   if (slot.status === '已派发') return '等待兼职回传';
   if (slot.status === '已汇报') return '打开抖音核对';
+  if (slot.status === '已核对') return '进入账号复盘';
   return '查看任务';
 }
 
