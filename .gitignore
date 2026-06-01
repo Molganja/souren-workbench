@@ -1,0 +1,6 @@
+data/
+素材库/
+app/node_modules/
+app/dist/
+app/.env
+.DS_Store
