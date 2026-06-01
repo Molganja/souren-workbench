@@ -195,7 +195,7 @@ function App() {
           <SeedView seeds={contentSeeds} onNew={() => setSeedFormOpen(true)} onAct={act} />
         )}
         {!loading && view === 'settings' && config && (
-          <SettingsView config={config} onAct={act} />
+          <SettingsView config={config} onAct={act} onCopy={copyText} />
         )}
       </main>
       {caseFormOpen && (
@@ -1418,7 +1418,7 @@ function SeedForm({ onClose, onSubmit }) {
   );
 }
 
-function SettingsView({ config, onAct }) {
+function SettingsView({ config, onAct, onCopy }) {
   return (
     <div className="stack">
       <section className="hero">
@@ -1462,6 +1462,7 @@ function SettingsView({ config, onAct }) {
           <h2>AI 工作目录</h2>
           <div className="headerActions">
             <span>{config.localAi?.ready ? '本地AI已接入' : '本地AI待接入'}</span>
+            <button onClick={() => onCopy(localAiSetupText(config), '本地AI接入说明已复制')}>复制接入说明</button>
             <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.operatorPacketDir }) }), '已打开AI工作包目录')}>打开工作包目录</button>
             <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.aiConsultDir }) }), '已打开顾问记录目录')}>打开顾问记录目录</button>
           </div>
@@ -1507,6 +1508,34 @@ function SettingsView({ config, onAct }) {
       </section>
     </div>
   );
+}
+
+function localAiSetupText(config) {
+  return [
+    '本地AI顾问接入说明',
+    '',
+    '当前状态：',
+    config.localAi?.ready
+      ? `已接入：${config.localAi.command}`
+      : `未接入：${config.localAi?.message || '未找到本地AI命令'}`,
+    '',
+    '系统会自动查找：claude / clude / claude-code',
+    '',
+    '如果命令不在 PATH，请在 app/.env 填：',
+    'LOCAL_CLAUDE_COMMAND=/完整路径/claude',
+    '',
+    '如果只想生成工作包、不调用本地AI：',
+    'SOUREN_LOCAL_AI_DISABLED=1',
+    '',
+    '验证命令：',
+    'cd /Users/licc/Desktop/素人系统/app',
+    'npm run doctor',
+    'npm run consult',
+    'npm run verify:consult',
+    '',
+    `AI工作包目录：${config.operatorPacketDir}`,
+    `顾问记录目录：${config.aiConsultDir}`
+  ].join('\n');
 }
 
 function readinessStatusClass(status) {

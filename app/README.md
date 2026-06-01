@@ -144,6 +144,7 @@ npm run verify:github
 - AI 工作包会附带当前 git 分支、提交、工作树状态、最近提交和关键代码文件路径，方便本地 clude/Claude 直接审阅系统进度。
 - 「请本地AI建议」会优先调用 `claude`、`clude`、`claude-code`，也可以通过 `LOCAL_CLAUDE_COMMAND` 指定命令；结果会保存到 `data/ai-consults/`，首页会展示最近记录并能打开原文件。如果命令未安装，系统会保存调用记录，不影响其他功能。
 - 「系统配置」页可直接打开 AI 工作包目录和本地 AI 顾问记录目录。
+- 「系统配置」页可复制本地 AI 接入说明，包含 `.env` 配置、验证命令和工作目录。
 - `npm run doctor`、`/api/health` 和 `/api/config` 会显示本地 AI 命令是否可用；未安装时只是提醒，不阻断系统运行。
 - 「系统配置」页会显示验收清单，把核心链路、外部 key、本地 AI 顾问和本地目录区分为已就绪/待接入/需处理。
 - 验收清单会显示 GitHub main 是否与本地 HEAD 同步；当前本机缺少 GitHub 写权限时会显示需处理。
