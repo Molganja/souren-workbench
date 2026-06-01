@@ -156,13 +156,13 @@ function App() {
       <main className="page">
         {loading && <div className="empty">加载中</div>}
         {!loading && view === 'dashboard' && dashboard && (
-          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} />
+          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onCopy={copyText} />
         )}
         {!loading && view === 'review' && review && (
           <ReviewView data={review} onOpenCase={openCase} />
         )}
         {!loading && view === 'schedule' && schedule && (
-          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} />
+          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onCopy={copyText} />
         )}
         {!loading && view === 'cases' && (
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
@@ -224,7 +224,7 @@ function App() {
   );
 }
 
-function Dashboard({ data, onOpenCase, onAct }) {
+function Dashboard({ data, onOpenCase, onAct, onCopy }) {
   return (
     <div className="stack">
       <section className="hero">
@@ -242,11 +242,11 @@ function Dashboard({ data, onOpenCase, onAct }) {
         </div>
       </section>
 
-      <TaskSection title="今天要处理" items={data.todaySlots} empty="今天没有到期任务" onOpenCase={onOpenCase} onAct={onAct} />
-      <TaskSection title="待生成候选稿" items={data.pendingGenerate} empty="没有待生成内容" onOpenCase={onOpenCase} onAct={onAct} />
-      <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} />
-      <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} />
-      <TaskSection title="待抖音核对" items={data.pendingVerify} empty="没有待核对任务" onOpenCase={onOpenCase} onAct={onAct} />
+      <TaskSection title="今天要处理" items={data.todaySlots} empty="今天没有到期任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <TaskSection title="待生成候选稿" items={data.pendingGenerate} empty="没有待生成内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <TaskSection title="待抖音核对" items={data.pendingVerify} empty="没有待核对任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
 
       <section className="panel">
         <div className="sectionHead">
@@ -382,7 +382,7 @@ function signed(value) {
   return value >= 0 ? `+${value}` : String(value);
 }
 
-function ScheduleView({ data, onOpenCase, onAct }) {
+function ScheduleView({ data, onOpenCase, onAct, onCopy }) {
   const [range, setRange] = useState('14');
   const [status, setStatus] = useState('全部状态');
   const [kind, setKind] = useState('全部内容');
@@ -443,7 +443,7 @@ function ScheduleView({ data, onOpenCase, onAct }) {
           <div className="sectionHead"><h2>{date}</h2><span>{items.length} 条</span></div>
           <div className="taskList">
             {items.map((slot) => (
-              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} />
+              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
             ))}
           </div>
         </section>
@@ -452,7 +452,7 @@ function ScheduleView({ data, onOpenCase, onAct }) {
   );
 }
 
-function ScheduleRow({ slot, onOpenCase, onAct }) {
+function ScheduleRow({ slot, onOpenCase, onAct, onCopy }) {
   const caze = slot.case || {};
   return (
     <div className="taskRow">
@@ -473,6 +473,8 @@ function ScheduleRow({ slot, onOpenCase, onAct }) {
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
         {slot.status === '已锁定' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
+        {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
+        {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '已进入待核对')}>兼职已汇报</button>}
         {slot.status === '已汇报' && caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音</a>}
@@ -496,7 +498,7 @@ function Metric({ label, value }) {
   );
 }
 
-function TaskSection({ title, items, empty, onOpenCase, onAct }) {
+function TaskSection({ title, items, empty, onOpenCase, onAct, onCopy }) {
   return (
     <section className="panel">
       <div className="sectionHead">
@@ -506,7 +508,7 @@ function TaskSection({ title, items, empty, onOpenCase, onAct }) {
       {items.length === 0 ? <div className="empty">{empty}</div> : (
         <div className="taskList">
           {items.map((slot) => (
-            <TaskRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} />
+            <TaskRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
           ))}
         </div>
       )}
@@ -514,7 +516,7 @@ function TaskSection({ title, items, empty, onOpenCase, onAct }) {
   );
 }
 
-function TaskRow({ slot, onOpenCase, onAct }) {
+function TaskRow({ slot, onOpenCase, onAct, onCopy }) {
   const caze = slot.case || {};
   return (
     <div className="taskRow">
@@ -535,6 +537,8 @@ function TaskRow({ slot, onOpenCase, onAct }) {
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>}
         {slot.status === '已锁定' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
         {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
+        {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
+        {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '已进入待核对')}>兼职已汇报</button>}
         {slot.status === '已汇报' && caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音</a>}

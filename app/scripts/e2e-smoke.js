@@ -137,6 +137,9 @@ async function main() {
     const drafts = await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' });
     assert(drafts.length === 3, 'candidate count is not 3');
     await api(`/candidates/${drafts[0].id}/select`, { method: 'POST' });
+    const selectedSchedule = await api('/schedule');
+    const selectedScheduleSlot = selectedSchedule.slots.find((item) => item.id === slot.id);
+    assert(selectedScheduleSlot?.selectedCandidate?.publishText, 'schedule missing selected candidate copy data');
     let lockedRejected = false;
     try {
       await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' });
@@ -150,6 +153,10 @@ async function main() {
     assert(reviewedClip.status === 'approved', 'clip status update failed');
     const delivery = await api(`/slots/${slot.id}/delivery`, { method: 'POST' });
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
+    const deliveryDashboard = await api('/dashboard');
+    const deliveryDashboardSlot = deliveryDashboard.readyDelivery.find((item) => item.id === slot.id)
+      || deliveryDashboard.todaySlots.find((item) => item.id === slot.id);
+    assert(deliveryDashboardSlot?.selectedCandidate?.operatorInstruction, 'dashboard missing ready delivery copy data');
 
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) });

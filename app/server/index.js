@@ -799,11 +799,20 @@ function scheduleSummary() {
 function dashboard() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
+  const candidates = all('SELECT * FROM candidate_drafts ORDER BY created_at ASC').map(rowCandidate);
   const assets = all('SELECT * FROM assets ORDER BY created_at DESC').map(rowAsset);
   const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
-  const withCase = (slot) => ({ ...slot, case: byCase[slot.caseId] });
+  const withCase = (slot) => {
+    const slotCandidates = candidates.filter((item) => item.slotId === slot.id);
+    return {
+      ...slot,
+      case: byCase[slot.caseId],
+      candidateCount: slotCandidates.length,
+      selectedCandidate: slotCandidates.find((item) => item.selected) || null
+    };
+  };
   return {
     today,
     counts: {
