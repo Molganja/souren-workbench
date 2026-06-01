@@ -103,6 +103,18 @@ button.primary, .button.primary {
   gap: 8px;
 }
 
+.fileButton {
+  position: relative;
+  overflow: hidden;
+}
+
+.fileButton input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .page {
   max-width: 1360px;
   margin: 0 auto;
@@ -410,6 +422,10 @@ button.primary, .button.primary {
   padding: 11px;
   display: grid;
   gap: 4px;
+}
+
+.assetEditable .inlineActions {
+  justify-content: flex-start;
 }
 
 .assetRow span, .templateRow span, .assetRow small, .templateRow small {

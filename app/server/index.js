@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 import {
   MATERIAL_ROOT,
   ROOT_DIR,
@@ -27,6 +28,7 @@ const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
+const ALLOWED_OPEN_ROOTS = [ROOT_DIR];
 
 const STAGE_RATIOS = {
   起号期: { 日常养号: 0.5, 爆款提权: 0.4, 素人种草: 0.1 },
@@ -155,6 +157,17 @@ function rowVerify(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function assertInsideRoot(targetPath) {
+  const resolved = path.resolve(targetPath);
+  const ok = ALLOWED_OPEN_ROOTS.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
+  if (!ok) {
+    const err = new Error('path is outside allowed workspace');
+    err.status = 400;
+    throw err;
+  }
+  return resolved;
 }
 
 function caseById(id) {
@@ -629,6 +642,25 @@ app.patch('/api/verify-tasks/:id', (req, res) => {
   );
   if (body.status === 'verified') {
     run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['已核对', now(), task.planItemId]);
+    const snapshot = body.metricsSnapshot || {};
+    const hasMetric = ['fans', 'plays', 'likes', 'comments'].some((key) => snapshot[key] !== undefined && snapshot[key] !== '');
+    if (hasMetric) {
+      run(
+        `INSERT INTO metrics (id, case_id, date, fans, plays, likes, comments, note, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          uid('metric'),
+          task.caseId,
+          new Date().toISOString().slice(0, 10),
+          snapshot.fans === '' ? null : Number(snapshot.fans),
+          snapshot.plays === '' ? null : Number(snapshot.plays),
+          snapshot.likes === '' ? null : Number(snapshot.likes),
+          snapshot.comments === '' ? null : Number(snapshot.comments),
+          body.resultNote || '核对回填',
+          now()
+        ]
+      );
+    }
   }
   res.json(rowVerify(get('SELECT * FROM verify_tasks WHERE id = ?', [task.id])));
 });
@@ -644,6 +676,203 @@ app.get('/api/export', (_req, res) => {
     imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
     verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify)
   });
+});
+
+app.post('/api/import', (req, res) => {
+  const data = req.body || {};
+  if (!Array.isArray(data.cases)) return res.status(400).json({ error: 'invalid backup: cases missing' });
+  const importedAt = now();
+  run('DELETE FROM metrics');
+  run('DELETE FROM verify_tasks');
+  run('DELETE FROM image_tasks');
+  run('DELETE FROM assets');
+  run('DELETE FROM candidate_drafts');
+  run('DELETE FROM plan_slots');
+  run('DELETE FROM viral_templates');
+  run('DELETE FROM cases');
+
+  (data.cases || []).forEach((item) => {
+    const caseDir = item.localCaseDir || path.join(MATERIAL_ROOT, `${item.caseCode || item.id}_${safeSegment(item.weixinNick)}`);
+    ensureCaseDirs(caseDir);
+    run(
+      `INSERT INTO cases
+      (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, local_case_dir, health_status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseCode || item.case_code || uid('code'),
+        item.weixinNick || item.weixin_nick || '未命名兼职',
+        item.douyinId || item.douyin_id || '',
+        item.douyinUrl || item.douyin_url || '',
+        item.project || '吸脂',
+        item.stage || '起号期',
+        JSON.stringify(item.persona || {}),
+        item.staff || '',
+        caseDir,
+        item.healthStatus || item.health_status || '健康',
+        item.createdAt || importedAt,
+        item.updatedAt || importedAt
+      ]
+    );
+  });
+
+  (data.viralTemplates || []).forEach((item) => {
+    run(
+      `INSERT INTO viral_templates
+      (id, title, raw_text, source_link, category, hot_structure, suitable_personas, forbidden_personas, rewrite_policy, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.title || '未命名爆款模板',
+        item.rawText || item.raw_text || '',
+        item.sourceLink || item.source_link || '',
+        item.category || '情绪',
+        item.hotStructure || item.hot_structure || '',
+        JSON.stringify(item.suitablePersonas || []),
+        JSON.stringify(item.forbiddenPersonas || []),
+        item.rewritePolicy || item.rewrite_policy || '结构模仿',
+        item.createdAt || importedAt,
+        item.updatedAt || importedAt
+      ]
+    );
+  });
+
+  (data.planSlots || []).forEach((item) => {
+    run(
+      `INSERT INTO plan_slots
+      (id, case_id, date, time_window, content_kind, goal, stage, status, selected_candidate_id, delivery_dir, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.date,
+        item.timeWindow || item.time_window || '',
+        item.contentKind || item.content_kind,
+        item.goal || '',
+        item.stage || '起号期',
+        item.status || '待生成',
+        item.selectedCandidateId || item.selected_candidate_id || null,
+        item.deliveryDir || item.delivery_dir || null,
+        item.createdAt || importedAt,
+        item.updatedAt || importedAt
+      ]
+    );
+  });
+
+  (data.candidateDrafts || []).forEach((item) => {
+    run(
+      `INSERT INTO candidate_drafts
+      (id, slot_id, variant, title, publish_text, operator_instruction, format, source_template_id, compliance_hits, selected, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.slotId || item.slot_id,
+        item.variant || '稳妥版',
+        item.title || '',
+        item.publishText || item.publish_text || '',
+        item.operatorInstruction || item.operator_instruction || '',
+        item.format || '图文',
+        item.sourceTemplateId || item.source_template_id || null,
+        JSON.stringify(item.complianceHits || []),
+        item.selected ? 1 : 0,
+        item.createdAt || importedAt
+      ]
+    );
+  });
+
+  (data.assets || []).forEach((item) => {
+    run(
+      `INSERT OR IGNORE INTO assets
+      (id, case_id, path, kind, stage, source, usage, review_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.path,
+        item.kind || '图片',
+        item.stage || '未分组',
+        item.source || '真实',
+        item.usage || '备用',
+        item.reviewStatus || item.review_status || '待处理',
+        item.createdAt || importedAt
+      ]
+    );
+  });
+
+  (data.imageTasks || []).forEach((item) => {
+    run(
+      `INSERT INTO image_tasks
+      (id, case_id, plan_slot_id, purpose, prompt, negative_prompt, source_materials, output_dir, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.planSlotId || item.plan_slot_id || null,
+        item.purpose || '日常养号',
+        item.prompt || '',
+        item.negativePrompt || item.negative_prompt || '',
+        JSON.stringify(item.sourceMaterials || []),
+        item.outputDir || item.output_dir || '',
+        item.status || 'draft',
+        item.createdAt || importedAt,
+        item.updatedAt || importedAt
+      ]
+    );
+  });
+
+  (data.verifyTasks || []).forEach((item) => {
+    run(
+      `INSERT INTO verify_tasks
+      (id, case_id, plan_item_id, douyin_url, expected_title, expected_publish_date, expected_assets, status, result_note, metrics_snapshot, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.planItemId || item.plan_item_id,
+        item.douyinUrl || item.douyin_url || '',
+        item.expectedTitle || item.expected_title || '',
+        item.expectedPublishDate || item.expected_publish_date || '',
+        JSON.stringify(item.expectedAssets || []),
+        item.status || 'pending',
+        item.resultNote || item.result_note || '',
+        item.metricsSnapshot ? JSON.stringify(item.metricsSnapshot) : null,
+        item.createdAt || importedAt,
+        item.updatedAt || importedAt
+      ]
+    );
+  });
+
+  res.json({ imported: true, cases: data.cases.length });
+});
+
+app.patch('/api/assets/:id', (req, res) => {
+  const asset = rowAsset(get('SELECT * FROM assets WHERE id = ?', [req.params.id]));
+  if (!asset) return res.status(404).json({ error: 'asset not found' });
+  const body = req.body || {};
+  run(
+    'UPDATE assets SET stage = ?, source = ?, usage = ?, review_status = ? WHERE id = ?',
+    [
+      body.stage ?? asset.stage,
+      body.source ?? asset.source,
+      body.usage ?? asset.usage,
+      body.reviewStatus ?? asset.reviewStatus,
+      asset.id
+    ]
+  );
+  res.json(rowAsset(get('SELECT * FROM assets WHERE id = ?', [asset.id])));
+});
+
+app.post('/api/open-path', (req, res) => {
+  try {
+    const target = assertInsideRoot(req.body?.path || ROOT_DIR);
+    if (!fs.existsSync(target)) return res.status(404).json({ error: 'path not found' });
+    execFile('open', [target], (error) => {
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ opened: target });
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 app.use('/files', express.static(ROOT_DIR));

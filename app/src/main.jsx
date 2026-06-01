@@ -78,6 +78,19 @@ function App() {
     }
   }
 
+  async function importBackup(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      await request('/import', { method: 'POST', body: JSON.stringify(payload) });
+      await refresh();
+      showToast('备份已导入');
+    } catch (err) {
+      showToast(`导入失败：${err.message}`);
+    }
+  }
+
   async function openCase(id) {
     setSelectedCaseId(id);
     setView('case');
@@ -100,6 +113,10 @@ function App() {
         {nav}
         <div className="topActions">
           <a className="button ghost" href="/api/export" target="_blank">导出备份</a>
+          <label className="button ghost fileButton">
+            导入备份
+            <input type="file" accept="application/json" onChange={(e) => importBackup(e.target.files?.[0])} />
+          </label>
           <button className="button primary" onClick={() => setCaseFormOpen(true)}>新建案例</button>
         </div>
       </header>
@@ -237,6 +254,7 @@ function TaskRow({ slot, onOpenCase, onAct }) {
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>}
         {slot.status === '已锁定' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
+        {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '已进入待核对')}>兼职已汇报</button>}
         {slot.status === '已汇报' && caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音</a>}
@@ -290,6 +308,7 @@ function CaseDetail({ detail, onAct, onBack }) {
         <div className="headerActions">
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 30 }) }), '已补齐 30 天排期槽位')}>生成30天排期</button>
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>
+          <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>
           {caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音主页</a>}
         </div>
       </section>
@@ -311,10 +330,15 @@ function CaseDetail({ detail, onAct, onBack }) {
           {assets.length === 0 ? <div className="empty">把素材放入 00-原始素材 后点击扫描</div> : (
             <div className="assetList">
               {assets.slice(0, 30).map((asset) => (
-                <div className="assetRow" key={asset.id}>
+                <div className="assetRow assetEditable" key={asset.id}>
                   <strong>{asset.kind}</strong>
                   <span>{asset.stage} · {asset.source} · {asset.reviewStatus}</span>
                   <small>{asset.path}</small>
+                  <div className="inlineActions">
+                    {['可用', '需处理', '不可用'].map((status) => (
+                      <button key={status} onClick={() => onAct(() => request(`/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: status }) }), `素材已标记：${status}`)}>{status}</button>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -351,7 +375,7 @@ function CaseDetail({ detail, onAct, onBack }) {
                 </div>
                 <div className="rowActions">
                   {task.douyinUrl && <a className="button" href={task.douyinUrl} target="_blank">打开抖音</a>}
-                  <button onClick={() => onAct(() => request(`/verify-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'verified', resultNote: '已核对发布' }) }), '已核对')}>标记已核对</button>
+                  <button onClick={() => verifyWithMetrics(task, onAct)}>核对并回填</button>
                   <button onClick={() => onAct(() => request(`/verify-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'mismatch', resultNote: '内容或发布时间不匹配' }) }), '已标记异常')}>异常</button>
                 </div>
               </div>
@@ -378,6 +402,7 @@ function SlotCard({ slot, candidates, onAct }) {
       <div className="inlineActions">
         <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
         {selected && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), '交付包已生成')}>生成交付包</button>}
+        {slot.deliveryDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: slot.deliveryDir }) }), '已打开交付包')}>打开交付包</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) }), '进入待核对')}>兼职已汇报</button>}
       </div>
@@ -398,6 +423,24 @@ function SlotCard({ slot, candidates, onAct }) {
         </div>
       )}
     </div>
+  );
+}
+
+function verifyWithMetrics(task, onAct) {
+  const raw = window.prompt('回填数据：粉丝,播放,点赞,评论。可留空，例如：120,3000,88,12', '');
+  if (raw === null) return;
+  const [fans, plays, likes, comments] = raw.split(',').map((item) => item.trim());
+  const note = window.prompt('核对备注', '已核对发布') || '已核对发布';
+  onAct(
+    () => request(`/verify-tasks/${task.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: 'verified',
+        resultNote: note,
+        metricsSnapshot: { fans, plays, likes, comments }
+      })
+    }),
+    '已核对并回填数据'
   );
 }
 
