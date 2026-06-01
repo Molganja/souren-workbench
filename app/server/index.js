@@ -649,6 +649,12 @@ function viralSuitableForCase(viral, caze) {
   return suitable.every((rule) => tokens.some((token) => token.includes(rule)));
 }
 
+function isPendingViralTemplate(viral) {
+  return String(viral.rawText || '').startsWith('待用青豆')
+    || String(viral.hotStructure || '').startsWith('待青豆')
+    || viral.category === '待分析';
+}
+
 function qingdouTaskText(viral) {
   return [
     '青豆/轻抖爆款分析任务',
@@ -1094,9 +1100,7 @@ function dashboard() {
       readyDelivery: slots.filter((s) => s.status === '可交付').length,
       sentWaitReport: slots.filter((s) => s.status === '已派发').length,
       pendingVerify: slots.filter((s) => s.status === '已汇报').length,
-      pendingViral: viralTemplates.filter((item) => String(item.rawText || '').startsWith('待用青豆')
-        || String(item.hotStructure || '').startsWith('待青豆')
-        || item.category === '待分析').length,
+      pendingViral: viralTemplates.filter(isPendingViralTemplate).length,
       imageTasks: imageTasks.filter((item) => OPEN_IMAGE_STATUSES.includes(item.status)).length,
       imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
       clipTasks: clipTasks.filter((item) => OPEN_CLIP_STATUSES.includes(item.status)).length,
@@ -1117,6 +1121,7 @@ function dashboard() {
       .filter((item) => OPEN_CLIP_STATUSES.includes(item.status))
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
+    pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
     abnormalCases: caseHealthRows
       .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0)
       .sort((a, b) => (b.requiredGapCount + b.materialGaps.length + b.reasons.length) - (a.requiredGapCount + a.materialGaps.length + a.reasons.length))

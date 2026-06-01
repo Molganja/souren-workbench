@@ -161,7 +161,7 @@ function App() {
       <main className="page">
         {loading && <div className="empty">加载中</div>}
         {!loading && view === 'dashboard' && dashboard && (
-          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onCopy={copyText} />
+          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onCopy={copyText} onOpenViral={() => setView('viral')} />
         )}
         {!loading && view === 'review' && review && (
           <ReviewView data={review} onOpenCase={openCase} />
@@ -251,7 +251,7 @@ function App() {
   );
 }
 
-function Dashboard({ data, onOpenCase, onAct, onCopy }) {
+function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral }) {
   const contactGroups = groupTodayByContact(data.todaySlots);
   return (
     <div className="stack">
@@ -285,6 +285,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
           <Metric label="必补素材" value={data.counts.requiredMaterialGaps || 0} />
           <Metric label="图片任务" value={data.counts.imageTasks || 0} />
           <Metric label="剪辑任务" value={data.counts.clipTasks || 0} />
+          <Metric label="待爆款" value={data.counts.pendingViral || 0} />
         </div>
       </section>
 
@@ -316,6 +317,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
       <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
       <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
       <TaskSection title="待抖音核对" items={data.pendingVerify} empty="没有待核对任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <PendingViralSection items={data.pendingViralTemplates || []} onCopy={onCopy} onOpenViral={onOpenViral} />
       <ImageTaskSection items={data.imageTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
       <ClipTaskSection items={data.clipTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
 
@@ -341,6 +343,41 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
         )}
       </section>
     </div>
+  );
+}
+
+function PendingViralSection({ items, onCopy, onOpenViral }) {
+  return (
+    <section className="panel">
+      <div className="sectionHead">
+        <h2>待爆款分析</h2>
+        <div className="headerActions">
+          <span>{items.length} 条</span>
+          <button onClick={onOpenViral}>去粘贴链接</button>
+        </div>
+      </div>
+      {items.length === 0 ? <div className="empty">没有待青豆分析的爆款链接</div> : (
+        <div className="taskList">
+          {items.map((item) => (
+            <div className="taskRow" key={item.id}>
+              <div className="taskMain">
+                <div className="rowTitle">
+                  <strong>{item.title}</strong>
+                  <span className="status s-pending">待青豆分析</span>
+                </div>
+                <p>{item.hotStructure}</p>
+                {item.sourceLink && <small>{item.sourceLink}</small>}
+              </div>
+              <div className="rowActions">
+                {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
+                <button onClick={() => copyQingdouTask(item, onCopy)}>复制青豆任务</button>
+                <button onClick={onOpenViral}>补分析结果</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

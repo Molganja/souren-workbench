@@ -87,6 +87,9 @@ async function main() {
     assert(linkOnlyViral.rawText.includes('待用青豆') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
     const qingdouTask = await api(`/viral-templates/${linkOnlyViral.id}/qingdou-task`);
     assert(qingdouTask.text.includes('https://www.douyin.com/video/link-only-smoke') && qingdouTask.text.includes('回填到系统'), 'qingdou task text missing');
+    const viralDashboard = await api('/dashboard');
+    assert(viralDashboard.counts.pendingViral >= 1, 'dashboard pending viral count missing');
+    assert(viralDashboard.pendingViralTemplates.some((item) => item.id === linkOnlyViral.id), 'dashboard pending viral list missing link-only template');
     const seed = await api('/content-seeds', {
       method: 'POST',
       body: JSON.stringify({
