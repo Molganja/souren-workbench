@@ -174,6 +174,10 @@ async function main() {
     assert(Array.isArray(withGaps.materialGaps) && withGaps.materialGaps.length > 0, 'material gaps missing');
     assert(Array.isArray(withGaps.healthReasons), 'health reasons missing');
     assert(Array.isArray(withGaps.healthActions) && withGaps.healthActions.length > 0, 'health actions missing');
+    const gapDashboard = await api('/dashboard');
+    const gapCase = gapDashboard.abnormalCases.find((item) => item.id === caze.id);
+    assert(gapDashboard.counts.requiredMaterialGaps >= 1, 'dashboard missing required material gap count');
+    assert(gapCase?.materialGaps?.some((gap) => gap.status === '必补'), 'dashboard missing material gap details');
     const gapImage = await api('/image-tasks', {
       method: 'POST',
       body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label, prompt: `补${withGaps.materialGaps[0].label}` })

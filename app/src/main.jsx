@@ -282,6 +282,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
           <Metric label="待交付" value={data.counts.readyDelivery} />
           <Metric label="等回传" value={data.counts.sentWaitReport} />
           <Metric label="待核对" value={data.counts.pendingVerify} />
+          <Metric label="必补素材" value={data.counts.requiredMaterialGaps || 0} />
         </div>
       </section>
 
@@ -328,6 +329,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy }) {
                 <strong>{item.weixinNick}</strong>
                 <span>{item.caseCode} · {item.project}</span>
                 <em>{item.reasons.join(' / ')}</em>
+                {item.materialGaps?.length > 0 && <small>缺口：{item.materialGaps.slice(0, 3).map((gap) => `${gap.status}-${gap.label}`).join(' / ')}</small>}
                 {item.actions?.[0] && <small>{item.actions[0]}</small>}
               </button>
             ))}

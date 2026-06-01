@@ -982,6 +982,22 @@ function dashboard() {
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const verifyBySlot = Object.fromEntries(verifyTasks.map((item) => [item.planItemId, item]));
+  const caseHealthRows = cases.map((caze) => {
+    const caseSlots = slots.filter((s) => s.caseId === caze.id);
+    const caseAssets = assets.filter((a) => a.caseId === caze.id);
+    const caseMetrics = metrics.filter((m) => m.caseId === caze.id);
+    const health = caseHealth(caze, caseSlots, caseAssets, caseMetrics, today);
+    const openGaps = health.gaps.filter((gap) => gap.status !== '已满足');
+    return {
+      ...caze,
+      healthStatus: health.status,
+      reasons: health.reasons,
+      actions: health.actions,
+      materialGaps: openGaps,
+      requiredGapCount: openGaps.filter((gap) => gap.status === '必补').length,
+      optionalGapCount: openGaps.filter((gap) => gap.status === '可补').length
+    };
+  });
   const withCase = (slot) => {
     const slotCandidates = candidates.filter((item) => item.slotId === slot.id);
     return {
@@ -1005,6 +1021,8 @@ function dashboard() {
       pendingViral: viralTemplates.filter((item) => String(item.rawText || '').startsWith('待用青豆')
         || String(item.hotStructure || '').startsWith('待青豆')
         || item.category === '待分析').length,
+      materialGaps: caseHealthRows.reduce((sum, item) => sum + item.materialGaps.length, 0),
+      requiredMaterialGaps: caseHealthRows.reduce((sum, item) => sum + item.requiredGapCount, 0),
       blocked: slots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
     },
     todaySlots: slots.filter((s) => s.date <= today && ['待生成', '候选待选', '已锁定', '可交付'].includes(s.status)).map(withCase),
@@ -1012,15 +1030,9 @@ function dashboard() {
     pendingChoose: slots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
     readyDelivery: slots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
     pendingVerify: slots.filter((s) => s.status === '已汇报').slice(0, 30).map(withCase),
-    abnormalCases: cases
-      .map((caze) => {
-        const caseSlots = slots.filter((s) => s.caseId === caze.id);
-        const caseAssets = assets.filter((a) => a.caseId === caze.id);
-        const caseMetrics = metrics.filter((m) => m.caseId === caze.id);
-        const health = caseHealth(caze, caseSlots, caseAssets, caseMetrics, today);
-        return { ...caze, healthStatus: health.status, reasons: health.reasons, actions: health.actions };
-      })
-      .filter((caze) => caze.reasons.length > 0)
+    abnormalCases: caseHealthRows
+      .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0)
+      .sort((a, b) => (b.requiredGapCount + b.materialGaps.length + b.reasons.length) - (a.requiredGapCount + a.materialGaps.length + a.reasons.length))
   };
 }
 
