@@ -553,6 +553,18 @@ label.wide {
   grid-column: 1 / -1;
 }
 
+label.checkLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+label.checkLine input {
+  width: auto;
+}
+
 input, select, textarea {
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -572,6 +584,16 @@ textarea {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+.hintBox {
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  line-height: 1.6;
 }
 
 .toast {

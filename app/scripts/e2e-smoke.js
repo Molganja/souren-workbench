@@ -66,6 +66,17 @@ async function main() {
     });
     assert(viral.id, 'viral template not created');
 
+    const bulk = await api('/cases/bulk', {
+      method: 'POST',
+      body: JSON.stringify({
+        text: '批量小林,bulk_dy_1,,吸脂,起号期,成都,25,上班族,自然,批量导入验证\n批量小陈,bulk_dy_2,,吸脂,起号期,杭州,27,自由职业,轻松,批量导入验证',
+        generateSlots: true,
+        days: 2
+      })
+    });
+    assert(bulk.createdCount === 2, 'bulk import did not create two cases');
+    assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
+
     const caze = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({
@@ -119,11 +130,11 @@ async function main() {
     assert(imageTask.status === 'waiting_key' || imageTask.status === 'draft', 'image task status invalid');
     await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
 
-    const bulk = await api(`/viral-templates/${viral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-02' }) });
-    assert(bulk.createdCount === 1, 'viral bulk generation failed');
+    const viralBulk = await api(`/viral-templates/${viral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-02' }) });
+    assert(viralBulk.createdCount === 3, 'viral bulk generation failed');
 
     const exported = await api('/export');
-    assert(exported.cases.length === 1, 'export missing case');
+    assert(exported.cases.length === 3, 'export missing cases');
     assert(exported.metrics.length === 1, 'export missing metrics');
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');

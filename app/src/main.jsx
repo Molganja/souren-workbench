@@ -41,6 +41,7 @@ function App() {
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(true);
   const [caseFormOpen, setCaseFormOpen] = useState(false);
+  const [bulkCaseOpen, setBulkCaseOpen] = useState(false);
   const [viralFormOpen, setViralFormOpen] = useState(false);
 
   async function refresh() {
@@ -130,7 +131,7 @@ function App() {
           <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} />
         )}
         {!loading && view === 'cases' && (
-          <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} />
+          <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} />
         )}
         {!loading && view === 'case' && caseDetail && (
           <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} />
@@ -151,6 +152,16 @@ function App() {
             setSelectedCaseId(created.id);
             setView('case');
           }, '案例已创建，素材目录已生成')}
+        />
+      )}
+      {bulkCaseOpen && (
+        <BulkCaseForm
+          onClose={() => setBulkCaseOpen(false)}
+          onSubmit={(payload) => act(async () => {
+            await request('/cases/bulk', { method: 'POST', body: JSON.stringify(payload) });
+            setBulkCaseOpen(false);
+            setView('cases');
+          }, '批量案例已导入')}
         />
       )}
       {viralFormOpen && (
@@ -270,12 +281,15 @@ function TaskRow({ slot, onOpenCase, onAct }) {
   );
 }
 
-function CasesView({ cases, onOpenCase, onNew }) {
+function CasesView({ cases, onOpenCase, onNew, onBulk }) {
   return (
     <section className="panel">
       <div className="sectionHead">
         <h2>案例库</h2>
-        <button className="button primary" onClick={onNew}>新建案例</button>
+        <div className="inlineActions">
+          <button onClick={onBulk}>批量导入</button>
+          <button className="button primary" onClick={onNew}>新建案例</button>
+        </div>
       </div>
       {cases.length === 0 ? <div className="empty">还没有案例</div> : (
         <div className="caseGrid">
@@ -651,6 +665,29 @@ function CaseForm({ initial, onClose, onSubmit }) {
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
         <button className="primary" onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>{initial ? '保存' : '创建'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+function BulkCaseForm({ onClose, onSubmit }) {
+  const [text, setText] = useState('小林,dy001,https://www.douyin.com/,吸脂,起号期,成都,25,上班族,自然,记录状态变化\n小陈,dy002,,吸脂,起号期,杭州,27,自由职业,轻松,想做生活记录');
+  const [generateSlots, setGenerateSlots] = useState(true);
+  const [days, setDays] = useState(7);
+  return (
+    <Modal title="批量导入兼职/账号" onClose={onClose}>
+      <div className="hintBox">
+        每行一个账号，支持逗号或 Tab 分隔。字段顺序：
+        微信昵称, 抖音号, 抖音主页链接, 项目, 阶段, 城市, 年龄, 职业, 语气, 动机故事
+      </div>
+      <div className="formGrid">
+        <label className="wide">导入内容<textarea rows="10" value={text} onChange={(e) => setText(e.target.value)} /></label>
+        <label className="checkLine"><input type="checkbox" checked={generateSlots} onChange={(e) => setGenerateSlots(e.target.checked)} />导入后自动生成排期</label>
+        <label>生成天数<input value={days} onChange={(e) => setDays(e.target.value)} /></label>
+      </div>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="primary" onClick={() => onSubmit({ text, generateSlots, days: Number(days) || 7 })}>导入</button>
       </div>
     </Modal>
   );

@@ -347,6 +347,68 @@ function createSlotForCase(caze, input = {}) {
   return slotById(slotId);
 }
 
+function createCaseFromBody(body = {}) {
+  const id = uid('case');
+  const created = now();
+  const project = body.project || '吸脂';
+  const stage = body.stage || '起号期';
+  const persona = body.persona || {};
+  const date = created.slice(0, 10).replaceAll('-', '');
+  const seq = all('SELECT id FROM cases').length + 1;
+  const caseCode = body.caseCode || `XZ-${date}-${String(seq).padStart(3, '0')}`;
+  const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(body.weixinNick)}`;
+  const caseDir = path.join(MATERIAL_ROOT, dirName);
+  ensureCaseDirs(caseDir);
+  fs.writeFileSync(path.join(caseDir, 'case.json'), JSON.stringify({ id, caseCode, ...body }, null, 2));
+  run(
+    `INSERT INTO cases
+    (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, local_case_dir, health_status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      caseCode,
+      body.weixinNick || '未命名兼职',
+      body.douyinId || '',
+      body.douyinUrl || '',
+      project,
+      stage,
+      JSON.stringify(persona),
+      body.staff || '',
+      caseDir,
+      body.healthStatus || '健康',
+      created,
+      created
+    ]
+  );
+  return caseById(id);
+}
+
+function parseBulkCaseText(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => {
+      const parts = line.split(/,|\t/).map((item) => item.trim());
+      const [weixinNick, douyinId, douyinUrl, project, stage, city, age, occupation, tone, motivation] = parts;
+      return {
+        weixinNick,
+        douyinId,
+        douyinUrl,
+        project: project || '吸脂',
+        stage: STAGES.includes(stage) ? stage : '起号期',
+        persona: {
+          city: city || '',
+          age: Number(age) || '',
+          occupation: occupation || '',
+          tone: tone || '',
+          motivation: motivation || ''
+        }
+      };
+    })
+    .filter((item) => item.weixinNick);
+}
+
 function inferAssetKind(file) {
   const ext = path.extname(file).toLowerCase();
   if (IMAGE_EXT.has(ext)) return '图片';
@@ -472,40 +534,29 @@ app.get('/api/cases', (_req, res) => {
 });
 
 app.post('/api/cases', (req, res) => {
+  res.json(createCaseFromBody(req.body || {}));
+});
+
+app.post('/api/cases/bulk', (req, res) => {
   const body = req.body || {};
-  const id = uid('case');
-  const created = now();
-  const project = body.project || '吸脂';
-  const stage = body.stage || '起号期';
-  const persona = body.persona || {};
-  const date = created.slice(0, 10).replaceAll('-', '');
-  const seq = all('SELECT id FROM cases').length + 1;
-  const caseCode = body.caseCode || `XZ-${date}-${String(seq).padStart(3, '0')}`;
-  const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(body.weixinNick)}`;
-  const caseDir = path.join(MATERIAL_ROOT, dirName);
-  ensureCaseDirs(caseDir);
-  fs.writeFileSync(path.join(caseDir, 'case.json'), JSON.stringify({ id, caseCode, ...body }, null, 2));
-  run(
-    `INSERT INTO cases
-    (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, local_case_dir, health_status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      caseCode,
-      body.weixinNick || '未命名兼职',
-      body.douyinId || '',
-      body.douyinUrl || '',
-      project,
-      stage,
-      JSON.stringify(persona),
-      body.staff || '',
-      caseDir,
-      body.healthStatus || '健康',
-      created,
-      created
-    ]
-  );
-  res.json(caseById(id));
+  const rows = Array.isArray(body.cases) ? body.cases : parseBulkCaseText(body.text);
+  if (!rows.length) return res.status(400).json({ error: 'no valid case rows' });
+  const created = rows.map((row) => createCaseFromBody(row));
+  if (body.generateSlots) {
+    created.forEach((caze) => {
+      for (let i = 0; i < Number(body.days || 7); i += 1) {
+        const stage = stageForDay(caze.stage, i);
+        const contentKind = pickWeighted(STAGE_RATIOS[stage] || STAGE_RATIOS.起号期);
+        createSlotForCase(caze, {
+          date: addDays(new Date().toISOString().slice(0, 10), i),
+          timeWindow: timeWindowFor(i),
+          contentKind,
+          stage
+        });
+      }
+    });
+  }
+  res.json({ createdCount: created.length, cases: created });
 });
 
 app.patch('/api/cases/:id', (req, res) => {
