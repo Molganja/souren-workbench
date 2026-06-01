@@ -132,7 +132,7 @@ function App() {
           <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} />
         )}
         {!loading && view === 'viral' && (
-          <ViralView templates={viralTemplates} onNew={() => setViralFormOpen(true)} />
+          <ViralView templates={viralTemplates} onNew={() => setViralFormOpen(true)} onAct={act} />
         )}
       </main>
       {caseFormOpen && (
@@ -286,7 +286,7 @@ function CasesView({ cases, onOpenCase, onNew }) {
 }
 
 function CaseDetail({ detail, onAct, onBack }) {
-  const { case: caze, slots, candidates, assets, imageTasks, verifyTasks } = detail;
+  const { case: caze, slots, candidates, assets, imageTasks, verifyTasks, metrics = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const [slotFormOpen, setSlotFormOpen] = useState(false);
   const candidatesBySlot = useMemo(() => {
@@ -380,6 +380,12 @@ function CaseDetail({ detail, onAct, onBack }) {
                   <strong>{task.purpose}</strong>
                   <span>{task.status}</span>
                   <small>{task.prompt}</small>
+                  <div className="inlineActions">
+                    <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开输出目录')}>打开目录</button>
+                    {['review', 'approved', 'rejected'].map((status) => (
+                      <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${status}`)}>{status}</button>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -404,6 +410,29 @@ function CaseDetail({ detail, onAct, onBack }) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="sectionHead"><h2>账号数据</h2><span>{metrics.length} 条</span></div>
+        {metrics.length === 0 ? <div className="empty">核对并回填后，这里会显示粉丝、播放、点赞、评论记录</div> : (
+          <div className="metricTable">
+            <div className="metricHeader"><span>日期</span><span>粉丝</span><span>播放</span><span>点赞</span><span>评论</span><span>备注</span></div>
+            {metrics.map((item, index) => {
+              const prev = metrics[index + 1];
+              const fanDelta = prev?.fans != null && item.fans != null ? item.fans - prev.fans : null;
+              return (
+                <div className="metricLine" key={item.id}>
+                  <span>{item.date}</span>
+                  <span>{item.fans ?? '—'} {fanDelta != null && <em>{fanDelta >= 0 ? `+${fanDelta}` : fanDelta}</em>}</span>
+                  <span>{item.plays ?? '—'}</span>
+                  <span>{item.likes ?? '—'}</span>
+                  <span>{item.comments ?? '—'}</span>
+                  <span>{item.note || '—'}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -468,7 +497,7 @@ function verifyWithMetrics(task, onAct) {
   );
 }
 
-function ViralView({ templates, onNew }) {
+function ViralView({ templates, onNew, onAct }) {
   return (
     <section className="panel">
       <div className="sectionHead">
@@ -483,11 +512,26 @@ function ViralView({ templates, onNew }) {
               <span>{item.category} · {item.rewritePolicy}</span>
               <p>{item.hotStructure}</p>
               <small>{item.rawText}</small>
+              <div className="inlineActions">
+                <button onClick={() => bulkGenerateViral(item, onAct)}>给所有账号生成今日爆款候选</button>
+              </div>
             </div>
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+function bulkGenerateViral(template, onAct) {
+  const date = window.prompt('生成到哪一天？', today());
+  if (!date) return;
+  onAct(
+    () => request(`/viral-templates/${template.id}/bulk-generate`, {
+      method: 'POST',
+      body: JSON.stringify({ date })
+    }),
+    '已给所有账号生成爆款候选'
   );
 }
 

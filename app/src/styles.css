@@ -428,6 +428,39 @@ button.primary, .button.primary {
   justify-content: flex-start;
 }
 
+.metricTable {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.metricHeader,
+.metricLine {
+  display: grid;
+  grid-template-columns: 1.1fr .8fr .8fr .8fr .8fr 1.8fr;
+  gap: 10px;
+  padding: 10px 12px;
+  align-items: center;
+}
+
+.metricHeader {
+  background: #f2f4f7;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.metricLine {
+  border-top: 1px solid var(--line);
+}
+
+.metricLine em {
+  color: var(--green);
+  font-style: normal;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
 .assetRow span, .templateRow span, .assetRow small, .templateRow small {
   color: var(--muted);
   word-break: break-all;
@@ -516,6 +549,10 @@ textarea {
     grid-template-columns: 1fr;
   }
   .stats, .draftGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .metricHeader,
+  .metricLine {
     grid-template-columns: 1fr 1fr;
   }
   .rowActions, .headerActions {

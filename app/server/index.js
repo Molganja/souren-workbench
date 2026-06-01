@@ -159,6 +159,21 @@ function rowVerify(row) {
   };
 }
 
+function rowMetric(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    date: row.date,
+    fans: row.fans,
+    plays: row.plays,
+    likes: row.likes,
+    comments: row.comments,
+    note: row.note,
+    createdAt: row.created_at
+  };
+}
+
 function assertInsideRoot(targetPath) {
   const resolved = path.resolve(targetPath);
   const ok = ALLOWED_OPEN_ROOTS.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
@@ -286,6 +301,30 @@ function createCandidate(slot, caze, variant, viral = null) {
       now()
     ]
   );
+}
+
+function createSlotForCase(caze, input = {}) {
+  const contentKind = CONTENT_KINDS.includes(input.contentKind) ? input.contentKind : '日常养号';
+  const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
+  const slotId = uid('slot');
+  run(
+    `INSERT INTO plan_slots
+    (id, case_id, date, time_window, content_kind, goal, stage, status, selected_candidate_id, delivery_dir, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+    [
+      slotId,
+      caze.id,
+      input.date || new Date().toISOString().slice(0, 10),
+      input.timeWindow || '19:00-21:00',
+      contentKind,
+      input.goal || inferGoal(contentKind, stage),
+      stage,
+      input.status || '待生成',
+      now(),
+      now()
+    ]
+  );
+  return slotById(slotId);
 }
 
 function inferAssetKind(file) {
@@ -440,7 +479,8 @@ app.get('/api/cases/:id', (req, res) => {
   const assets = all('SELECT * FROM assets WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowAsset);
   const imageTasks = all('SELECT * FROM image_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowImageTask);
   const verifyTasks = all('SELECT * FROM verify_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowVerify);
-  res.json({ case: caze, slots, candidates, assets, imageTasks, verifyTasks });
+  const metrics = all('SELECT * FROM metrics WHERE case_id = ? ORDER BY date DESC, created_at DESC', [caze.id]).map(rowMetric);
+  res.json({ case: caze, slots, candidates, assets, imageTasks, verifyTasks, metrics });
 });
 
 app.post('/api/cases/:id/scan-assets', (req, res) => {
@@ -503,26 +543,7 @@ app.post('/api/cases/:id/slots', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });
   const body = req.body || {};
-  const contentKind = CONTENT_KINDS.includes(body.contentKind) ? body.contentKind : '日常养号';
-  const stage = STAGES.includes(body.stage) ? body.stage : caze.stage;
-  const slotId = uid('slot');
-  run(
-    `INSERT INTO plan_slots
-    (id, case_id, date, time_window, content_kind, goal, stage, status, selected_candidate_id, delivery_dir, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, '待生成', NULL, NULL, ?, ?)`,
-    [
-      slotId,
-      caze.id,
-      body.date || new Date().toISOString().slice(0, 10),
-      body.timeWindow || '19:00-21:00',
-      contentKind,
-      body.goal || inferGoal(contentKind, stage),
-      stage,
-      now(),
-      now()
-    ]
-  );
-  res.json(slotById(slotId));
+  res.json(createSlotForCase(caze, body));
 });
 
 app.post('/api/slots/:id/generate-candidates', (req, res) => {
@@ -624,6 +645,24 @@ app.post('/api/image-tasks', (req, res) => {
   res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [id])));
 });
 
+app.patch('/api/image-tasks/:id', (req, res) => {
+  const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
+  if (!task) return res.status(404).json({ error: 'image task not found' });
+  const body = req.body || {};
+  run(
+    `UPDATE image_tasks SET purpose = ?, prompt = ?, negative_prompt = ?, status = ?, updated_at = ? WHERE id = ?`,
+    [
+      body.purpose ?? task.purpose,
+      body.prompt ?? task.prompt,
+      body.negativePrompt ?? task.negativePrompt,
+      body.status ?? task.status,
+      now(),
+      task.id
+    ]
+  );
+  res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id])));
+});
+
 app.get('/api/viral-templates', (_req, res) => {
   res.json(all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral));
 });
@@ -650,6 +689,27 @@ app.post('/api/viral-templates', (req, res) => {
     ]
   );
   res.json(rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [id])));
+});
+
+app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
+  const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
+  if (!viral) return res.status(404).json({ error: 'viral template not found' });
+  const body = req.body || {};
+  const cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase);
+  const created = [];
+  cases.forEach((caze) => {
+    const slot = createSlotForCase(caze, {
+      date: body.date || new Date().toISOString().slice(0, 10),
+      timeWindow: body.timeWindow || '19:00-21:00',
+      contentKind: '爆款提权',
+      stage: caze.stage,
+      status: '候选待选',
+      goal: `爆款提权：按「${viral.title}」做人设化改写`
+    });
+    ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral));
+    created.push(slotById(slot.id));
+  });
+  res.json({ createdCount: created.length, slots: created });
 });
 
 app.patch('/api/verify-tasks/:id', (req, res) => {
@@ -700,7 +760,8 @@ app.get('/api/export', (_req, res) => {
     viralTemplates: all('SELECT * FROM viral_templates').map(rowViral),
     assets: all('SELECT * FROM assets').map(rowAsset),
     imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
-    verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify)
+    verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify),
+    metrics: all('SELECT * FROM metrics').map(rowMetric)
   });
 });
 
@@ -864,6 +925,24 @@ app.post('/api/import', (req, res) => {
         item.metricsSnapshot ? JSON.stringify(item.metricsSnapshot) : null,
         item.createdAt || importedAt,
         item.updatedAt || importedAt
+      ]
+    );
+  });
+
+  (data.metrics || []).forEach((item) => {
+    run(
+      `INSERT INTO metrics (id, case_id, date, fans, plays, likes, comments, note, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.date || importedAt.slice(0, 10),
+        item.fans ?? null,
+        item.plays ?? null,
+        item.likes ?? null,
+        item.comments ?? null,
+        item.note || '',
+        item.createdAt || importedAt
       ]
     );
   });
