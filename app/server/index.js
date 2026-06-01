@@ -1505,6 +1505,8 @@ app.post('/api/import', (req, res) => {
   if (!Array.isArray(data.cases)) return res.status(400).json({ error: 'invalid backup: cases missing' });
   const importedAt = now();
   const preImportBackup = writeLocalBackup('before-import');
+  try {
+    run('BEGIN IMMEDIATE');
   run('DELETE FROM metrics');
   run('DELETE FROM verify_tasks');
   run('DELETE FROM clip_tasks');
@@ -1729,7 +1731,16 @@ app.post('/api/import', (req, res) => {
     );
   });
 
-  res.json({ imported: true, cases: data.cases.length, preImportBackup });
+    run('COMMIT');
+    res.json({ imported: true, cases: data.cases.length, preImportBackup });
+  } catch (err) {
+    try {
+      run('ROLLBACK');
+    } catch {
+      // Ignore rollback failures; report the original import error.
+    }
+    res.status(400).json({ error: `import failed: ${err.message}`, preImportBackup });
+  }
 });
 
 app.patch('/api/assets/:id', (req, res) => {

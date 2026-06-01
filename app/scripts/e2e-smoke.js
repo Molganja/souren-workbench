@@ -229,6 +229,21 @@ async function main() {
     assert(fs.existsSync(manualBackup.backup.path), 'manual backup file missing');
     const importResult = await api('/import', { method: 'POST', body: JSON.stringify(exported) });
     assert(fs.existsSync(importResult.preImportBackup.path), 'pre-import backup file missing');
+    let badImportRejected = false;
+    try {
+      await api('/import', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...exported,
+          planSlots: [{ ...exported.planSlots[0], id: 'bad_slot_fk', caseId: 'missing_case' }]
+        })
+      });
+    } catch (error) {
+      badImportRejected = /import failed/.test(error.message);
+    }
+    assert(badImportRejected, 'bad import was not rejected');
+    const afterBadImportCases = await api('/cases');
+    assert(afterBadImportCases.length === 2, 'bad import changed existing cases');
     const review = await api('/review');
     assert(review.totals.cases === 2, 'review case total invalid');
     assert(review.totals.metrics === 1, 'review metrics total invalid');
