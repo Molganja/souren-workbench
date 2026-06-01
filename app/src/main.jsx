@@ -118,19 +118,6 @@ function App() {
     }
   }
 
-  async function importBackup(file) {
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const payload = JSON.parse(text);
-      await request('/import', { method: 'POST', body: JSON.stringify(payload) });
-      await refresh();
-      showToast('备份已导入');
-    } catch (err) {
-      showToast(`导入失败：${err.message}`);
-    }
-  }
-
   async function copyText(text, message = '已复制') {
     try {
       await navigator.clipboard.writeText(text);
@@ -155,12 +142,9 @@ function App() {
   const nav = (
     <div className="nav">
       <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>今日中控台</button>
-      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}>数据复盘</button>
       <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>排期规划</button>
       <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
-      <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款模板</button>
-      <button className={view === 'seeds' ? 'active' : ''} onClick={() => setView('seeds')}>内容种子</button>
-      <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>配置</button>
+      <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款链接</button>
     </div>
   );
 
@@ -170,12 +154,6 @@ function App() {
         <div className="brand">素人种草运营工作台</div>
         {nav}
         <div className="topActions">
-          <a className="button ghost" href="/api/export" target="_blank">导出备份</a>
-          <button className="button ghost" onClick={() => act(() => request('/backups', { method: 'POST', body: JSON.stringify({ reason: 'manual' }) }), '本地备份已创建')}>创建本地备份</button>
-          <label className="button ghost fileButton">
-            导入备份
-            <input type="file" accept="application/json" onChange={(e) => importBackup(e.target.files?.[0])} />
-          </label>
           <button className="button primary" onClick={() => setCaseFormOpen(true)}>新建案例</button>
         </div>
       </header>
@@ -233,7 +211,7 @@ function App() {
           onSubmit={(payload) => act(async () => {
             await request('/viral-templates', { method: 'POST', body: JSON.stringify(payload) });
             setViralFormOpen(false);
-          }, '爆款模板已保存')}
+          }, '爆款链接已记录')}
         />
       )}
       {seedFormOpen && (
@@ -912,10 +890,11 @@ function ViralView({ templates, onNew, onAct }) {
   return (
     <section className="panel">
       <div className="sectionHead">
-        <h2>爆款模板库</h2>
-        <button className="button primary" onClick={onNew}>录入爆款模板</button>
+        <h2>爆款链接</h2>
+        <button className="button primary" onClick={onNew}>粘贴爆款链接</button>
       </div>
-      {templates.length === 0 ? <div className="empty">还没有爆款模板。录入后，爆款提权槽位会优先套用最新模板。</div> : (
+      <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会作为待分析任务，由我后续用青豆提文案、拆结构、判断适合哪些账号，再生成同类型候选。</div>
+      {templates.length === 0 ? <div className="empty">还没有待分析链接。先粘贴作品链接即可，不需要填写模板内容。</div> : (
         <div className="templateList">
           {templates.map((item) => (
             <div className="templateRow" key={item.id}>
@@ -1025,21 +1004,6 @@ function SettingsView({ config }) {
       <section className="panel">
         <div className="sectionHead"><h2>本地素材根目录</h2></div>
         <div className="path">{config.materialRoot}</div>
-      </section>
-      <section className="panel">
-        <div className="sectionHead"><h2>本地备份</h2><span>{config.backups?.length || 0} 个最近备份</span></div>
-        <div className="path">{config.backupDir}</div>
-        {!config.backups?.length ? <div className="empty">暂无本地备份。顶部可以手动创建，导入备份前也会自动创建一份。</div> : (
-          <div className="templateList">
-            {config.backups.map((item) => (
-              <div className="templateRow" key={item.path}>
-                <strong>{item.name}</strong>
-                <span>{Math.ceil(item.size / 1024)} KB · {item.updatedAt}</span>
-                <small>{item.path}</small>
-              </div>
-            ))}
-          </div>
-        )}
       </section>
       <section className="twoCol">
         <div className="panel">
@@ -1198,12 +1162,12 @@ function ViralForm({ onClose, onSubmit }) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
   return (
-    <Modal title="录入爆款模板" onClose={onClose}>
-      <div className="hintBox">工作人员可以只贴爆款视频链接。链接会先进入待分析，后续由我用青豆提文案、拆结构，再补成可批量生成的模板。</div>
+    <Modal title="粘贴爆款链接" onClose={onClose}>
+      <div className="hintBox">工作人员只需要贴抖音作品链接。标题、正文、爆点结构这些可以留空，后续由我用青豆提取和分析。</div>
       <div className="formGrid">
         <label className="wide">爆款视频链接<input placeholder="先贴抖音作品链接即可" value={form.sourceLink} onChange={(e) => update('sourceLink', e.target.value)} /></label>
-        <label className="wide">爆款标题<input placeholder="可留空，青豆分析后再补" value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
-        <label className="wide">正文/口播<textarea rows="5" placeholder="可留空，后续由青豆提取" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
+        <label className="wide">备注标题<input placeholder="可留空；需要区分来源时再写" value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
+        <label className="wide">青豆提取结果<textarea rows="5" placeholder="可留空，后续由我提取后补充" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
         <label>类别<select value={form.category} onChange={(e) => update('category', e.target.value)}>
           {['待分析', '情绪', '职场', '穿搭', '美食', '本地生活', '清单', '反差故事'].map((item) => <option key={item}>{item}</option>)}
         </select></label>
@@ -1212,7 +1176,7 @@ function ViralForm({ onClose, onSubmit }) {
         </select></label>
         <label className="wide">适合人设关键词<input placeholder="例如：成都,上班族,起号期。留空表示全部适合" value={form.suitableText} onChange={(e) => update('suitableText', e.target.value)} /></label>
         <label className="wide">禁用人设关键词<input placeholder="例如：自由职业,收尾期。命中则不批量生成" value={form.forbiddenText} onChange={(e) => update('forbiddenText', e.target.value)} /></label>
-        <label className="wide">爆点结构<textarea value={form.hotStructure} onChange={(e) => update('hotStructure', e.target.value)} /></label>
+        <label className="wide">分析结论<textarea placeholder="可留空，后续补结构、适合账号和下一步建议" value={form.hotStructure} onChange={(e) => update('hotStructure', e.target.value)} /></label>
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
