@@ -463,6 +463,10 @@ function formatForKind(kind, seed) {
   return Math.random() > 0.55 ? '图文' : '口播';
 }
 
+function isVideoDelivery(format) {
+  return ['视频', '口播'].includes(format);
+}
+
 function createCandidate(slot, caze, variant, viral = null, seed = null) {
   const id = uid('draft');
   const title = seed ? fillVars(seed.titleTemplate, caze) : titleFor(slot.contentKind, slot.stage, caze.persona, viral);
@@ -1174,13 +1178,38 @@ app.post('/api/slots/:id/delivery', (req, res) => {
   fs.mkdirSync(deliveryDir, { recursive: true });
   fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);
+  const videoDelivery = isVideoDelivery(candidate.format);
+  if (videoDelivery) {
+    fs.writeFileSync(path.join(deliveryDir, '03-口播字幕文案.txt'), [
+      `标题：${candidate.title}`,
+      '',
+      candidate.publishText,
+      '',
+      '用途：可作为口播、字幕或剪辑旁白。'
+    ].join('\n'));
+    fs.writeFileSync(path.join(deliveryDir, '04-剪辑要求.txt'), [
+      `案例：${caze.caseCode} / ${caze.weixinNick}`,
+      `对接人：${caze.staff || '未填'}`,
+      `账号：${caze.douyinId || '未填抖音号'}`,
+      `内容类型：${slot.contentKind}`,
+      `建议比例：9:16`,
+      `建议时长：20-35秒`,
+      '',
+      '剪辑要求：',
+      '1. 优先使用本交付包内视频素材，其次使用图片做轻动态。',
+      '2. 首屏保留标题信息，字幕不要遮挡主体。',
+      '3. 封面图如需单独制作，输出 cover.jpg 放回本目录。',
+      '4. 成片输出 final.mp4 放回本目录。'
+    ].join('\n'));
+  }
   const assets = all('SELECT * FROM assets WHERE case_id = ? AND review_status IN (?, ?) ORDER BY created_at DESC LIMIT 9', [caze.id, '可用', '待处理']).map(rowAsset);
   const copied = [];
   assets.forEach((asset, index) => {
     if (!fs.existsSync(asset.path)) return;
     const ext = path.extname(asset.path);
     const label = asset.kind === '视频' ? '视频' : '图片';
-    const fileName = `${String(index + 3).padStart(2, '0')}-${label}${index + 1}${ext}`;
+    const fileIndex = videoDelivery ? index + 8 : index + 3;
+    const fileName = `${String(fileIndex).padStart(2, '0')}-${label}${index + 1}${ext}`;
     fs.copyFileSync(asset.path, path.join(deliveryDir, fileName));
     copied.push({ order: index + 1, fileName, kind: asset.kind, stage: asset.stage, source: asset.source, originalPath: asset.path });
   });
@@ -1204,6 +1233,17 @@ app.post('/api/slots/:id/delivery', (req, res) => {
     '素材顺序：',
     assetLines
   ].join('\n'));
+  if (videoDelivery) {
+    fs.writeFileSync(path.join(deliveryDir, '07-成片回收说明.txt'), [
+      '兼职或剪辑回传时请放回：',
+      path.join(deliveryDir, 'final.mp4'),
+      '',
+      '可选文件：',
+      path.join(deliveryDir, 'cover.jpg'),
+      '',
+      '回传后在系统中标记「兼职已汇报」，再进入抖音核对。'
+    ].join('\n'));
+  }
   run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['可交付', deliveryDir, now(), slot.id]);
   res.json({ deliveryDir, copiedAssets: copied, slot: slotById(slot.id) });
 });

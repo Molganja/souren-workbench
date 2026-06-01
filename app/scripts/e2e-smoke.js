@@ -97,6 +97,20 @@ async function main() {
       })
     });
     assert(seed.id, 'content seed not created');
+    const videoSeed = await api('/content-seeds', {
+      method: 'POST',
+      body: JSON.stringify({
+        project: '吸脂',
+        stage: '起号期',
+        contentKind: '日常养号',
+        format: '视频',
+        titleTemplate: '验收视频：{城市}{occupation}',
+        contentTemplate: '这是验收视频口播，{城市}{occupation}，{motivation}',
+        tags: ['验收', '视频'],
+        baseWeight: 1000
+      })
+    });
+    assert(videoSeed.id, 'video content seed not created');
 
     const bulk = await api('/cases/bulk', {
       method: 'POST',
@@ -136,8 +150,9 @@ async function main() {
     assert(editedCase.weixinNick === '验收兼职改名' && editedCase.staff === '咨询D' && manifest.staff === '咨询D', 'case manifest not synced after edit');
 
     fs.writeFileSync(path.join(caze.localCaseDir, '00-原始素材', 'D1-test.jpg'), 'fake image');
+    fs.writeFileSync(path.join(caze.localCaseDir, '00-原始素材', 'D1-test.mp4'), 'fake video');
     const scan = await api(`/cases/${caze.id}/scan-assets`, { method: 'POST' });
-    assert(scan.inserted === 1, 'asset scan did not insert one file');
+    assert(scan.inserted === 2, 'asset scan did not insert two files');
     await api(`/assets/${scan.assets[0].id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: '可用' }) });
     const withGaps = await api(`/cases/${caze.id}`);
     assert(Array.isArray(withGaps.materialGaps) && withGaps.materialGaps.length > 0, 'material gaps missing');
@@ -191,6 +206,19 @@ async function main() {
     assert(deliveryDashboardSlot?.selectedCandidate?.operatorInstruction, 'dashboard missing ready delivery copy data');
     assert(deliveryDashboardSlot.case.staff === '咨询D', 'dashboard missing contact staff');
     assert(deliveryDashboardSlot.selectedCandidate.operatorInstruction.includes('对接人：咨询D'), 'operator instruction missing contact staff');
+
+    const videoSlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-06', contentKind: '日常养号', stage: '起号期', goal: '视频交付包验收' })
+    });
+    const videoDrafts = await api(`/slots/${videoSlot.id}/generate-candidates`, { method: 'POST' });
+    assert(videoDrafts[0].format === '视频', 'video seed did not produce video format');
+    await api(`/candidates/${videoDrafts[0].id}/select`, { method: 'POST' });
+    const videoDelivery = await api(`/slots/${videoSlot.id}/delivery`, { method: 'POST' });
+    assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '03-口播字幕文案.txt')), 'video delivery missing script file');
+    assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '04-剪辑要求.txt')), 'video delivery missing edit brief');
+    assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '07-成片回收说明.txt')), 'video delivery missing final video return note');
+    assert(videoDelivery.copiedAssets.some((asset) => asset.fileName.startsWith('08-')), 'video delivery asset numbering did not avoid task files');
 
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已汇报' }) });
