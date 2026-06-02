@@ -1215,6 +1215,25 @@ async function main() {
     assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复') && deliveryView.texts.freelancerGuide.includes('话题只用抖音发布文案里已有的'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
+    assert(Array.isArray(deliveryView.handoffDone) && deliveryView.handoffDone.length === 0, 'new delivery should start with empty persisted handoff progress');
+    const deliveryHandoffKeys = handoffDoneForDeliveryView(deliveryView);
+    let handoffOutOfOrderRejected = false;
+    try {
+      await api(`/slots/${slot.id}/handoff`, {
+        method: 'PATCH',
+        body: JSON.stringify({ handoffDone: [deliveryHandoffKeys[1]] })
+      });
+    } catch (error) {
+      handoffOutOfOrderRejected = /按发送顺序/.test(error.message);
+    }
+    assert(handoffOutOfOrderRejected, 'handoff progress allowed saving a later step before recipient confirmation');
+    const partialHandoff = await api(`/slots/${slot.id}/handoff`, {
+      method: 'PATCH',
+      body: JSON.stringify({ handoffDone: [deliveryHandoffKeys[0]] })
+    });
+    assert(partialHandoff.handoffDone.length === 1 && partialHandoff.handoffDone[0] === deliveryHandoffKeys[0], 'handoff progress did not persist the first step');
+    const reopenedPartialDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
+    assert(reopenedPartialDeliveryView.handoffDone.length === 1 && reopenedPartialDeliveryView.handoffDone[0] === deliveryHandoffKeys[0], 'delivery view did not restore persisted handoff progress after reopening');
 
     const staleMediaSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -1434,10 +1453,18 @@ async function main() {
       dispatchWithoutRecipientRejected = /收件微信确认/.test(error.message);
     }
     assert(dispatchWithoutRecipientRejected, 'ready delivery allowed dispatch without recipient confirmation');
-    await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView) }) });
+    const fullHandoff = await api(`/slots/${slot.id}/handoff`, {
+      method: 'PATCH',
+      body: JSON.stringify({ handoffDone: deliveryHandoffKeys })
+    });
+    assert(fullHandoff.handoffDone.length === deliveryHandoffKeys.length, 'full handoff progress did not persist before dispatch');
+    const reopenedFullDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
+    assert(reopenedFullDeliveryView.handoffDone.length === deliveryHandoffKeys.length, 'reopened delivery view did not keep all handoff steps');
+    await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
     const sentDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(sentDeliveryView.freelancerGuideAlreadySent === true, 'sent delivery should mark freelancer guide covered');
     assert(sentDeliveryView.shouldSendFreelancerGuide === false && !sentDeliveryView.texts.freelancerGuide, 'sent delivery should not keep freelancer guide copyable');
+    assert(sentDeliveryView.handoffDone.length === deliveryHandoffKeys.length, 'sent delivery did not keep persisted handoff history');
     const sentDashboard = await api('/dashboard');
     assert(sentDashboard.sentWaitDone.some((item) => item.id === slot.id), 'sent slot should move to non-blocking wait confirmation list');
     assert(!sentDashboard.readyDelivery.some((item) => item.id === slot.id), 'sent slot should leave delivery queue');

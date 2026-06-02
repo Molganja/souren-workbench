@@ -432,6 +432,7 @@ function rowSlot(row) {
     status: row.status,
     selectedCandidateId: row.selected_candidate_id,
     deliveryDir: row.delivery_dir,
+    handoffDone: parseJson(row.handoff_done, []),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -4657,17 +4658,23 @@ app.patch('/api/slots/:id/status', (req, res) => {
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message });
   }
+  let handoffGuard = null;
   if (status === '已派发') {
     const deliveryView = deliveryViewForSlot(slot);
     if (!deliveryView?.mediaFiles?.length) {
       return res.status(409).json({ error: '交付动作还没完成：本次可发送图片或视频' });
     }
-    const guard = deliveryHandoffGuard(slot, req.body?.handoffDone || req.body?.deliveryChecklist, deliveryView);
-    if (!guard.ok) {
-      return res.status(409).json({ error: `交付动作还没完成：${guard.missing.map((item) => item.label).join('、')}` });
+    const completedHandoff = req.body?.handoffDone || req.body?.deliveryChecklist || slot.handoffDone;
+    handoffGuard = deliveryHandoffGuard(slot, completedHandoff, deliveryView);
+    if (!handoffGuard.ok) {
+      return res.status(409).json({ error: `交付动作还没完成：${handoffGuard.missing.map((item) => item.label).join('、')}` });
     }
   }
-  run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', [status, now(), slot.id]);
+  if (status === '已派发') {
+    run('UPDATE plan_slots SET status = ?, handoff_done = ?, updated_at = ? WHERE id = ?', [status, JSON.stringify(handoffGuard.completedKeys || []), now(), slot.id]);
+  } else {
+    run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', [status, now(), slot.id]);
+  }
   res.json(slotById(slot.id));
 });
 
@@ -4748,7 +4755,7 @@ function createDeliveryForSlot(slot) {
       '2. 必要时人工改写标题和正文',
       '3. 再重新生成交付内容'
     ].join('\n'));
-    run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['异常', deliveryDir, now(), slot.id]);
+    run('UPDATE plan_slots SET status = ?, delivery_dir = ?, handoff_done = ?, updated_at = ? WHERE id = ?', ['异常', deliveryDir, '[]', now(), slot.id]);
     return { blocked: true, reason: 'compliance_hits', complianceHits, deliveryDir, copiedAssets: [], slot: slotById(slot.id) };
   }
   const freelancerGuide = writeFreelancerGuide(caze);
@@ -4827,7 +4834,7 @@ function createDeliveryForSlot(slot) {
       '3. 把可用素材标记为“可用”',
       '4. 再重新生成交付内容'
     ].join('\n'));
-    run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['素材阻塞', deliveryDir, now(), slot.id]);
+    run('UPDATE plan_slots SET status = ?, delivery_dir = ?, handoff_done = ?, updated_at = ? WHERE id = ?', ['素材阻塞', deliveryDir, '[]', now(), slot.id]);
     return { blocked: true, reason: 'missing_assets', deliveryDir, copiedAssets: copied, slot: slotById(slot.id) };
   }
   fs.writeFileSync(path.join(deliveryDir, '05-素材顺序清单.txt'), assetLines);
@@ -4850,7 +4857,7 @@ function createDeliveryForSlot(slot) {
     '素材顺序：',
     assetLines
   ].join('\n'));
-  run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['可交付', deliveryDir, now(), slot.id]);
+  run('UPDATE plan_slots SET status = ?, delivery_dir = ?, handoff_done = ?, updated_at = ? WHERE id = ?', ['可交付', deliveryDir, '[]', now(), slot.id]);
   return { deliveryDir, copiedAssets: copied, slot: slotById(slot.id) };
 }
 
@@ -4887,16 +4894,7 @@ function deliveryRequiredHandoffSteps(view) {
   return steps;
 }
 
-function deliveryHandoffGuard(slot, completed = [], deliveryView = null) {
-  const view = deliveryView || deliveryViewForSlot(slot);
-  if (!view || slot.status !== '可交付') return { ok: false, missing: [{ key: 'delivery', label: '交付内容' }] };
-  if (!view.mediaFiles?.length) {
-    return {
-      ok: false,
-      required: deliveryRequiredHandoffSteps(view),
-      missing: [{ key: 'media', label: '本次可发送图片或视频' }]
-    };
-  }
+function normalizeDeliveryHandoff(view, completed = []) {
   const required = deliveryRequiredHandoffSteps(view);
   const requiredKeys = required.map((item) => item.key);
   const completedKeys = [];
@@ -4907,14 +4905,40 @@ function deliveryHandoffGuard(slot, completed = [], deliveryView = null) {
   if (outOfOrderIndex !== -1) {
     const expected = required[outOfOrderIndex] || required[0];
     return {
-      ok: false,
       required,
+      completedKeys,
+      sequenceOk: false,
       missing: [{ key: expected?.key || 'sequence', label: `按发送顺序操作，先完成「${expected?.label || '第一步'}」` }]
     };
   }
-  const completedSet = new Set(completedKeys);
+  return { required, completedKeys, sequenceOk: true };
+}
+
+function deliveryHandoffProgressGuard(slot, completed = [], deliveryView = null) {
+  const view = deliveryView || deliveryViewForSlot(slot);
+  if (!view || slot.status !== '可交付') return { ok: false, completedKeys: [], missing: [{ key: 'delivery', label: '交付内容' }] };
+  if (!view.mediaFiles?.length) {
+    return {
+      ok: false,
+      completedKeys: [],
+      required: deliveryRequiredHandoffSteps(view),
+      missing: [{ key: 'media', label: '本次可发送图片或视频' }]
+    };
+  }
+  const normalized = normalizeDeliveryHandoff(view, completed);
+  if (!normalized.sequenceOk) return { ok: false, ...normalized };
+  const completedSet = new Set(normalized.completedKeys);
+  const missing = normalized.required.filter((item) => !completedSet.has(item.key));
+  return { ok: true, required: normalized.required, completedKeys: normalized.completedKeys, missing };
+}
+
+function deliveryHandoffGuard(slot, completed = [], deliveryView = null) {
+  const progress = deliveryHandoffProgressGuard(slot, completed, deliveryView);
+  if (!progress.ok) return progress;
+  const required = progress.required || [];
+  const completedSet = new Set(progress.completedKeys || []);
   const missing = required.filter((item) => !completedSet.has(item.key));
-  return { ok: missing.length === 0, required, missing };
+  return { ok: missing.length === 0, required, missing, completedKeys: progress.completedKeys || [] };
 }
 
 function caseGuideAlreadySent(slot) {
@@ -4962,6 +4986,7 @@ function deliveryViewForSlot(slot) {
     case: caze,
     candidate,
     deliveryDir,
+    handoffDone: Array.isArray(slot.handoffDone) ? slot.handoffDone : [],
     isVideo: videoDelivery,
     shouldSendFreelancerGuide,
     freelancerGuideAlreadySent: guideAlreadySent,
@@ -5010,6 +5035,35 @@ app.get('/api/slots/:id/delivery-view', (req, res) => {
   const view = deliveryViewForSlot(slot);
   if (!view) return res.status(404).json({ error: '还没有可查看的交付内容，请先生成交付内容' });
   res.json(view);
+});
+
+app.patch('/api/slots/:id/handoff', (req, res) => {
+  const slot = slotById(req.params.id);
+  if (!slot) return res.status(404).json({ error: 'slot not found' });
+  if (slot.status !== '可交付') {
+    return res.status(409).json({ error: '只有可交付任务才记录交付步骤' });
+  }
+  try {
+    requireQueueHeadForSlot(req, slot, '记录交付步骤');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
+  const view = deliveryViewForSlot(slot);
+  const current = Array.isArray(slot.handoffDone) ? slot.handoffDone : [];
+  const incoming = Array.isArray(req.body?.handoffDone)
+    ? req.body.handoffDone
+    : (req.body?.step ? [...current, req.body.step] : current);
+  const guard = deliveryHandoffProgressGuard(slot, incoming, view);
+  if (!guard.ok) {
+    return res.status(409).json({ error: `交付步骤不能保存：${guard.missing.map((item) => item.label).join('、')}` });
+  }
+  run('UPDATE plan_slots SET handoff_done = ?, updated_at = ? WHERE id = ?', [JSON.stringify(guard.completedKeys), now(), slot.id]);
+  res.json({
+    slot: slotById(slot.id),
+    handoffDone: guard.completedKeys,
+    required: guard.required,
+    missing: guard.missing
+  });
 });
 
 app.post('/api/image-tasks', (req, res) => {

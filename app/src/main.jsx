@@ -1669,12 +1669,17 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const [view, setView] = useState(null);
   const [error, setError] = useState('');
   const [handoffDone, setHandoffDone] = useState(() => new Set());
+  const [handoffError, setHandoffError] = useState('');
   useEffect(() => {
     let alive = true;
     setHandoffDone(new Set());
+    setHandoffError('');
     request(`/slots/${slot.id}/delivery-view`)
       .then((data) => {
-        if (alive) setView(data);
+        if (alive) {
+          setView(data);
+          setHandoffDone(new Set(data.handoffDone || []));
+        }
       })
       .catch((err) => {
         if (alive) setError(err.message);
@@ -1717,9 +1722,26 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
     if (handoffStepEnabled(key)) return '';
     return nextHandoffStep ? `先完成：${nextHandoffStep.label}` : '';
   };
-  const markHandoffDone = (key) => {
+  const markHandoffDone = async (key) => {
     if (!key || !handoffStepEnabled(key)) return;
-    setHandoffDone((prev) => new Set([...prev, key]));
+    const previous = new Set(handoffDone);
+    const next = new Set([...previous, key]);
+    setHandoffDone(next);
+    setHandoffError('');
+    if (!copyAllowed) return;
+    try {
+      const result = await request(`/slots/${view.slot.id}/handoff`, {
+        method: 'PATCH',
+        body: JSON.stringify({ handoffDone: Array.from(next) })
+      });
+      setHandoffDone(new Set(result.handoffDone || Array.from(next)));
+      if (result.slot) {
+        setView((current) => current ? { ...current, slot: result.slot, handoffDone: result.handoffDone || Array.from(next) } : current);
+      }
+    } catch (err) {
+      setHandoffDone(previous);
+      setHandoffError(`这一步没有保存：${err.message}`);
+    }
   };
   const handoffReady = copyAllowed && !missingMedia && missingHandoffSteps.length === 0;
   const handoffGuardText = handoffReady
@@ -1822,7 +1844,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       <div className="modalActions">
         {copyAllowed && (
           <div className={`handoffGuard ${handoffReady ? 'ready' : ''}`}>
-            {handoffGuardText}
+            {handoffError || handoffGuardText}
           </div>
         )}
         <button onClick={onClose}>关闭</button>
@@ -1941,7 +1963,7 @@ function TextPanel({ title, text, onCopy, copyable = true, completeKey = '', com
   async function handleCopy() {
     if (!enabled) return;
     await onCopy(text, `${title}已复制`);
-    onComplete?.(completeKey);
+    await onComplete?.(completeKey);
   }
   return (
     <div className="textPanel">

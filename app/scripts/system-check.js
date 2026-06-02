@@ -548,6 +548,20 @@ if (mainSource.includes('deliveryRequiredSteps') && mainSource.includes('handoff
 else fail('交付弹窗仍可跳过复制下载步骤直接标记派发');
 
 if (
+  dbSource.includes('handoff_done TEXT')
+  && serverSource.includes("app.patch('/api/slots/:id/handoff'")
+  && serverSource.includes('deliveryHandoffProgressGuard')
+  && serverSource.includes('completedHandoff = req.body?.handoffDone || req.body?.deliveryChecklist || slot.handoffDone')
+  && mainSource.includes('setHandoffDone(new Set(data.handoffDone || []))')
+  && mainSource.includes('/slots/${view.slot.id}/handoff')
+  && readmeSource.includes('关窗重开仍从上次位置继续')
+  && sopSource.includes('关窗重开仍从上次位置继续')
+  && smokeSource.includes('delivery view did not restore persisted handoff progress after reopening')
+  && smokeSource.includes('sent delivery did not keep persisted handoff history')
+) ok('交付步骤进度会落库，关窗重开不需要重复复制或下载');
+else fail('交付步骤仍只存在前端状态，关窗重开可能导致重复发送');
+
+if (
   mainSource.includes('const missingMedia = mediaFiles.length === 0')
   && mainSource.includes('还差：本次可发送图片或视频')
   && serverSource.includes("label: '本次可发送图片或视频'")
