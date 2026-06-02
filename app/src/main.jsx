@@ -1589,14 +1589,27 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
   const mediaFiles = view.mediaFiles || [];
   const imageFiles = mediaFiles.filter((item) => item.kind === '图片');
   const videoFiles = mediaFiles.filter((item) => item.kind === '视频');
+  const steps = deliverySteps(view, mediaFiles.length);
   return (
     <Modal title="交付内容" onClose={onClose}>
       <div className="deliveryHeader">
         <div>
-          <strong>发给：{view.case?.weixinNick || '未命名兼职'}</strong>
-          <span>账号：{view.case?.douyinId || '未填抖音号'}｜{view.slot.contentKind}</span>
+          <strong>当前只发给：{view.case?.weixinNick || '未命名兼职'}</strong>
+          <span>{view.slot.date} {view.slot.timeWindow || '全天'}｜{view.slot.contentKind}｜账号：{view.case?.douyinId || '未填抖音号'}</span>
         </div>
         <span className={`status ${statusClass(view.slot.status)}`}>{view.slot.status}</span>
+      </div>
+
+      <div className="handoffSteps">
+        {steps.map((item) => (
+          <div className="handoffStep" key={item.label}>
+            <span>{item.order}</span>
+            <div>
+              <strong>{item.label}</strong>
+              <small>{item.detail}</small>
+            </div>
+          </div>
+        ))}
       </div>
 
       {texts.blockedNote && (
@@ -1678,6 +1691,48 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
       </div>
     </Modal>
   );
+}
+
+function deliverySteps(view, mediaCount) {
+  const steps = [
+    {
+      order: '1',
+      label: '先确认微信对象',
+      detail: `只发给 ${view.case?.weixinNick || '未命名兼职'}，不要切到下一个账号。`
+    },
+    {
+      order: '2',
+      label: '复制发给兼职文案',
+      detail: '这段是微信里的任务说明，不发到抖音。'
+    },
+    {
+      order: '3',
+      label: '复制抖音发布文案',
+      detail: '这段给兼职发布抖音，第一行默认做标题。'
+    },
+    {
+      order: '4',
+      label: view.isVideo ? '下载或发送视频素材' : '下载或发送图片素材',
+      detail: mediaCount ? `按页面顺序发送 ${mediaCount} 个素材。` : '没有素材时不要派发，先补素材。'
+    }
+  ];
+  if (view.texts?.freelancerGuide) {
+    steps.splice(1, 0, {
+      order: '首次',
+      label: '第一次先发兼职须知',
+      detail: '同一个兼职以前发过就不用重复发。'
+    });
+  }
+  steps.push({
+    order: String(steps.length + 1),
+    label: view.slot.status === '已派发' ? '确认完成后收尾' : '发完微信后标记已派发',
+    detail: view.slot.status === '已派发' ? '兼职确认发布或剪辑交付后，点“标记完成”。' : '按钮只用于当前这个交付内容，点完会从队列里消失。'
+  });
+  let number = 0;
+  return steps.map((item) => ({
+    ...item,
+    order: item.order === '首次' ? '首次' : String(++number)
+  }));
 }
 
 function TextPanel({ title, text, onCopy, copyable = true }) {

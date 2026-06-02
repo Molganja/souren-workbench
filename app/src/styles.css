@@ -432,6 +432,48 @@ button.activeSmall {
   margin-top: 4px;
 }
 
+.handoffSteps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.handoffStep {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-height: 84px;
+}
+
+.handoffStep > span {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.handoffStep strong,
+.handoffStep small {
+  display: block;
+}
+
+.handoffStep small {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .deliveryTextGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1253,6 +1295,9 @@ textarea {
   .hero, .caseHeader, .taskRow, .priorityRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow {
     grid-template-columns: 1fr;
   }
+  .handoffSteps {
+    grid-template-columns: 1fr 1fr;
+  }
   .stats, .draftGrid {
     grid-template-columns: 1fr 1fr;
   }
@@ -1280,6 +1325,9 @@ textarea {
     padding: 12px;
   }
   .stats, .draftGrid, .formGrid {
+    grid-template-columns: 1fr;
+  }
+  .handoffSteps {
     grid-template-columns: 1fr;
   }
 }
