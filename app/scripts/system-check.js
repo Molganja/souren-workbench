@@ -155,6 +155,17 @@ if (
 ) ok('今日队列由后端单一真源排序，前端不再重复拼队列');
 else fail('今日队列前后端仍可能各自排序，导致队首不一致');
 
+if (
+  serverSource.includes("pendingGenerate: dueSlots.filter((s) => s.status === '待生成').map(withCase)")
+  && serverSource.includes("readyDelivery: dueSlots.filter((s) => s.status === '可交付').map(withCase)")
+  && serverSource.includes('imageTasks: openImageTasks\n      .map')
+  && serverSource.includes('clipTasks: openClipTasks\n      .map')
+  && !serverSource.includes("pendingGenerate: dueSlots.filter((s) => s.status === '待生成').slice")
+  && !serverSource.includes("readyDelivery: dueSlots.filter((s) => s.status === '可交付').slice")
+  && smokeSource.includes('dashboard ready delivery queue was truncated before 35 items')
+) ok('今日操作队列不按 20/30 条截断，可覆盖上百账号');
+else fail('今日操作队列仍可能被服务端截断，管理上百账号时会漏任务');
+
 if (mainSource.includes('focusMeta') && mainSource.includes('微信：') && mainSource.includes('抖音：') && mainSource.includes('项目：')) ok('队首任务直接显示当前收件账号');
 else fail('队首任务缺少收件账号信息');
 

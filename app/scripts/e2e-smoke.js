@@ -1590,6 +1590,21 @@ async function main() {
     assert(analyzedViral.title === '分析后的爆款链接' && analyzedViral.category === '情绪' && analyzedViral.forbiddenPersonas.length === 1, 'viral analysis writeback failed');
     const analyzedBulk = await api(`/viral-templates/${analyzedViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-05' }) });
     assert(analyzedBulk.createdCount >= 1, 'analyzed viral link did not generate filtered slots');
+    for (let i = 0; i < 35; i += 1) {
+      await api(`/cases/${caze.id}/slots`, {
+        method: 'POST',
+        body: JSON.stringify({
+          date: '2026-06-02',
+          contentKind: '日常养号',
+          stage: '起号期',
+          goal: `百人队列可交付覆盖 ${i + 1}`,
+          status: '可交付'
+        })
+      });
+    }
+    const largeQueueDashboard = await api('/dashboard');
+    assert(largeQueueDashboard.readyDelivery.length >= 35, 'dashboard ready delivery queue was truncated before 35 items');
+    assert(largeQueueDashboard.priorityActions.filter((item) => item.kind === '微信交付').length >= 35, 'backend priority queue omitted delivery items beyond old page limit');
 
     const review = await api('/review');
     assert(review.totals.cases === 4, 'review case total invalid');

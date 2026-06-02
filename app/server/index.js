@@ -2959,8 +2959,7 @@ function monitorActionQueue(monitor = {}) {
     }
   });
   return actions
-    .sort((a, b) => b.priority - a.priority)
-    .slice(0, 40);
+    .sort((a, b) => b.priority - a.priority);
 }
 
 function createMonitorActionSlot(input = {}) {
@@ -3898,13 +3897,11 @@ function dashboard() {
       };
     })
     .filter((item) => ['待同步', '目录不可用'].includes(item.status))
-    .sort((a, b) => b.unsyncedCount - a.unsyncedCount)
-    .slice(0, 30);
+    .sort((a, b) => b.unsyncedCount - a.unsyncedCount);
   const intakeIssueRows = cases
     .filter((caze) => !pausedCaseIds.has(caze.id))
     .map(caseIntakeIssue)
-    .filter(Boolean)
-    .slice(0, 30);
+    .filter(Boolean);
   const caseHealthRows = cases.map((caze) => {
     const caseSlots = slots.filter((s) => s.caseId === caze.id);
     const caseAssets = assets.filter((a) => a.caseId === caze.id);
@@ -3970,15 +3967,13 @@ function dashboard() {
       blocked: dueSlots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
     },
     todaySlots: dueSlots.map(withCase),
-    pendingGenerate: dueSlots.filter((s) => s.status === '待生成').slice(0, 30).map(withCase),
-    pendingChoose: dueSlots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
-    readyDelivery: dueSlots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
-    sentWaitDone: dueSlots.filter((s) => s.status === '已派发').slice(0, 60).map(withCase),
+    pendingGenerate: dueSlots.filter((s) => s.status === '待生成').map(withCase),
+    pendingChoose: dueSlots.filter((s) => s.status === '候选待选').map(withCase),
+    readyDelivery: dueSlots.filter((s) => s.status === '可交付').map(withCase),
+    sentWaitDone: dueSlots.filter((s) => s.status === '已派发').map(withCase),
     imageTasks: openImageTasks
-      .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     clipTasks: openClipTasks
-      .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
     intakeIssues: intakeIssueRows,
