@@ -300,6 +300,10 @@ button.primary, .button.primary {
   justify-self: start;
 }
 
+.compactActions {
+  justify-content: flex-start;
+}
+
 .flowCard {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1038,6 +1042,24 @@ textarea {
   color: var(--blue);
   text-decoration: none;
   font-weight: 650;
+}
+
+.inlineSectionHead {
+  margin: 14px 0 10px;
+}
+
+.videoIngestList {
+  display: grid;
+  gap: 10px;
+}
+
+.videoIngestCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+  display: grid;
+  gap: 10px;
 }
 
 .generatedPreview {

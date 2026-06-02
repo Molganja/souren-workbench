@@ -477,6 +477,32 @@ async function main() {
     const detailAfterIngest = await api(`/cases/${caze.id}`);
     assert(detailAfterIngest.monitor.latestSnapshot.fans === 100, 'case monitor latest snapshot missing');
     assert(detailAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 8000), 'case video metrics missing');
+    const manualWebIngest = await api('/douyin-monitor/ingest', {
+      method: 'POST',
+      body: JSON.stringify({
+        caseId: minimalCase.id,
+        collectedAt: '2026-06-01T13:00:00.000Z',
+        source: 'manual-web',
+        account: { fans: 88, following: 18, totalLikes: 320, totalWorks: 1 },
+        videos: [
+          {
+            url: 'https://www.douyin.com/video/manual-web-smoke',
+            title: '网页表单回填作品',
+            publishTime: '2026-06-01',
+            plays: 1200,
+            likes: 44,
+            comments: 8,
+            shares: 2,
+            favorites: 3
+          }
+        ],
+        note: '网页表单回填验收'
+      })
+    });
+    assert(manualWebIngest.accountSnapshot?.fans === 88, 'manual web ingest missing account snapshot');
+    const minimalAfterIngest = await api(`/cases/${minimalCase.id}`);
+    assert(minimalAfterIngest.monitor.latestSnapshot.fans === 88, 'manual web ingest latest snapshot missing');
+    assert(minimalAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 1200), 'manual web ingest video metrics missing');
     await api(`/viral-alerts/${ingested.viralAlerts[0].id}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'handled', interactionNote: '烟测已安排互动' })
@@ -518,9 +544,9 @@ async function main() {
 
     const exported = await api('/export');
     assert(exported.cases.length === 3, 'export missing cases');
-    assert(exported.accountSnapshots.length === 1, 'export missing account snapshots');
-    assert(exported.douyinVideos.length === 1, 'export missing douyin videos');
-    assert(exported.videoSnapshots.length === 1, 'export missing video snapshots');
+    assert(exported.accountSnapshots.length === 2, 'export missing account snapshots');
+    assert(exported.douyinVideos.length === 2, 'export missing douyin videos');
+    assert(exported.videoSnapshots.length === 2, 'export missing video snapshots');
     assert(exported.viralAlerts.length === 1, 'export missing viral alerts');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
@@ -543,10 +569,10 @@ async function main() {
     assert(afterBadImportCases.length === 3, 'bad import changed existing cases');
     const review = await api('/review');
     assert(review.totals.cases === 3, 'review case total invalid');
-    assert(review.totals.accountSnapshots === 1, 'review account snapshot total invalid');
-    assert(review.totals.videoSnapshots === 1, 'review video snapshot total invalid');
+    assert(review.totals.accountSnapshots === 2, 'review account snapshot total invalid');
+    assert(review.totals.videoSnapshots === 2, 'review video snapshot total invalid');
     assert(review.contentKindStats.some((item) => item.kind === '爆款提权' && item.total >= 1), 'review content kind stats missing');
-    assert(review.topAccounts.length === 1, 'review top account missing');
+    assert(review.topAccounts.length >= 2, 'review top account missing');
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');
