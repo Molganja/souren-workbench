@@ -4320,6 +4320,8 @@ app.patch('/api/cases/:id', (req, res) => {
     const nextSourceMaterialDir = body.sourceMaterialDir !== undefined || body.source_material_dir !== undefined
       ? normalizeSourceMaterialDir(body.sourceMaterialDir ?? body.source_material_dir)
       : caze.sourceMaterialDir;
+    const existingSourceCase = get('SELECT id, weixin_nick FROM cases WHERE source_material_dir = ? AND id != ?', [nextSourceMaterialDir, caze.id]);
+    if (existingSourceCase) return res.status(409).json({ error: `共享原始素材路径已经登记到「${existingSourceCase.weixin_nick}」` });
     const nextHealthStatus = body.healthStatus ?? caze.healthStatus;
     run(
       `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,

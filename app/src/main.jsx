@@ -2418,8 +2418,28 @@ function CaseForm({ initial, onClose, onSubmit }) {
     project: initial?.project || '吸脂',
     sourceMaterialDir: initial?.sourceMaterialDir || ''
   }));
+  const [sourceChoicesOpen, setSourceChoicesOpen] = useState(false);
+  const [sourceChoicesLoading, setSourceChoicesLoading] = useState(false);
+  const [sourceChoices, setSourceChoices] = useState(null);
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+  async function loadSourceChoices() {
+    setSourceChoicesOpen(true);
+    setSourceChoicesLoading(true);
+    try {
+      setSourceChoices(await request('/case-library'));
+    } finally {
+      setSourceChoicesLoading(false);
+    }
+  }
+  function useSourceCandidate(item) {
+    setForm((prev) => ({
+      ...prev,
+      sourceMaterialDir: item.sourceMaterialDir,
+      project: prev.project.trim() ? prev.project : (item.project || '吸脂'),
+      weixinNick: prev.weixinNick.trim() ? prev.weixinNick : (item.suggestedWeixinNick || item.name || '')
+    }));
   }
   function submit() {
     onSubmit({
@@ -2430,6 +2450,8 @@ function CaseForm({ initial, onClose, onSubmit }) {
     });
   }
   const caseFormMissingRequired = !form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim();
+  const sourceCandidates = sourceChoices?.candidates || [];
+  const visibleSourceCandidates = sourceCandidates.slice(0, 30);
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
       <div className="hintBox">{isCreate ? '新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。四项都必须填，系统会自动建立目录、近期排期和采集链路。' : '编辑时只改账号必需信息：微信、抖音、项目和共享素材路径。四项都必须填，其余内容由系统自动维护。'}</div>
@@ -2438,6 +2460,39 @@ function CaseForm({ initial, onClose, onSubmit }) {
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
         <label className="wide">项目<input value={form.project} onChange={(e) => update('project', e.target.value)} placeholder="例如：吸脂 / 复诊 / 其他项目" /></label>
         <label className="wide">共享原始素材路径<input value={form.sourceMaterialDir} onChange={(e) => update('sourceMaterialDir', e.target.value)} placeholder="工作人员在共享盘/服务器里放素材的目录路径" /></label>
+        <div className="sourcePicker wide">
+          <div className="sourcePickerHead">
+            <span>服务器案例目录</span>
+            <button type="button" onClick={loadSourceChoices}>{sourceChoicesOpen ? '重新扫描' : '选择服务器案例目录'}</button>
+          </div>
+          {sourceChoicesOpen && (
+            <div className="sourcePickerBody">
+              <small>从服务器案例库里选目录后，会自动填入共享原始素材路径；已绑定其他账号的目录不能重复使用。</small>
+              {sourceChoicesLoading ? <div className="empty compactEmpty">扫描中</div> : visibleSourceCandidates.length === 0 ? (
+                <div className="empty compactEmpty">没有扫到可选目录。先把素材文件夹放到服务器案例库根目录。</div>
+              ) : (
+                <div className="sourceChoiceList">
+                  {visibleSourceCandidates.map((item) => {
+                    const usedByOther = item.alreadyRegistered && item.caseId !== initial?.id;
+                    const selected = item.sourceMaterialDir === form.sourceMaterialDir;
+                    return (
+                      <div className={`sourceChoice ${selected ? 'selected' : ''}`} key={item.sourceMaterialDir}>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <span>{item.project} · 图片 {item.imageCount} · 视频 {item.videoCount} · 文案 {item.textCount}</span>
+                          <small>{item.relativePath}</small>
+                        </div>
+                        <button type="button" disabled={usedByOther || selected} onClick={() => useSourceCandidate(item)}>
+                          {selected ? '已选择' : (usedByOther ? `已绑定${item.weixinNick ? `给${item.weixinNick}` : ''}` : '选这个目录')}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>

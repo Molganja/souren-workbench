@@ -1426,6 +1426,79 @@ label.wide {
   grid-column: 1 / -1;
 }
 
+.sourcePicker {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 10px;
+}
+
+.sourcePickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.sourcePickerBody {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.sourcePickerBody > small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.sourceChoiceList {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.sourceChoice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px;
+  background: #fff;
+}
+
+.sourceChoice.selected {
+  border-color: var(--blue);
+  background: #eff6ff;
+}
+
+.sourceChoice div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sourceChoice strong,
+.sourceChoice span,
+.sourceChoice small {
+  overflow-wrap: anywhere;
+}
+
+.sourceChoice span,
+.sourceChoice small {
+  color: var(--muted);
+}
+
+.compactEmpty {
+  padding: 10px;
+}
+
 label.checkLine {
   display: flex;
   align-items: center;

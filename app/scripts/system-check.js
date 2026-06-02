@@ -548,8 +548,14 @@ else fail('交付后仍可能重生成交付或改候选');
 if (serverSource.includes('canPatchSlotStatus') && serverSource.includes("nextStatus === '异常'") && mainSource.includes('canMarkException') && mainSource.includes("['待生成', '候选待选', '已锁定', '素材阻塞'].includes(slot.status)")) ok('交付链路状态不能被异常按钮打回');
 else fail('交付链路仍可能被直接改成异常');
 
-if (serverSource.includes('const nextSourceMaterialDir') && serverSource.includes('normalizeSourceMaterialDir(body.sourceMaterialDir') && smokeSource.includes('case edit allowed a missing shared source directory')) ok('编辑案例时明确提交共享素材路径也会校验目录');
-else fail('编辑案例仍可能保存不存在的共享素材路径');
+if (
+  serverSource.includes('const nextSourceMaterialDir')
+  && serverSource.includes('normalizeSourceMaterialDir(body.sourceMaterialDir')
+  && serverSource.includes('existingSourceCase')
+  && smokeSource.includes('case edit allowed a missing shared source directory')
+  && smokeSource.includes('case edit allowed a shared source directory already bound to another account')
+) ok('编辑案例时明确提交共享素材路径会校验目录并拒绝重复绑定');
+else fail('编辑案例仍可能保存不存在或已绑定到其他账号的共享素材路径');
 
 if (
   serverSource.includes('const nextWeixinNick') &&
@@ -585,7 +591,20 @@ const oldDeletedDirMarker = '_' + 'deleted';
 if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地素材副本也会同步删除')) ok('删除案例会同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
-if (mainSource.includes('新建时只填四项') && mainSource.includes('caseFormMissingRequired') && !mainSource.includes('disabled={isCreate &&') && !mainSource.includes('RANDOM_CASE_PROFILES') && !mainSource.includes('randomCaseDefaults') && !mainSource.includes('随机换一组') && !mainSource.includes('douyinId: initial') && mainSource.includes("!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim()")) ok('新建和编辑案例前端只保留四项录入，并要求微信、抖音、项目和共享素材路径');
+if (
+  mainSource.includes('新建时只填四项')
+  && mainSource.includes('caseFormMissingRequired')
+  && !mainSource.includes('disabled={isCreate &&')
+  && !mainSource.includes('RANDOM_CASE_PROFILES')
+  && !mainSource.includes('randomCaseDefaults')
+  && !mainSource.includes('随机换一组')
+  && !mainSource.includes('douyinId: initial')
+  && mainSource.includes("!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim()")
+  && mainSource.includes('选择服务器案例目录')
+  && mainSource.includes("request('/case-library')")
+  && mainSource.includes('useSourceCandidate')
+  && mainSource.includes('已绑定其他账号的目录不能重复使用')
+) ok('新建和编辑案例前端只保留四项录入，并可从服务器案例目录选择共享素材路径');
 else fail('新建案例仍暴露随机人设选择或允许缺少微信名');
 
 if (

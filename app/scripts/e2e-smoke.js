@@ -704,6 +704,21 @@ async function main() {
       duplicateLibraryRejected = /已经登记/.test(error.message);
     }
     assert(duplicateLibraryRejected, 'case library allowed duplicate source directory');
+    let duplicateSourceEditRejected = false;
+    try {
+      await api(`/cases/${caze.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          weixinNick: caze.weixinNick,
+          douyinUrl: caze.douyinUrl,
+          project: caze.project,
+          sourceMaterialDir: libraryCaseDir
+        })
+      });
+    } catch (error) {
+      duplicateSourceEditRejected = /已经登记/.test(error.message);
+    }
+    assert(duplicateSourceEditRejected, 'case edit allowed a shared source directory already bound to another account');
     const validationDir = makeSharedSourceDir(ROOT_DIR, '字段校验');
     let missingWeixinRejected = false;
     try {
