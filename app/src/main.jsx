@@ -222,7 +222,6 @@ function App() {
     </div>
   );
   const canUseWorkbench = session ? (!session.authRequired || session.authenticated) : false;
-  const canOpenLocalPaths = Boolean(session?.canOpenLocalPaths);
   const activeQueueItem = dashboard ? firstPriorityAction(dashboard) : null;
 
   return (
@@ -242,19 +241,19 @@ function App() {
           <AccessGate session={session} onLogin={(code) => act(() => login(code), '已进入工作台')} />
         )}
         {!loading && canUseWorkbench && view === 'dashboard' && dashboard && (
-          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} onClipTask={setClipTaskOpen} canOpenLocalPaths={canOpenLocalPaths} />
+          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} onClipTask={setClipTaskOpen} />
         )}
         {!loading && canUseWorkbench && view === 'review' && review && (
           <ReviewView data={review} onOpenCase={openCase} />
         )}
         {!loading && canUseWorkbench && view === 'schedule' && schedule && (
-          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} activeQueueItem={activeQueueItem} />
+          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} activeQueueItem={activeQueueItem} />
         )}
         {!loading && canUseWorkbench && view === 'cases' && (
-          <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} canOpenLocalPaths={canOpenLocalPaths} />
+          <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
         )}
         {!loading && canUseWorkbench && view === 'case' && caseDetail && (
-          <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} onDelivery={setDeliverySlotOpen} onClipTask={setClipTaskOpen} canOpenLocalPaths={canOpenLocalPaths} activeQueueItem={activeQueueItem} />
+          <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} onDelivery={setDeliverySlotOpen} onClipTask={setClipTaskOpen} activeQueueItem={activeQueueItem} />
         )}
         {!loading && canUseWorkbench && view === 'viral' && (
           <ViralView
@@ -264,7 +263,7 @@ function App() {
           />
         )}
         {!loading && canUseWorkbench && view === 'settings' && config && (
-          <SettingsView config={config} onAct={act} canOpenLocalPaths={canOpenLocalPaths} />
+          <SettingsView config={config} onAct={act} />
         )}
       </main>
       {caseFormOpen && (
@@ -321,7 +320,7 @@ function App() {
   );
 }
 
-function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask, canOpenLocalPaths }) {
+function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask }) {
   const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
   const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
   const priorityActions = buildPriorityActions(data, strategyActions);
@@ -348,7 +347,6 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask, canOpenLoc
         onAct={onAct}
         onDelivery={onDelivery}
         onClipTask={onClipTask}
-        canOpenLocalPaths={canOpenLocalPaths}
       />
 
       <WaitingConfirmSection
@@ -614,7 +612,7 @@ function buildWaitingConfirmActions(data = {}) {
     }));
 }
 
-function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTask, canOpenLocalPaths }) {
+function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTask }) {
   const activeItem = items[0];
   const queuedItems = items.slice(1);
   return (
@@ -645,7 +643,6 @@ function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTas
               onAct={onAct}
               onDelivery={onDelivery}
               onClipTask={onClipTask}
-              canOpenLocalPaths={canOpenLocalPaths}
             />
           </div>
           {queuedItems.length > 0 && (
@@ -709,7 +706,7 @@ function PriorityFocusMeta({ caze }) {
   );
 }
 
-function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, onClipTask, canOpenLocalPaths }) {
+function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, onClipTask }) {
   if (item.alert) {
     return (
       <div className="rowActions">
@@ -781,7 +778,6 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, onClipTask
           (result) => `已同步共享素材：复制 ${result.copied} 个，新增 ${result.inserted} 个`
         )}>同步素材</button>}
         <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
-        {canOpenLocalPaths && item.materialSync.sourceDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.materialSync.sourceDir }) }), '已打开共享目录')}>打开共享目录</button>}
       </div>
     );
   }
@@ -1028,7 +1024,7 @@ function caseAccountLine(caze = {}) {
   ].filter(Boolean).join(' · ');
 }
 
-function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths, activeQueueItem }) {
+function ScheduleView({ data, onOpenCase, onAct, onDelivery, activeQueueItem }) {
   const [range, setRange] = useState('14');
   const [status, setStatus] = useState('全部状态');
   const [kind, setKind] = useState('全部内容');
@@ -1090,7 +1086,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths, 
           <div className="sectionHead"><h2>{date}</h2><span>{items.length} 条</span></div>
           <div className="taskList">
             {items.map((slot) => (
-              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} activeQueueItem={activeQueueItem} />
+              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onDelivery={onDelivery} activeQueueItem={activeQueueItem} />
             ))}
           </div>
         </section>
@@ -1099,7 +1095,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths, 
   );
 }
 
-function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, canOpenLocalPaths, activeQueueItem }) {
+function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, activeQueueItem }) {
   const caze = slot.case || {};
   const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, slot);
   const hasQueueAction = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发'].includes(slot.status);
@@ -1123,7 +1119,6 @@ function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, canOpenLocalPaths, a
         {isActiveQueueSlot && slot.status === '候选待选' && <button onClick={() => caze.id && onOpenCase(caze.id)}>去选择</button>}
         {isActiveQueueSlot && ['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
         {isActiveQueueSlot && slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
-        {isActiveQueueSlot && canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
         {!isActiveQueueSlot && hasQueueAction && <span className="lockedNote">排到今日队列队首后处理</span>}
       </div>
     </div>
@@ -1145,7 +1140,7 @@ function Metric({ label, value }) {
   );
 }
 
-function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths }) {
+function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
   const [query, setQuery] = useState('');
   const [healthFilter, setHealthFilter] = useState('全部状态');
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -1189,7 +1184,6 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
             onRegister={setRegisterCandidate}
             onOpenCase={onOpenCase}
             onAct={onAct}
-            canOpenLocalPaths={canOpenLocalPaths}
           />
         )}
         <div className="filters">
@@ -1235,7 +1229,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
   );
 }
 
-function CaseLibraryPanel({ library, loading, onReload, onRegister, onOpenCase, onAct, canOpenLocalPaths }) {
+function CaseLibraryPanel({ library, loading, onReload, onRegister, onOpenCase }) {
   const candidates = library?.candidates || [];
   const pending = candidates.filter((item) => !item.alreadyRegistered);
   return (
@@ -1249,7 +1243,6 @@ function CaseLibraryPanel({ library, loading, onReload, onRegister, onOpenCase, 
           <span>{library?.root || '未扫描'}</span>
           <div className="inlineActions">
             <button onClick={onReload}>{loading ? '扫描中' : '刷新'}</button>
-            {canOpenLocalPaths && library?.root && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: library.root }) }), '已打开服务器案例库根目录')}>打开根目录</button>}
           </div>
         </div>
         <div className="templateRow">
@@ -1274,7 +1267,6 @@ function CaseLibraryPanel({ library, loading, onReload, onRegister, onOpenCase, 
                 ) : (
                   <button className="primary" onClick={() => onRegister(item)}>登记案例</button>
                 )}
-                {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.sourceMaterialDir }) }), '已打开服务器案例目录')}>打开目录</button>}
               </div>
             </div>
           ))}
@@ -1377,7 +1369,7 @@ function caseCanResume(caze = {}) {
   return ['失联暂停', '已放弃', '停用'].includes(caze.healthStatus);
 }
 
-function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, canOpenLocalPaths, activeQueueItem }) {
+function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueueItem }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], monitor = {}, videos = [], viralAlerts = [], metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const canRunMaterialActions = activeQueueMatchesCaseMaterial(activeQueueItem, caze);
@@ -1417,8 +1409,6 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, canOpenLoca
           )}>同步共享素材</button>}
           {canRunMaterialActions && <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>}
           {!canRunMaterialActions && <span className="lockedNote">素材动作排到今日队列队首后处理</span>}
-          {canOpenLocalPaths && caze.sourceMaterialDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.sourceMaterialDir }) }), '已打开共享素材目录')}>打开共享目录</button>}
-          {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>}
           {caseCanResume(caze) && <button className="primary" onClick={() => onAct(
             () => request(`/cases/${caze.id}/resume`, { method: 'POST' }),
             (result) => `已恢复账号：取消旧派发 ${result.canceledCount} 条，新排期 ${result.slotsCreated} 条`
@@ -1449,7 +1439,6 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, canOpenLoca
                 caze={caze}
                 onAct={onAct}
                 onDelivery={onDelivery}
-                canOpenLocalPaths={canOpenLocalPaths}
                 activeQueueItem={activeQueueItem}
               />
             ))}
@@ -1722,7 +1711,7 @@ function deliveryResultMessage(result) {
   return '缺少素材，已打开阻塞说明';
 }
 
-function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery, canOpenLocalPaths, activeQueueItem }) {
+function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery, activeQueueItem }) {
   const selected = candidates.find((item) => item.selected);
   const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, slot);
   const hasQueueAction = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'].includes(slot.status);
@@ -1748,7 +1737,6 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
         {canCreateClipTask && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), (result) => result.alreadyExisting ? '已有剪辑任务' : '剪辑任务已创建')}>创建剪辑任务</button>}
         {existingClipTask && <span className="lockedNote">剪辑任务已建</span>}
         {isActiveQueueSlot && slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
-        {isActiveQueueSlot && canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
         {canMarkException && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
         {!isActiveQueueSlot && hasQueueAction && <span className="lockedNote">排到今日队列队首后处理</span>}
       </div>
@@ -2163,7 +2151,7 @@ function pendingViralTitle(item) {
   return item.sourceLink ? '待分析爆款链接' : (item.title || '待分析爆款链接');
 }
 
-function SettingsView({ config, onAct, canOpenLocalPaths }) {
+function SettingsView({ config, onAct }) {
   const [sharedAssets, setSharedAssets] = useState([]);
   const [sharedAssetsLoading, setSharedAssetsLoading] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState(null);
@@ -2379,7 +2367,6 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
         loading={sharedAssetsLoading}
         onReload={loadSharedAssets}
         onAct={onAct}
-        canOpenLocalPaths={canOpenLocalPaths}
       />
       <section className="panel">
         <div className="sectionHead"><h2>图片生成接口</h2></div>
@@ -2418,7 +2405,7 @@ const SHARED_ASSET_CATEGORIES = ['医院素材', '套图素材', '生活场景',
 const SHARED_ASSET_USAGES = ['合成背景', '套图参考', '通用配图', '文字卡', '通用视频'];
 const SHARED_ASSET_STATUSES = ['可用', '待处理', '需处理', '不可用'];
 
-function SharedAssetsManager({ assets, loading, onReload, onAct, canOpenLocalPaths }) {
+function SharedAssetsManager({ assets, loading, onReload, onAct }) {
   const visible = (assets || []).slice(0, 60);
   return (
     <section className="panel">
@@ -2469,7 +2456,6 @@ function SharedAssetsManager({ assets, loading, onReload, onAct, canOpenLocalPat
                 </div>
                 <div className="inlineActions compactActions">
                   {asset.url && <a className="button" href={asset.url} download>{asset.kind === '视频' ? '下载视频' : '下载素材'}</a>}
-                  {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: asset.path }) }), '已打开通用素材')}>打开素材</button>}
                 </div>
               </div>
             </div>

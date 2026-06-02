@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { execFile } from 'node:child_process';
 import {
   CASE_LIBRARY_ROOT,
   DATA_DIR,
@@ -78,7 +77,6 @@ const CANDIDATE_SELECT_STATUSES = ['候选待选'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
-const ALLOWED_OPEN_ROOTS = [ROOT_DIR, SHARED_MATERIAL_ROOT, CASE_LIBRARY_ROOT];
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
 const OPEN_COLLECTION_STATUSES = ['waiting_chrome'];
@@ -190,7 +188,6 @@ function authSession(req) {
     authRequired: Boolean(ACCESS_CODE),
     authenticated: hasValidAccess(req),
     localRequest: isLoopbackRequest(req),
-    canOpenLocalPaths: isLoopbackRequest(req),
     localBypassActive: Boolean(ACCESS_CODE && AUTH_LOCAL_BYPASS && isLoopbackRequest(req)),
     network: networkSettings()
   };
@@ -621,19 +618,6 @@ function rowViralAlert(row) {
   };
 }
 
-function assertInsideRoot(targetPath) {
-  const resolved = path.resolve(targetPath);
-  const caseSourceRoots = all("SELECT source_material_dir FROM cases WHERE source_material_dir IS NOT NULL AND TRIM(source_material_dir) != ''")
-    .map((row) => path.resolve(row.source_material_dir));
-  const ok = [...ALLOWED_OPEN_ROOTS, ...caseSourceRoots].some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
-  if (!ok) {
-    const err = new Error('path is outside allowed workspace');
-    err.status = 400;
-    throw err;
-  }
-  return resolved;
-}
-
 function assertInsideMaterialRoot(targetPath) {
   const resolved = path.resolve(targetPath);
   if (resolved !== MATERIAL_ROOT && !resolved.startsWith(`${MATERIAL_ROOT}${path.sep}`)) {
@@ -642,12 +626,6 @@ function assertInsideMaterialRoot(targetPath) {
     throw err;
   }
   return resolved;
-}
-
-function openLocalPath(target, callback) {
-  if (process.platform === 'darwin') return execFile('open', [target], callback);
-  if (process.platform === 'win32') return execFile('cmd', ['/c', 'start', '', target], callback);
-  return execFile('xdg-open', [target], callback);
 }
 
 function fileUrl(filePath) {
@@ -4926,22 +4904,6 @@ app.patch('/api/assets/:id', (req, res) => {
     ]
   );
   res.json(rowAsset(get('SELECT * FROM assets WHERE id = ?', [asset.id])));
-});
-
-app.post('/api/open-path', (req, res) => {
-  try {
-    if (!isLoopbackRequest(req)) {
-      return res.status(403).json({ error: '局域网端不能打开主机本地目录，请在网页内复制、下载和标记状态' });
-    }
-    const target = assertInsideRoot(req.body?.path || ROOT_DIR);
-    if (!fs.existsSync(target)) return res.status(404).json({ error: 'path not found' });
-    openLocalPath(target, (error) => {
-      if (error) return res.status(500).json({ error: error.message });
-      res.json({ opened: target });
-    });
-  } catch (err) {
-    res.status(err.status || 500).json({ error: err.message });
-  }
 });
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'api not found' }));

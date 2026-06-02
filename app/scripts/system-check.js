@@ -68,6 +68,17 @@ const leakedCopyLabels = nonDeliveryCopyLabels.filter((label) => mainSource.incl
 if (leakedCopyLabels.length) fail(`非交付复制按钮仍存在：${leakedCopyLabels.join('、')}`);
 else ok('复制入口只保留在交付内容弹窗');
 
+const localPathOpenLabels = ['打开目录', '打开根目录', '打开素材目录', '打开共享目录', '打开素材'];
+const leakedLocalPathOpenLabels = localPathOpenLabels.filter((label) => mainSource.includes(label));
+if (
+  !leakedLocalPathOpenLabels.length &&
+  !mainSource.includes('/open-path') &&
+  !serverSource.includes("app.post('/api/open-path'") &&
+  !serverSource.includes('canOpenLocalPaths') &&
+  !serverSource.includes('openLocalPath')
+) ok('前台和后端不再提供打开本地目录入口');
+else fail(`仍保留打开本地目录入口：${leakedLocalPathOpenLabels.join('、') || '后端残留'}`);
+
 const viralAnalysisFields = ['补分析结果', '编辑分析', '原视频内容', '适合人设关键词', '禁用人设关键词', '保存分析'];
 const leakedViralAnalysisFields = viralAnalysisFields.filter((label) => mainSource.includes(label));
 if (!mainSource.includes('onEdit={(item)') && !mainSource.includes('editingViral') && !leakedViralAnalysisFields.length && mainSource.includes('等待系统分析')) ok('爆款链接前台只收链接，不要求工作人员填写分析字段');
