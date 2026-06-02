@@ -42,6 +42,7 @@ required.forEach((file) => {
 });
 
 const mainSource = fs.readFileSync(path.join(APP_DIR, 'src', 'main.jsx'), 'utf8');
+const styleSource = fs.readFileSync(path.join(APP_DIR, 'src', 'styles.css'), 'utf8');
 const dbSource = fs.readFileSync(path.join(APP_DIR, 'server', 'db.js'), 'utf8');
 const readmeSource = [
   fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8'),
@@ -167,6 +168,9 @@ else fail('兼职须知仍可能在后续交付里重复显示');
 
 if (mainSource.includes('当前只发给') && mainSource.includes('deliverySteps') && mainSource.includes('发完微信后标记已派发')) ok('交付弹窗按单账号固定步骤防呆');
 else fail('交付弹窗缺少单账号固定步骤');
+
+if (mainSource.includes('复制口播/字幕文案') && mainSource.includes('复制剪辑要求') && mainSource.includes('固定剪辑配方，剪辑只替换素材和标题') && styleSource.includes('repeat(auto-fit, minmax(150px, 1fr))')) ok('视频交付顶部步骤和实际剪辑门禁一致');
+else fail('视频交付顶部步骤没有覆盖口播、剪辑要求或步骤布局过窄');
 
 if (mainSource.includes('deliveryRequiredSteps') && mainSource.includes('handoffReady') && mainSource.includes('missingHandoffSteps') && mainSource.includes('disabled={!handoffReady}') && mainSource.includes('handoffGuard')) ok('交付弹窗未完成复制下载步骤前不能标记派发');
 else fail('交付弹窗仍可跳过复制下载步骤直接标记派发');

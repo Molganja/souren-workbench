@@ -1877,42 +1877,51 @@ function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
   const readonlyDelivery = view.slot.status !== '可交付' || !isActiveQueueSlot;
   const steps = [
     {
-      order: '1',
       label: '先确认微信对象',
       detail: `只发给 ${view.case?.weixinNick || '未命名兼职'}，不要切到下一个账号。`
-    },
-    {
-      order: '2',
-      label: readonlyDelivery ? '确认发给兼职文案' : '复制发给兼职文案',
-      detail: readonlyDelivery ? '这段已经发过，只用于确认本次记录，不再复制发送。' : '这段是微信里的任务说明，不发到抖音。'
-    },
-    {
-      order: '3',
-      label: readonlyDelivery ? '确认抖音发布文案' : '复制抖音发布文案',
-      detail: readonlyDelivery ? '这段已经发过，只用于确认兼职发布内容。' : '这段给兼职发布抖音，第一行默认做标题。'
-    },
-    {
-      order: '4',
-      label: readonlyDelivery ? '确认素材顺序' : (view.isVideo ? '下载或发送视频素材' : '下载或发送图片素材'),
-      detail: readonlyDelivery ? `已派发素材只用于确认本次记录，本次记录 ${mediaCount} 个素材。` : (mediaCount ? `按页面顺序发送 ${mediaCount} 个素材。` : '没有素材时不要派发，先补素材。')
     }
   ];
   if (view.shouldSendFreelancerGuide && view.texts?.freelancerGuide) {
-    steps.splice(1, 0, {
-      order: '首次',
+    steps.push({
       label: '第一次先发兼职须知',
       detail: '同一个兼职以前发过就不用重复发。'
     });
   }
+  steps.push(
+    {
+      label: readonlyDelivery ? '确认发给兼职文案' : '复制发给兼职文案',
+      detail: readonlyDelivery ? '这段已经发过，只用于确认本次记录，不再复制发送。' : '这段是微信里的任务说明，不发到抖音。'
+    },
+    {
+      label: readonlyDelivery ? '确认抖音发布文案' : '复制抖音发布文案',
+      detail: readonlyDelivery ? '这段已经发过，只用于确认兼职发布内容。' : '这段给兼职发布抖音，第一行默认做标题。'
+    }
+  );
+  if (view.isVideo && view.texts?.voiceover) {
+    steps.push({
+      label: readonlyDelivery ? '确认口播/字幕文案' : '复制口播/字幕文案',
+      detail: readonlyDelivery ? '这段已经发过，只用于确认剪辑内容。' : '发给剪辑人员作为口播、字幕或旁白。'
+    });
+  }
+  if (view.isVideo && view.texts?.editBrief) {
+    steps.push({
+      label: readonlyDelivery ? '确认剪辑要求' : '复制剪辑要求',
+      detail: readonlyDelivery ? '剪辑要求已经发过，只用于确认本次记录。' : '固定剪辑配方，剪辑只替换素材和标题。'
+    });
+  }
+  steps.push(
+    {
+      label: readonlyDelivery ? '确认素材顺序' : (view.isVideo ? '下载或发送视频素材' : '下载或发送图片素材'),
+      detail: readonlyDelivery ? `已派发素材只用于确认本次记录，本次记录 ${mediaCount} 个素材。` : (mediaCount ? `按页面顺序发送 ${mediaCount} 个素材。` : '没有素材时不要派发，先补素材。')
+    }
+  );
   steps.push({
-    order: String(steps.length + 1),
     label: !isActiveQueueSlot ? '排到队首后再处理' : (view.slot.status === '已派发' ? '确认完成后收尾' : '发完微信后标记已派发'),
     detail: !isActiveQueueSlot ? '先回到今日操作队列，处理当前第一条，避免漏发、错发或重发。' : (view.slot.status === '已派发' ? '兼职确认发布或剪辑交付后，点“标记完成”。' : '按钮只用于当前这个交付内容，点完会从队列里消失。')
   });
-  let number = 0;
-  return steps.map((item) => ({
+  return steps.map((item, index) => ({
     ...item,
-    order: item.order === '首次' ? '首次' : String(++number)
+    order: String(index + 1)
   }));
 }
 
