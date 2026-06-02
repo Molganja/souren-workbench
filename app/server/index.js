@@ -1180,6 +1180,7 @@ function resumeCaseAccount(caseId) {
   const updated = caseById(caze.id);
   const postingStrategy = postingStrategyForCase(updated);
   const createdSlots = generateSlotsForCase(updated, { days: 7, startDate: today, postingStrategy });
+  const collectionQueue = registerCaseCollectionQueue([updated.id], 'case-resume');
   writeCaseManifest(updated);
   return {
     case: updated,
@@ -1187,7 +1188,8 @@ function resumeCaseAccount(caseId) {
     canceledSlots: staleSentSlots.map((slot) => ({ ...slot, status: '已取消' })),
     slotsCreated: createdSlots.length,
     createdSlots,
-    postingStrategy
+    postingStrategy,
+    collectionQueue
   };
 }
 
@@ -1366,11 +1368,13 @@ function createCaseFromLibrary(input = {}) {
   });
   const sync = syncCaseSourceMaterials(created);
   const slots = generateSlotsForCase(created, { days: 14 });
+  const collectionQueue = registerCaseCollectionQueue([created.id], 'case-library-register');
   return {
     case: { ...created, slotsCreated: slots.length },
     source: candidate,
     sync,
-    slotsCreated: slots.length
+    slotsCreated: slots.length,
+    collectionQueue
   };
 }
 
@@ -1844,10 +1848,12 @@ function createBulkCases(rows = []) {
     totalSynced += sync.inserted || 0;
     totalSlots += slots.length;
   });
+  const collectionQueue = registerCaseCollectionQueue(cases.map((item) => item.id), 'case-bulk-create');
   return {
     createdCount: cases.length,
     syncedCount: totalSynced,
     slotsCreated: totalSlots,
+    collectionQueue,
     cases,
     sync: syncResults
   };
@@ -3017,9 +3023,11 @@ function collectionPriorityFor(item = {}) {
 function chromeCollectionQueue(options = {}) {
   const includeFresh = Boolean(options.includeFresh);
   const limit = Math.max(1, Math.min(Number(options.limit) || 50, 200));
+  const caseIds = new Set((options.caseIds || []).filter(Boolean));
   const monitor = monitorData();
   const targets = monitor.accounts
     .filter((item) => item.case?.douyinUrl)
+    .filter((item) => !caseIds.size || caseIds.has(item.case?.id))
     .filter((item) => item.collectionPolicy?.intervalHours != null)
     .filter((item) => includeFresh || item.dueCollection || item.collectionQueued)
     .sort((a, b) => {
@@ -3098,6 +3106,17 @@ function registerChromeCollectionQueue(options = {}) {
     skippedQueuedCount: queue.targets.length - toRegister.length,
     monitor: monitorData()
   };
+}
+
+function registerCaseCollectionQueue(caseIds = [], source = 'case-intake') {
+  const ids = Array.from(new Set(caseIds.filter(Boolean)));
+  if (!ids.length) return null;
+  return registerChromeCollectionQueue({
+    includeFresh: true,
+    limit: ids.length,
+    caseIds: ids,
+    source
+  });
 }
 
 function agentWorkQueue() {
@@ -3950,7 +3969,8 @@ app.post('/api/cases', (req, res) => {
     const created = createCaseFromBody(body);
     const sync = syncCaseSourceMaterials(created);
     const slots = generateSlotsForCase(created, { days: 14 });
-    res.json({ ...created, sync, slotsCreated: slots.length });
+    const collectionQueue = registerCaseCollectionQueue([created.id], 'case-create');
+    res.json({ ...created, sync, slotsCreated: slots.length, collectionQueue });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -3999,8 +4019,9 @@ app.patch('/api/cases/:id', (req, res) => {
     );
     const updated = caseById(req.params.id);
     const pauseMaintenance = caseIsPaused(updated) ? pauseCaseWork(updated) : null;
+    const collectionQueue = pauseMaintenance ? null : registerCaseCollectionQueue([updated.id], 'case-edit');
     writeCaseManifest(updated);
-    res.json({ ...caseById(req.params.id), pauseMaintenance });
+    res.json({ ...caseById(req.params.id), pauseMaintenance, collectionQueue });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }

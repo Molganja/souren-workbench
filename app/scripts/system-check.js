@@ -318,6 +318,22 @@ if (serverSource.includes('async function enqueueDouyinCollection') && serverSou
 else fail('启动或定时采集登记仍可能缺失，或绕过队列重复创建 Chrome 采集单');
 
 if (
+  serverSource.includes('function registerCaseCollectionQueue')
+  && serverSource.includes('caseIds: ids')
+  && serverSource.includes("registerCaseCollectionQueue([created.id], 'case-create')")
+  && serverSource.includes("registerCaseCollectionQueue(cases.map((item) => item.id), 'case-bulk-create')")
+  && serverSource.includes("registerCaseCollectionQueue([created.id], 'case-library-register')")
+  && serverSource.includes("registerCaseCollectionQueue([updated.id], 'case-edit')")
+  && serverSource.includes("registerCaseCollectionQueue([updated.id], 'case-resume')")
+  && smokeSource.includes('case create did not immediately queue Chrome collection')
+  && smokeSource.includes('bulk import did not immediately queue Chrome collection')
+  && smokeSource.includes('case edit did not leave restored account queued for Chrome collection')
+  && smokeSource.includes('case library register did not immediately queue Chrome collection')
+  && smokeSource.includes('resume did not immediately queue Chrome collection')
+) ok('新建、批量、案例库登记、补登记编辑和恢复账号都会自动排队采集');
+else fail('案例录入或恢复后仍可能只显示到期采集，未立即生成等待 Chrome 采集单');
+
+if (
   packageSource.includes('collect:douyin')
   && packageSource.includes('collect:douyin:self-test')
   && packageSource.includes('scripts/douyin-chrome-collector.js')
@@ -502,7 +518,7 @@ else fail('编辑案例仍暴露城市、年龄、职业、语气或动机等内
 if (serverSource.includes('必须填写兼职微信昵称') && serverSource.includes('必须填写有效的抖音主页或作品链接') && serverSource.includes('必须填写项目') && serverSource.includes('必须填写共享原始素材路径') && serverSource.includes('共享原始素材路径不存在或不是目录') && serverSource.includes('normalizeDouyinUrl') && serverSource.includes('douyinIdFromUrl(douyinUrl)') && serverSource.includes('normalizeSourceMaterialDir') && smokeSource.includes('case create allowed missing project') && !serverSource.includes('body.weixinNick || `${persona.city}') && !serverSource.includes('input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick')) ok('后端不再随机生成兼职微信名，也不允许缺少抖音链接、项目或共享素材路径');
 else fail('后端仍可能随机生成兼职微信名或允许缺少抖音链接/共享素材路径');
 
-if (serverSource.includes("const sync = syncCaseSourceMaterials(created)") && serverSource.includes('res.json({ ...created, sync, slotsCreated: slots.length })') && smokeSource.includes('case create did not automatically sync shared source material') && smokeSource.includes('case create allowed missing shared source directory') && mainSource.includes('案例已创建：同步素材')) ok('普通新建案例会校验共享目录并自动同步一次素材');
+if (serverSource.includes("const sync = syncCaseSourceMaterials(created)") && serverSource.includes('res.json({ ...created, sync, slotsCreated: slots.length, collectionQueue })') && smokeSource.includes('case create did not automatically sync shared source material') && smokeSource.includes('case create allowed missing shared source directory') && mainSource.includes('案例已创建：同步素材')) ok('普通新建案例会校验共享目录并自动同步一次素材');
 else fail('普通新建案例仍可能只建账号不校验/不同步共享素材');
 
 if (serverSource.includes('function prepareBulkCaseRows') && serverSource.includes('function createBulkCases') && serverSource.includes('seenSources.has(sourceMaterialDir)') && serverSource.includes('第 ${line} 行缺少项目') && !serverSource.includes("project: project || '吸脂'") && !serverSource.includes("project: row.project || '吸脂'") && serverSource.includes('const sync = syncCaseSourceMaterials(created)') && !serverSource.includes('const created = rows.map((row) => createCaseFromBody(row))') && smokeSource.includes('bulk import created partial cases before failing validation') && smokeSource.includes('bulk import allowed a row with missing project') && mainSource.includes('批量导入完成：账号')) ok('批量导入会整批预检四项并自动同步素材，不会半导入');

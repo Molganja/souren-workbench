@@ -412,6 +412,7 @@ async function main() {
     assert(bulk.syncedCount === 2 && bulk.cases.every((item) => item.sync?.inserted === 1), 'bulk import did not automatically sync shared materials');
     assert(bulk.cases[0].douyinUrl.includes('bulk-lin') && bulk.cases[1].project === '复诊', 'bulk simplified fields missing');
     assert(bulk.cases.every((item) => item.stage === '起号期'), 'bulk import accepted external case stage');
+    assert(bulk.collectionQueue?.registeredCount === 2 && bulk.collectionQueue.runs.every((item) => bulk.cases.some((c) => c.id === item.caseId)), 'bulk import did not immediately queue Chrome collection');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
     const deletedCaseDir = bulk.cases[1].localCaseDir;
     assert(fs.existsSync(deletedCaseDir), 'case directory missing before delete');
@@ -497,6 +498,13 @@ async function main() {
     assert(fixedLegacyCase.douyinUrl.includes('legacy-fixed-smoke') && fixedLegacyCase.sourceMaterialDir === legacyDir, 'case edit did not restore intake fields');
     assert(fixedLegacyCase.douyinId === 'legacy-fixed-smoke', 'case edit accepted manual Douyin id');
     assert(fixedLegacyCase.persona.city !== '不该写入' && fixedLegacyCase.persona.occupation !== '不该写入', 'case edit accepted hidden persona patch');
+    const fixedLegacyDetail = await api(`/cases/${legacyCase.id}`);
+    assert(
+      fixedLegacyCase.collectionQueue?.runs?.some((item) => item.caseId === legacyCase.id)
+        || fixedLegacyCase.collectionQueue?.targets?.some((item) => item.caseId === legacyCase.id && item.collectionQueued),
+      'case edit did not leave restored account queued for Chrome collection'
+    );
+    assert(fixedLegacyDetail.monitor.pendingCollectionRun?.status === 'waiting_chrome', 'restored case missing pending Chrome collection run');
     const fixedIntakeDashboard = await api('/dashboard');
     assert(!fixedIntakeDashboard.intakeIssues.some((item) => item.caseId === legacyCase.id), 'fixed legacy account still appears in intake issue queue');
     await api(`/cases/${legacyCase.id}`, { method: 'DELETE' });
@@ -526,6 +534,7 @@ async function main() {
     assert(caze.stage === '起号期' && caze.slotsCreated >= 14, 'case create should ignore external stage and generate schedule by default');
     assert(caze.sourceMaterialDir === sharedSourceDir, 'case source material dir missing');
     assert(caze.sync?.copied === 1 && caze.sync?.inserted === 1, 'case create did not automatically sync shared source material');
+    assert(caze.collectionQueue?.registeredCount === 1 && caze.collectionQueue.runs[0]?.caseId === caze.id, 'case create did not immediately queue Chrome collection');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
     const agentWorkAfterCase = await api('/agent-work');
     assert(agentWorkAfterCase.counts.douyinCollection >= 1 && agentWorkAfterCase.items.some((item) => item.kind === '抖音采集' && item.case?.id === caze.id && item.endpoint === '/api/douyin-monitor/ingest'), 'agent work queue missing chrome collection work');
@@ -584,6 +593,7 @@ async function main() {
     assert(registeredLibraryCase.case.sourceMaterialDir === libraryCaseDir, 'case library register did not bind source dir');
     assert(registeredLibraryCase.sync.copied === 2 && registeredLibraryCase.sync.inserted === 2, 'case library register did not sync source materials');
     assert(registeredLibraryCase.slotsCreated >= 14, 'case library register did not generate default slots');
+    assert(registeredLibraryCase.collectionQueue?.registeredCount === 1 && registeredLibraryCase.collectionQueue.runs[0]?.caseId === registeredLibraryCase.case.id, 'case library register did not immediately queue Chrome collection');
     const afterLibraryScan = await api('/case-library');
     const registeredCandidate = afterLibraryScan.candidates.find((item) => item.sourceMaterialDir === libraryCaseDir);
     assert(registeredCandidate?.alreadyRegistered === true && registeredCandidate.caseId === registeredLibraryCase.case.id, 'case library did not mark registered candidate');
@@ -850,6 +860,7 @@ async function main() {
     const resumedLost = await api(`/cases/${lostCase.id}/resume`, { method: 'POST' });
     assert(resumedLost.case.healthStatus === '健康', 'resume did not restore case health');
     assert(resumedLost.slotsCreated >= 1, 'resume did not create new schedule');
+    assert(resumedLost.collectionQueue?.registeredCount === 1 && resumedLost.collectionQueue.runs[0]?.caseId === lostCase.id, 'resume did not immediately queue Chrome collection');
     const resumedLostDetail = await api(`/cases/${lostCase.id}`);
     assert(resumedLostDetail.slots.some((item) => item.status === '已取消'), 'resume did not keep stale sent slot as cancelled');
     assert(resumedLostDetail.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'resume did not create future pending slot');
@@ -1278,9 +1289,10 @@ async function main() {
         sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '暂停清理验收兼职')
       })
     });
+    assert(pauseCleanupCase.collectionQueue?.registeredCount === 1, 'case create before pause cleanup did not queue Chrome collection');
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
-    assert(monitorQueued.createdCount >= 2, 'monitor run did not register Chrome collection tasks');
-    assert(monitorQueued.monitor.totals.collectionQueued >= 2 && monitorQueued.monitor.totals.waitingChrome >= 2, 'monitor run did not mark queued Chrome collection');
+    assert(monitorQueued.skippedQueuedCount >= 2, 'monitor run should see already queued Chrome collection tasks');
+    assert(monitorQueued.monitor.totals.collectionQueued >= 2 && monitorQueued.monitor.totals.waitingChrome >= 2, 'monitor run did not preserve queued Chrome collection');
     const monitorQueuedAgain = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual-repeat' }) });
     assert(monitorQueuedAgain.createdCount === 0 && monitorQueuedAgain.skippedQueuedCount >= monitorQueued.createdCount, 'monitor run duplicated already waiting Chrome collection tasks');
     assert(monitorQueuedAgain.monitor.totals.waitingChrome === monitorQueued.monitor.totals.waitingChrome, 'duplicate monitor run changed waiting Chrome count');
