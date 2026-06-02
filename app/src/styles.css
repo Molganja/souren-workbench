@@ -1484,9 +1484,53 @@ textarea {
   background: #fbfcfe;
 }
 
+.waitingDetails summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.waitingDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.waitingDetails summary::after {
+  content: "展开";
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: #fff;
+  white-space: nowrap;
+}
+
+.waitingDetails[open] summary::after {
+  content: "收起";
+}
+
+.waitingDetails summary h2,
+.waitingDetails summary p {
+  margin: 0;
+}
+
+.waitingDetails summary p {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.waitingDetails summary > span {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .waitingList {
   display: grid;
   gap: 10px;
+  margin-top: 14px;
 }
 
 .waitingRow {
@@ -1580,7 +1624,12 @@ textarea {
     align-items: flex-start;
     flex-wrap: wrap;
   }
-  .accountOverviewDetails summary > span {
+  .waitingDetails summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .accountOverviewDetails summary > span,
+  .waitingDetails summary > span {
     white-space: normal;
   }
   .accessForm {

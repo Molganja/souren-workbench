@@ -664,22 +664,27 @@ function WaitingConfirmSection({ items = [], onDelivery }) {
   if (items.length === 0) return null;
   return (
     <section className="panel waitingPanel">
-      <div className="sectionHead">
-        <h2>等待兼职确认</h2>
-        <span>{items.length} 条，不阻塞今日队列</span>
-      </div>
-      <div className="waitingList">
-        {items.map((item) => (
-          <div className="waitingRow" key={item.id}>
-            <div>
-              <strong>{item.title}</strong>
-              <span>{item.detail}</span>
-              <small>{item.note}</small>
-            </div>
-            {item.slot?.deliveryDir && <button onClick={() => onDelivery({ ...item.slot, case: item.case, completionAllowed: true })}>确认完成</button>}
+      <details className="waitingDetails">
+        <summary>
+          <div>
+            <h2>等待兼职确认</h2>
+            <p>这些已经发出，收到对方完成回复后再展开收尾；不算今天未完成。</p>
           </div>
-        ))}
-      </div>
+          <span>{items.length} 条，不阻塞今日队列</span>
+        </summary>
+        <div className="waitingList">
+          {items.map((item) => (
+            <div className="waitingRow" key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <span>{item.detail}</span>
+                <small>{item.note}</small>
+              </div>
+              {item.slot?.deliveryDir && <button onClick={() => onDelivery({ ...item.slot, case: item.case, completionAllowed: true })}>确认完成</button>}
+            </div>
+          ))}
+        </div>
+      </details>
     </section>
   );
 }

@@ -119,7 +119,7 @@ if (
   mainSource.includes('accountOverviewDetails') &&
   !mainSource.includes('今日账号概览')
 ) ok('首页只默认展开队首动作，后续账号改为折叠预览');
-else fail('首页仍可能默认铺开账号概览，分散当前队首处理');
+else fail('首页仍可能默认铺开后续账号，分散当前队首处理');
 
 if (mainSource.includes('>运行状态</button>') && !mainSource.includes('>系统配置</button>')) ok('前台导航不再显示系统配置入口');
 else fail('前台导航仍暴露系统配置旧口径');
@@ -142,11 +142,11 @@ if (
 ) ok('前台和交付文本只显示抖音链接，不展示派生抖音号');
 else fail('前台仍把必填抖音链接显示成旧抖音号口径');
 
-if (mainSource.includes('activeCaseId') && mainSource.includes('排到今日队列队首后打开') && mainSource.includes('isActiveQueueCase')) ok('首页账号概览和异常账号不能打开非队首账号');
-else fail('首页仍可能从概览或异常账号绕过队首打开账号');
+if (mainSource.includes('activeCaseId') && mainSource.includes('排到今日队列队首后打开') && mainSource.includes('isActiveQueueCase')) ok('后续账号预览和异常账号不能打开非队首账号');
+else fail('首页仍可能从后续预览或异常账号绕过队首打开账号');
 
-if (mainSource.includes('const accountGroups = groupQueueByAccount(priorityActions)') && !mainSource.includes('const accountGroups = groupTodayByAccount(data.todaySlots)') && mainSource.includes('actionCounts') && mainSource.includes('同账号动作') && mainSource.includes('个待处理账号')) ok('首页账号概览按操作队列聚合，不只看排期槽位');
-else fail('首页账号概览仍可能只按今日排期显示，漏掉素材同步、剪辑或爆款互动');
+if (mainSource.includes('const accountGroups = groupQueueByAccount(priorityActions)') && !mainSource.includes('const accountGroups = groupTodayByAccount(data.todaySlots)') && mainSource.includes('actionCounts') && mainSource.includes('同账号动作') && mainSource.includes('个待处理账号')) ok('后续账号预览按操作队列聚合，不只看排期槽位');
+else fail('后续账号预览仍可能只按今日排期显示，漏掉素材同步、剪辑或爆款互动');
 
 if (serverSource.includes('function caseIntakeIssue') && serverSource.includes('intakeIssues: intakeIssueRows') && serverSource.includes("kind: '补登记'") && serverSource.includes('缺少抖音链接') && serverSource.includes('缺少项目') && serverSource.includes('缺少共享原始素材路径') && serverSource.includes('补齐微信、抖音主页、项目和共享原始素材路径') && mainSource.includes('item.intakeIssue') && smokeSource.includes('legacy missing account did not enter intake issue queue') && smokeSource.includes("intakeIssue.issues.includes('缺少项目')")) ok('旧账号缺抖音、项目或共享素材路径会进入补登记队列');
 else fail('缺登记资料的旧账号仍可能躲在异常列表之外，不进入首页队列');
@@ -350,7 +350,7 @@ else fail('发布要求仍被当成必须复制步骤');
 if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes("requireQueueHeadForSlot(req, slot, '改状态')") && serverSource.includes('这条不是今日操作队列队首') && serverSource.includes("['异常', '已派发'].includes(status)") && serverSource.includes("status === '已完成' && !completingAlreadySent") && serverSource.includes('交付动作还没完成') && mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端派发状态接口也要求队首和交付步骤完成清单');
 else fail('后端状态接口仍可能绕过交付步骤门禁');
 
-if (serverSource.includes('sentWaitDone: dueSlots.filter') && !serverSource.includes('items.push({ id: `sent-${slot.id}`') && mainSource.includes('WaitingConfirmSection') && mainSource.includes('不阻塞今日队列') && mainSource.includes('completionAllowed') && smokeSource.includes('sent slot should move to non-blocking wait confirmation list')) ok('已派发任务进入等待确认区，不再阻塞今日操作队列');
+if (serverSource.includes('sentWaitDone: dueSlots.filter') && !serverSource.includes('items.push({ id: `sent-${slot.id}`') && mainSource.includes('WaitingConfirmSection') && mainSource.includes('waitingDetails') && mainSource.includes('收到对方完成回复后再展开收尾') && mainSource.includes('不阻塞今日队列') && mainSource.includes('completionAllowed') && styleSource.includes('.waitingDetails[open] summary::after') && smokeSource.includes('sent slot should move to non-blocking wait confirmation list')) ok('已派发任务进入折叠等待确认区，不再阻塞今日操作队列');
 else fail('已派发任务仍可能留在今日操作队列，导致当天没有明确完工状态');
 
 const oldDeliveryConfirmLabel = '核' + '对发给兼职文案';
