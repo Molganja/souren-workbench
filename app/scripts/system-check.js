@@ -224,6 +224,22 @@ if (mainSource.includes('系统验收清单') && mainSource.includes('readinessC
 else fail('运行状态缺少 SOP 要求的验收清单');
 
 if (
+  mainSource.includes('通用素材校准')
+  && mainSource.includes('只在自动分类不准时展开')
+  && mainSource.includes('不用于发送给兼职')
+  && mainSource.includes('fileDisplayName(asset.path)')
+  && !mainSource.includes('通用素材管理')
+  && !mainSource.includes("asset.url && <a className=\"button\" href={asset.url} download")
+  && !mainSource.includes("'下载素材'")
+  && !mainSource.includes('compactActions')
+  && readmeSource.includes('通用素材校准')
+  && sopSource.includes('通用素材校准')
+  && !readmeSource.includes('网页内预览、下载')
+  && !sopSource.includes('通用素材管理')
+) ok('通用素材只作为折叠校准区，不提供非交付下载入口或完整路径');
+else fail('通用素材仍可能在前台默认展开、暴露下载入口、完整路径或旧管理口径');
+
+if (
   !mainSource.includes('SOUREN_ACCESS_CODE') &&
   !mainSource.includes('SOUREN_HOST') &&
   !mainSource.includes('等待Key') &&

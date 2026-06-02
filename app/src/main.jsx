@@ -702,6 +702,11 @@ function douyinDisplay(caze = {}) {
   return douyinUrl || '未填抖音链接';
 }
 
+function fileDisplayName(filePath = '') {
+  const parts = String(filePath || '').split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) || '未命名素材';
+}
+
 function PriorityFocusMeta({ caze }) {
   return (
     <div className="focusMeta">
@@ -1453,8 +1458,8 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueue
                 <div className="assetRow assetEditable" key={asset.id}>
                   <strong>{asset.kind}</strong>
                   <span>{asset.stage} · {asset.usage} · {asset.source} · {asset.reviewStatus}</span>
-                  <small>{asset.path}</small>
-                  {asset.originPath && <small>来源：{asset.originPath}</small>}
+                  <small>{fileDisplayName(asset.path)}</small>
+                  {asset.originPath && <small>来源：{fileDisplayName(asset.originPath)}</small>}
                   <div className="inlineActions">
                     {canRunMaterialActions && ['可用', '需处理', '不可用'].map((status) => (
                       <button key={status} onClick={() => onAct(() => request(`/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: status }) }), `素材已标记：${status}`)}>{status}</button>
@@ -2406,60 +2411,63 @@ const SHARED_ASSET_STATUSES = ['可用', '待处理', '需处理', '不可用'];
 function SharedAssetsManager({ assets, loading, onReload, onAct }) {
   const visible = (assets || []).slice(0, 60);
   return (
-    <section className="panel">
-      <div className="sectionHead">
-        <h2>通用素材管理</h2>
-        <div className="headerActions">
+    <section className="panel systemBackstage">
+      <details className="sharedAssetDetails">
+        <summary>
+          <div>
+            <h2>通用素材校准</h2>
+            <p>只在自动分类不准时展开；这里用于校准素材库，不用于发送给兼职。</p>
+          </div>
           <span>{loading ? '读取中' : `${assets.length} 个素材`}</span>
+        </summary>
+        <div className="sectionHead">
+          <h3>素材分类校准</h3>
           <button onClick={onReload}>刷新列表</button>
         </div>
-      </div>
-      {visible.length === 0 ? <div className="empty">还没有通用素材。把医院素材、套图素材或生活场景放入通用素材库后，点击“扫描通用素材”。</div> : (
-        <div className="sharedAssetGrid">
-          {visible.map((asset) => (
-            <div className="sharedAssetCard" key={asset.id}>
-              <SharedAssetPreview asset={asset} />
-              <div className="sharedAssetInfo">
-                <strong>{asset.category}</strong>
-                <span>{asset.kind} · {asset.usage} · {asset.reviewStatus}</span>
-                <small>{asset.path}</small>
-              </div>
-              <div className="sharedAssetActions">
-                <div className="buttonCluster">
-                  {SHARED_ASSET_CATEGORIES.map((category) => (
-                    <button
-                      key={category}
-                      className={asset.category === category ? 'activeSmall' : ''}
-                      onClick={() => updateSharedAsset(asset, { category }, onAct, onReload)}
-                    >{category}</button>
-                  ))}
+        {visible.length === 0 ? <div className="empty">还没有通用素材。把医院素材、套图素材或生活场景放入通用素材库后，点击“扫描通用素材”。</div> : (
+          <div className="sharedAssetGrid">
+            {visible.map((asset) => (
+              <div className="sharedAssetCard" key={asset.id}>
+                <SharedAssetPreview asset={asset} />
+                <div className="sharedAssetInfo">
+                  <strong>{asset.category}</strong>
+                  <span>{asset.kind} · {asset.usage} · {asset.reviewStatus}</span>
+                  <small>{fileDisplayName(asset.path)}</small>
                 </div>
-                <div className="buttonCluster">
-                  {SHARED_ASSET_USAGES.map((usage) => (
-                    <button
-                      key={usage}
-                      className={asset.usage === usage ? 'activeSmall' : ''}
-                      onClick={() => updateSharedAsset(asset, { usage }, onAct, onReload)}
-                    >{usage}</button>
-                  ))}
-                </div>
-                <div className="buttonCluster">
-                  {SHARED_ASSET_STATUSES.map((reviewStatus) => (
-                    <button
-                      key={reviewStatus}
-                      className={asset.reviewStatus === reviewStatus ? 'activeSmall' : ''}
-                      onClick={() => updateSharedAsset(asset, { reviewStatus }, onAct, onReload)}
-                    >{reviewStatus}</button>
-                  ))}
-                </div>
-                <div className="inlineActions compactActions">
-                  {asset.url && <a className="button" href={asset.url} download>{asset.kind === '视频' ? '下载视频' : '下载素材'}</a>}
+                <div className="sharedAssetActions">
+                  <div className="buttonCluster">
+                    {SHARED_ASSET_CATEGORIES.map((category) => (
+                      <button
+                        key={category}
+                        className={asset.category === category ? 'activeSmall' : ''}
+                        onClick={() => updateSharedAsset(asset, { category }, onAct, onReload)}
+                      >{category}</button>
+                    ))}
+                  </div>
+                  <div className="buttonCluster">
+                    {SHARED_ASSET_USAGES.map((usage) => (
+                      <button
+                        key={usage}
+                        className={asset.usage === usage ? 'activeSmall' : ''}
+                        onClick={() => updateSharedAsset(asset, { usage }, onAct, onReload)}
+                      >{usage}</button>
+                    ))}
+                  </div>
+                  <div className="buttonCluster">
+                    {SHARED_ASSET_STATUSES.map((reviewStatus) => (
+                      <button
+                        key={reviewStatus}
+                        className={asset.reviewStatus === reviewStatus ? 'activeSmall' : ''}
+                        onClick={() => updateSharedAsset(asset, { reviewStatus }, onAct, onReload)}
+                      >{reviewStatus}</button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </details>
     </section>
   );
 }
