@@ -30,7 +30,7 @@ const AUTH_LOCAL_BYPASS = process.env.SOUREN_AUTH_LOCAL_BYPASS !== '0';
 const AUTH_COOKIE = 'souren_access';
 const AUTH_SECRET = process.env.SOUREN_AUTH_SECRET || `${ROOT_DIR}:${ACCESS_CODE || 'local'}`;
 const DEFAULT_IMAGE_MODEL = 'image-v2';
-const DOUYIN_COLLECTION_INTERVAL_MS = Number(process.env.DOUYIN_COLLECTION_INTERVAL_MS || 24 * 60 * 60 * 1000);
+const DOUYIN_COLLECTION_CHECK_INTERVAL_MS = Number(process.env.DOUYIN_COLLECTION_CHECK_INTERVAL_MS || 6 * 60 * 60 * 1000);
 const ROLLING_SCHEDULE_DAYS = Math.max(0, Number(process.env.SOUREN_ROLLING_SCHEDULE_DAYS || 14));
 const LOOPBACK_LISTEN_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 const DELETED_CASE_ROOT = path.join(MATERIAL_ROOT, '_deleted');
@@ -899,9 +899,12 @@ function createSlotForCase(caze, input = {}) {
 function generateSlotsForCase(caze, input = {}) {
   const days = Number(input.days || 30);
   const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+  const postingStrategy = input.postingStrategy || postingStrategyForCase(caze);
   const created = [];
+  if (postingStrategy.intervalDays === 0) return created;
   for (let i = 0; i < days; i += 1) {
     const date = addDays(startDate, i);
+    if (!shouldCreateSlotForDate(caze, date, postingStrategy)) continue;
     const exists = get('SELECT id FROM plan_slots WHERE case_id = ? AND date = ?', [caze.id, date]);
     if (exists) continue;
     const stage = stageForDay(caze.stage, i);
@@ -918,18 +921,21 @@ function generateSlotsForCase(caze, input = {}) {
 
 function maintainRollingSchedule(cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase), input = {}) {
   const days = Math.max(0, Number(input.days ?? ROLLING_SCHEDULE_DAYS));
-  if (!days) return { days, createdCount: 0, touchedCases: 0, created: [] };
+  if (!days) return { days, createdCount: 0, prunedCount: 0, touchedCases: 0, created: [] };
   const startDate = input.startDate || new Date().toISOString().slice(0, 10);
   const created = [];
+  let prunedCount = 0;
   let touchedCases = 0;
   cases.forEach((caze) => {
-    const rows = generateSlotsForCase(caze, { days, startDate });
+    const postingStrategy = postingStrategyForCase(caze);
+    prunedCount += prunePendingSlotsForStrategy(caze, postingStrategy, startDate);
+    const rows = generateSlotsForCase(caze, { days, startDate, postingStrategy });
     if (rows.length) {
       touchedCases += 1;
       created.push(...rows);
     }
   });
-  return { days, startDate, createdCount: created.length, touchedCases, created };
+  return { days, startDate, createdCount: created.length, prunedCount, touchedCases, created };
 }
 
 function createCaseFromBody(body = {}) {
@@ -1836,6 +1842,177 @@ function hoursSince(iso) {
   return Math.max(0, (Date.now() - time) / (60 * 60 * 1000));
 }
 
+function daysBetween(dateA, dateB) {
+  const a = new Date(`${String(dateA).slice(0, 10)}T00:00:00`).getTime();
+  const b = new Date(`${String(dateB).slice(0, 10)}T00:00:00`).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.floor((b - a) / (24 * 60 * 60 * 1000));
+}
+
+function coldVideoSnapshot(snapshot) {
+  const plays = Number(snapshot?.plays || 0);
+  const comments = Number(snapshot?.comments || 0);
+  return plays > 0 && plays < 2000 && comments < 20;
+}
+
+function consecutiveColdVideos(snapshots = []) {
+  let count = 0;
+  for (const snapshot of snapshots) {
+    if (!coldVideoSnapshot(snapshot)) break;
+    count += 1;
+  }
+  return count;
+}
+
+function recentActiveSlots(slots = [], today = new Date().toISOString().slice(0, 10)) {
+  return slots.filter((slot) => {
+    const offset = daysBetween(today, slot.date);
+    return offset >= -3
+      && offset <= 3
+      && ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成'].includes(slot.status);
+  });
+}
+
+function latestUniqueVideoSnapshotsForCase(caseId, snapshots = null) {
+  const rows = snapshots || all(
+    'SELECT * FROM video_snapshots WHERE case_id = ? ORDER BY collected_at DESC, created_at DESC',
+    [caseId]
+  ).map(rowVideoSnapshot);
+  const seen = new Set();
+  const unique = [];
+  rows.forEach((snapshot) => {
+    if (seen.has(snapshot.videoId)) return;
+    seen.add(snapshot.videoId);
+    unique.push(snapshot);
+  });
+  return unique;
+}
+
+function accountStrategy(input = {}) {
+  const {
+    caze,
+    latestSnapshot = null,
+    initialSnapshot = null,
+    topVideo = null,
+    recentVideoSnapshots = [],
+    slots = [],
+    activeViralAlerts = []
+  } = input;
+  const today = new Date().toISOString().slice(0, 10);
+  const activeSlots = recentActiveSlots(slots, today);
+  const fanDelta = latestSnapshot?.fans != null && initialSnapshot?.fans != null ? latestSnapshot.fans - initialSnapshot.fans : null;
+  const topPlays = Number(topVideo?.latestSnapshot?.plays || 0);
+  const topComments = Number(topVideo?.latestSnapshot?.comments || 0);
+  const coldCount = consecutiveColdVideos(recentVideoSnapshots);
+  const hasHotSignal = activeViralAlerts.length > 0 || topPlays >= 5000 || (fanDelta != null && fanDelta >= 50);
+
+  let activityTier = '观察';
+  let postingStrategy = { mode: '每日', intervalDays: 1, reason: '没有连续低播放证据，保持常规排期。' };
+  if (!latestSnapshot) {
+    activityTier = caze?.douyinUrl ? '待首采' : '未绑定抖音';
+    postingStrategy = { mode: '每日', intervalDays: 1, reason: '新账号先保持基础更新，等待首次采集数据。' };
+  } else if (hasHotSignal) {
+    activityTier = '起量';
+    postingStrategy = { mode: '每日', intervalDays: 1, reason: '账号出现爆款、粉丝增长或高播放，保持每日更新并承接。' };
+  } else if (coldCount >= 3) {
+    activityTier = '休眠';
+    postingStrategy = { mode: '暂停自动补', intervalDays: 0, reason: `最近 ${coldCount} 条作品播放不起色，先暂停自动补新排期。` };
+  } else if (coldCount >= 2) {
+    activityTier = '偏冷';
+    postingStrategy = { mode: '两天一条', intervalDays: 2, reason: `最近 ${coldCount} 条作品播放不起色，自动降为两天一条。` };
+  } else if (activeSlots.length > 0) {
+    activityTier = '活跃';
+    postingStrategy = { mode: '每日', intervalDays: 1, reason: '近期仍在投放或交付，保持常规排期。' };
+  }
+
+  let collectionIntervalHours = 168;
+  let collectionReason = '账号近期没有投放动作，按一周一次采集。';
+  if (!caze?.douyinUrl) {
+    collectionIntervalHours = null;
+    collectionReason = '未填写抖音主页，不进入采集队列。';
+  } else if (!latestSnapshot) {
+    collectionIntervalHours = 0;
+    collectionReason = '账号还没有首次数据，优先采集。';
+  } else if (hasHotSignal) {
+    collectionIntervalHours = 12;
+    collectionReason = '账号起量或有爆款，勤采。';
+  } else if (activityTier === '休眠') {
+    collectionIntervalHours = 168;
+    collectionReason = '账号连续多条不起色，先按一周一次采集。';
+  } else if (activityTier === '偏冷') {
+    collectionIntervalHours = 72;
+    collectionReason = '账号偏冷，三天采一次即可。';
+  } else if (activeSlots.length > 0) {
+    collectionIntervalHours = 24;
+    collectionReason = '近期在投放或刚交付，按日采集。';
+  }
+
+  return {
+    activityTier,
+    coldVideoCount: coldCount,
+    topPlays,
+    topComments,
+    activeSlotCount: activeSlots.length,
+    postingStrategy,
+    collectionPolicy: {
+      intervalHours: collectionIntervalHours,
+      reason: collectionReason
+    }
+  };
+}
+
+function postingStrategyForCase(caze) {
+  if (!caze?.id) return { mode: '每日', intervalDays: 1, reason: '默认每日排期。' };
+  const snapshots = all(
+    'SELECT * FROM account_snapshots WHERE case_id = ? ORDER BY collected_at DESC, created_at DESC',
+    [caze.id]
+  ).map(rowAccountSnapshot);
+  const videos = all('SELECT * FROM douyin_videos WHERE case_id = ? ORDER BY updated_at DESC', [caze.id]).map(rowDouyinVideo);
+  const videoSnapshots = all(
+    'SELECT * FROM video_snapshots WHERE case_id = ? ORDER BY collected_at DESC, created_at DESC',
+    [caze.id]
+  ).map(rowVideoSnapshot);
+  const latestSnapshots = latestSnapshotsByVideo(videoSnapshots);
+  const topVideo = videos
+    .map((video) => ({ ...video, latestSnapshot: latestSnapshots.get(video.id) || null }))
+    .filter((video) => video.latestSnapshot)
+    .sort((a, b) => (b.latestSnapshot.plays || 0) - (a.latestSnapshot.plays || 0))[0] || null;
+  const slots = all('SELECT * FROM plan_slots WHERE case_id = ? ORDER BY date ASC', [caze.id]).map(rowSlot);
+  const activeViralAlerts = joinedViralAlerts('va.case_id = ? AND va.status = ?', [caze.id, 'active'], 5);
+  return accountStrategy({
+    caze,
+    latestSnapshot: snapshots[0] || null,
+    initialSnapshot: snapshots[snapshots.length - 1] || null,
+    topVideo,
+    recentVideoSnapshots: latestUniqueVideoSnapshotsForCase(caze.id, videoSnapshots),
+    slots,
+    activeViralAlerts
+  }).postingStrategy;
+}
+
+function shouldCreateSlotForDate(caze, date, postingStrategy = {}) {
+  const interval = Number(postingStrategy.intervalDays ?? 1);
+  if (interval <= 0) return false;
+  if (interval <= 1) return true;
+  const base = String(caze?.createdAt || date).slice(0, 10);
+  return Math.abs(daysBetween(base, date)) % interval === 0;
+}
+
+function prunePendingSlotsForStrategy(caze, postingStrategy = {}, startDate = new Date().toISOString().slice(0, 10)) {
+  if (!caze?.id) return 0;
+  const slots = all(
+    'SELECT * FROM plan_slots WHERE case_id = ? AND date >= ? AND status = ? ORDER BY date ASC',
+    [caze.id, startDate, '待生成']
+  ).map(rowSlot);
+  let pruned = 0;
+  slots.forEach((slot) => {
+    if (shouldCreateSlotForDate(caze, slot.date, postingStrategy)) return;
+    run('DELETE FROM plan_slots WHERE id = ?', [slot.id]);
+    pruned += 1;
+  });
+  return pruned;
+}
+
 function latestSnapshotForVideo(videoId) {
   return rowVideoSnapshot(get(
     'SELECT * FROM video_snapshots WHERE video_id = ? ORDER BY collected_at DESC, created_at DESC LIMIT 1',
@@ -1998,12 +2175,14 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
   const accountSnapshots = all('SELECT * FROM account_snapshots ORDER BY collected_at DESC, created_at DESC').map(rowAccountSnapshot);
   const videos = all('SELECT * FROM douyin_videos ORDER BY updated_at DESC').map(rowDouyinVideo);
   const videoSnapshots = all('SELECT * FROM video_snapshots ORDER BY collected_at DESC, created_at DESC').map(rowVideoSnapshot);
+  const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
   const collectionRuns = all('SELECT * FROM collection_runs ORDER BY started_at DESC, created_at DESC').map(rowCollectionRun);
   const viralAlerts = joinedViralAlerts('va.status = ?', ['active'], 30);
   const latestVideoSnapshots = latestSnapshotsByVideo(videoSnapshots);
   const accountByCase = {};
   const videosByCase = {};
   const snapshotsByCase = {};
+  const slotsByCase = {};
   const runsByCase = {};
   const alertsByCase = {};
 
@@ -2018,6 +2197,10 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
   videoSnapshots.forEach((item) => {
     snapshotsByCase[item.caseId] = snapshotsByCase[item.caseId] || [];
     snapshotsByCase[item.caseId].push(item);
+  });
+  slots.forEach((item) => {
+    slotsByCase[item.caseId] = slotsByCase[item.caseId] || [];
+    slotsByCase[item.caseId].push(item);
   });
   collectionRuns.forEach((item) => {
     if (!item.caseId) return;
@@ -2046,11 +2229,24 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
     const latestSnapshot = snapshots[0] || null;
     const initialSnapshot = snapshots[snapshots.length - 1] || null;
     const pendingCollectionRun = caseRuns.find(collectionRunIsOpen) || null;
-    const needsCollection = Boolean(caze.douyinUrl) && (!latestSnapshot || hoursSince(latestSnapshot.collectedAt) >= 24);
     const topVideo = caseVideos
       .map((video) => ({ ...video, latestSnapshot: latestVideoSnapshots.get(video.id) || null }))
       .filter((video) => video.latestSnapshot)
       .sort((a, b) => (b.latestSnapshot.plays || 0) - (a.latestSnapshot.plays || 0))[0] || null;
+    const strategy = accountStrategy({
+      caze,
+      latestSnapshot,
+      initialSnapshot,
+      topVideo,
+      recentVideoSnapshots: latestUniqueVideoSnapshotsForCase(caze.id, snapshotsByCase[caze.id] || []),
+      slots: slotsByCase[caze.id] || [],
+      activeViralAlerts: alertsByCase[caze.id] || []
+    });
+    const collectionIntervalHours = strategy.collectionPolicy.intervalHours;
+    const needsCollection = Boolean(caze.douyinUrl) && (
+      collectionIntervalHours === 0
+        || (collectionIntervalHours != null && (!latestSnapshot || hoursSince(latestSnapshot.collectedAt) >= collectionIntervalHours))
+    );
     return {
       case: caze,
       initialSnapshot,
@@ -2065,7 +2261,12 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
       snapshots: (snapshotsByCase[caze.id] || []).length,
       topVideo,
       lastRun: caseRuns[0] || null,
-      activeViralAlerts: alertsByCase[caze.id] || []
+      activeViralAlerts: alertsByCase[caze.id] || [],
+      activityTier: strategy.activityTier,
+      coldVideoCount: strategy.coldVideoCount,
+      postingStrategy: strategy.postingStrategy,
+      collectionPolicy: strategy.collectionPolicy,
+      collectionIntervalHours
     };
   });
 
@@ -2121,16 +2322,23 @@ function monitorActionQueue(monitor = {}) {
     const caze = item.case;
     if (!caze?.id) return;
     if (item.dueCollection) {
+      const interval = item.collectionPolicy?.intervalHours;
+      const intervalText = interval == null ? '不采集' : interval === 0 ? '优先采集' : `${interval}小时采集周期到期`;
       actions.push({
         id: `collect-${caze.id}`,
         priority: item.latestSnapshot ? 80 : 85,
         kind: '账号采集',
-        title: item.latestSnapshot ? '超过24小时未采集' : '首次采集账号数据',
-        reason: item.latestSnapshot ? `上次采集：${item.lastCollectedAt}` : '这个账号还没有粉丝和作品数据',
+        title: item.latestSnapshot ? intervalText : '首次采集账号数据',
+        reason: item.latestSnapshot
+          ? `${item.collectionPolicy?.reason || '采集周期到期'}｜上次采集：${item.lastCollectedAt}`
+          : '这个账号还没有粉丝和作品数据',
         action: '系统会登记采集清单；主机端用已登录抖音的 Chrome 采集主页和作品数据后写入后台。',
         case: caze,
         latestSnapshot: item.latestSnapshot,
-        topVideo: item.topVideo
+        topVideo: item.topVideo,
+        activityTier: item.activityTier,
+        postingStrategy: item.postingStrategy,
+        collectionPolicy: item.collectionPolicy
       });
     }
     if (!item.activeViralAlerts?.length && item.topVideo?.latestSnapshot) {
@@ -2264,6 +2472,7 @@ function buildChromeCollectionText(queue) {
     lines.push(`${index + 1}. ${target.weixinNick}｜${target.caseCode}｜${target.project}`);
     lines.push(`抖音主页：${target.douyinUrl}`);
     lines.push(`上次采集：${target.lastCollectedAt || '未采集'}｜最新粉丝：${target.latestSnapshot?.fans ?? '未采集'}｜最高播放：${target.topVideo?.latestSnapshot?.plays ?? '未采集'}`);
+    lines.push(`活跃度：${target.activityTier || '未判断'}｜排期：${target.postingStrategy?.mode || '默认'}｜采集：${target.collectionPolicy?.intervalHours == null ? '不采集' : `${target.collectionPolicy.intervalHours}小时`}｜${target.collectionPolicy?.reason || ''}`);
     lines.push('写入JSON模板：');
     lines.push(JSON.stringify(target.ingestPayloadTemplate, null, 2));
     lines.push('');
@@ -2298,6 +2507,9 @@ function chromeCollectionQueue(options = {}) {
         latestSnapshot: item.latestSnapshot,
         fanDelta: item.fanDelta,
         topVideo: item.topVideo,
+        activityTier: item.activityTier,
+        postingStrategy: item.postingStrategy,
+        collectionPolicy: item.collectionPolicy,
         collectionQueued: item.collectionQueued,
         pendingCollectionRun: item.pendingCollectionRun,
         ingestEndpoint: '/api/douyin-monitor/ingest',
@@ -2360,7 +2572,7 @@ async function enqueueDouyinCollection(source = 'manual') {
         null,
         'waiting_chrome',
         source,
-        '已按 24 小时周期登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 写入账号和作品数据',
+        '已按账号活跃度策略登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 写入账号和作品数据',
         now(),
         now()
       ]
@@ -3265,14 +3477,14 @@ function createDeliveryForSlot(slot) {
     '',
     '发送顺序：',
     '1. 复制并发送 01-发给兼职文案.txt',
-    '2. 复制并发送 02-抖音发布文案.txt',
-    '3. 按 05-素材顺序清单.txt 的顺序，把图片或视频拖进微信发送',
-    '4. 发完后在系统里标记「已派发」；确认发布完成后标记「已完成」',
-    '',
-    '完成口径：',
-    '1. 兼职或剪辑人员确认已按要求发布/交付后，系统标记「已完成」',
-    '2. 账号主页数据由系统按 24 小时周期采集，不需要工作人员逐条填写'
-  ].join('\n'));
+	    '2. 复制并发送 02-抖音发布文案.txt',
+	    '3. 按 05-素材顺序清单.txt 的顺序，把图片或视频拖进微信发送',
+	    '4. 发完后在系统里标记「已派发」；确认发布完成后标记「已完成」',
+	    '',
+	    '完成口径：',
+	    '1. 兼职或剪辑人员确认已按要求发布/交付后，系统标记「已完成」',
+	    '2. 账号主页数据由系统按账号活跃度分层采集，不需要工作人员逐条填写'
+	  ].join('\n'));
   fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);
   const videoDelivery = isVideoDelivery(candidate.format);
@@ -3798,9 +4010,9 @@ function runScheduledDouyinCollection(source) {
   });
 }
 
-if (DOUYIN_COLLECTION_INTERVAL_MS > 0) {
+if (DOUYIN_COLLECTION_CHECK_INTERVAL_MS > 0) {
   const startupTimer = setTimeout(() => runScheduledDouyinCollection('startup'), 2000);
   startupTimer.unref?.();
-  const timer = setInterval(() => runScheduledDouyinCollection('scheduled'), DOUYIN_COLLECTION_INTERVAL_MS);
+  const timer = setInterval(() => runScheduledDouyinCollection('scheduled'), DOUYIN_COLLECTION_CHECK_INTERVAL_MS);
   timer.unref?.();
 }

@@ -385,6 +385,61 @@ async function main() {
     assert(dueOnlyDashboard.pendingGenerate.every((item) => item.date <= dueOnlyDashboard.today), 'dashboard leaked future pending generation slots');
     const minimalAfterRolling = await api(`/cases/${minimalCase.id}`);
     assert(minimalAfterRolling.slots.length >= 14, 'dashboard did not roll schedule forward for active case');
+    const throttleCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ weixinNick: '降频验收兼职', douyinUrl: 'https://www.douyin.com/user/throttle-smoke', project: '吸脂' })
+    });
+    await api('/douyin-monitor/ingest', {
+      method: 'POST',
+      body: JSON.stringify({
+        caseId: throttleCase.id,
+        collectedAt: '2026-06-01T15:00:00.000Z',
+        source: 'chrome-agent',
+        account: { fans: 66, following: 12, totalLikes: 180, totalWorks: 2 },
+        videos: [
+          { videoId: 'throttle-video-1', url: 'https://www.douyin.com/video/throttle-1', title: '降频低播放1', publishTime: '2026-06-01', plays: 800, likes: 20, comments: 4 },
+          { videoId: 'throttle-video-2', url: 'https://www.douyin.com/video/throttle-2', title: '降频低播放2', publishTime: '2026-06-01', plays: 1200, likes: 28, comments: 8 }
+        ]
+      })
+    });
+    const throttleMonitor = await api('/douyin-monitor');
+    const throttleAccount = throttleMonitor.accounts.find((item) => item.case?.id === throttleCase.id);
+    assert(throttleAccount?.activityTier === '偏冷', 'two cold videos should mark account cold');
+    assert(throttleAccount.postingStrategy?.mode === '两天一条', 'cold account should throttle posting');
+    assert(throttleAccount.collectionPolicy?.intervalHours === 72, 'cold account should collect every three days');
+    await api('/dashboard');
+    const throttleDetail = await api(`/cases/${throttleCase.id}`);
+    assert(throttleDetail.slots.length > 0 && throttleDetail.slots.length <= 8, 'throttled account generated too many future slots');
+    assert(throttleDetail.monitor.postingStrategy?.mode === '两天一条', 'case detail missing throttled posting strategy');
+
+    const sleepCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ weixinNick: '休眠验收兼职', douyinUrl: 'https://www.douyin.com/user/sleep-smoke', project: '吸脂' })
+    });
+    await api('/douyin-monitor/ingest', {
+      method: 'POST',
+      body: JSON.stringify({
+        caseId: sleepCase.id,
+        collectedAt: '2026-06-01T16:00:00.000Z',
+        source: 'chrome-agent',
+        account: { fans: 52, following: 10, totalLikes: 120, totalWorks: 3 },
+        videos: [
+          { videoId: 'sleep-video-1', url: 'https://www.douyin.com/video/sleep-1', title: '休眠低播放1', publishTime: '2026-06-01', plays: 500, likes: 12, comments: 2 },
+          { videoId: 'sleep-video-2', url: 'https://www.douyin.com/video/sleep-2', title: '休眠低播放2', publishTime: '2026-06-01', plays: 700, likes: 16, comments: 3 },
+          { videoId: 'sleep-video-3', url: 'https://www.douyin.com/video/sleep-3', title: '休眠低播放3', publishTime: '2026-06-01', plays: 900, likes: 18, comments: 4 }
+        ]
+      })
+    });
+    const sleepMonitor = await api('/douyin-monitor');
+    const sleepAccount = sleepMonitor.accounts.find((item) => item.case?.id === sleepCase.id);
+    assert(sleepAccount?.activityTier === '休眠', 'three cold videos should mark account sleeping');
+    assert(sleepAccount.postingStrategy?.mode === '暂停自动补', 'sleeping account should pause automatic posting');
+    assert(sleepAccount.collectionPolicy?.intervalHours === 168, 'sleeping account should collect weekly');
+    await api('/dashboard');
+    const sleepDetail = await api(`/cases/${sleepCase.id}`);
+    assert(sleepDetail.slots.length === 0, 'sleeping account should not auto generate future slots');
+    await api(`/cases/${throttleCase.id}`, { method: 'DELETE' });
+    await api(`/cases/${sleepCase.id}`, { method: 'DELETE' });
     const noAssetSlot = minimalDetail.slots[0];
     const noAssetDrafts = await api(`/slots/${noAssetSlot.id}/generate-candidates`, { method: 'POST' });
     await api(`/candidates/${noAssetDrafts[0].id}/select`, { method: 'POST' });

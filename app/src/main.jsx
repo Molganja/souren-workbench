@@ -1433,6 +1433,13 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
               <span>{shortTime(monitor.lastCollectedAt)}</span>
               <span>{monitor.dueCollection ? '待采集' : '正常'}</span>
             </div>
+            {(monitor.activityTier || monitor.postingStrategy || monitor.collectionPolicy) && (
+              <div className="deliveryMeta">
+                <span>活跃度：{monitor.activityTier || '未判断'}</span>
+                <span>排期：{monitor.postingStrategy?.mode || '默认'}</span>
+                <span>采集：{monitor.collectionPolicy?.intervalHours == null ? '不采集' : `${monitor.collectionPolicy.intervalHours}小时`}</span>
+              </div>
+            )}
           </div>
         )}
       </section>
