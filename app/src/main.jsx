@@ -443,11 +443,14 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
         {contactGroups.length === 0 ? <div className="empty">今天没有需要对接的任务</div> : (
           <div className="contactGrid">
             {contactGroups.map((group) => (
-              <div className="contactCard" key={group.name}>
-                <strong>{group.name}</strong>
-                <span>{group.items.length} 条任务 · {contactStatusSummary(group)}</span>
-                <small>{group.items.slice(0, 6).map((slot) => `${slot.case?.weixinNick || '未命名'}-${slot.contentKind}-${slot.status}`).join(' / ')}</small>
-              </div>
+              <ContactGroupCard
+                key={group.name}
+                group={group}
+                date={data.today}
+                onCopy={onCopy}
+                onOpenCase={onOpenCase}
+                onDelivery={onDelivery}
+              />
             ))}
           </div>
         )}
@@ -948,6 +951,51 @@ function ClipTaskSection({ items, onOpenCase, onAct, onCopy, canOpenLocalPaths }
   );
 }
 
+const CONTACT_STATUS_PRIORITY = {
+  可交付: 100,
+  已派发: 90,
+  候选待选: 80,
+  已锁定: 70,
+  待生成: 60,
+  素材阻塞: 50,
+  异常: 40,
+  已完成: 10
+};
+
+function sortContactItems(items = []) {
+  return [...items].sort((a, b) => {
+    const byStatus = (CONTACT_STATUS_PRIORITY[b.status] || 0) - (CONTACT_STATUS_PRIORITY[a.status] || 0);
+    if (byStatus) return byStatus;
+    return `${a.date || ''}${a.timeWindow || ''}`.localeCompare(`${b.date || ''}${b.timeWindow || ''}`);
+  });
+}
+
+function ContactGroupCard({ group, date, onCopy, onOpenCase, onDelivery }) {
+  const items = sortContactItems(group.items);
+  return (
+    <div className="contactCard contactDetailCard">
+      <div className="contactCardHead">
+        <div>
+          <strong>{group.name}</strong>
+          <span>{group.items.length} 条任务 · {contactStatusSummary(group)}</span>
+        </div>
+        <button onClick={() => onCopy(buildContactChecklist(date, [group]), `${group.name}清单已复制`)}>复制此人清单</button>
+      </div>
+      <div className="contactTaskList">
+        {items.slice(0, 10).map((slot) => (
+          <div className="contactTaskItem" key={slot.id}>
+            <button className="linkButton" onClick={() => slot.case?.id && onOpenCase(slot.case.id)}>{slot.case?.weixinNick || '未命名兼职'}</button>
+            <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
+            <em>{slot.contentKind} · {nextActionText(slot)}</em>
+            {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付</button>}
+          </div>
+        ))}
+        {items.length > 10 && <small>还有 {items.length - 10} 条，复制清单查看完整任务。</small>}
+      </div>
+    </div>
+  );
+}
+
 function groupTodayByContact(slots) {
   const groups = new Map();
   slots.forEach((slot) => {
@@ -957,7 +1005,7 @@ function groupTodayByContact(slots) {
   });
   return Array.from(groups, ([name, items]) => ({
     name,
-    items,
+    items: sortContactItems(items),
     pendingGenerate: items.filter((slot) => slot.status === '待生成').length,
     pendingChoose: items.filter((slot) => slot.status === '候选待选').length,
     locked: items.filter((slot) => slot.status === '已锁定').length,
