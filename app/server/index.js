@@ -962,10 +962,21 @@ function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
     `当前阶段：${slot?.stage || caze.stage}`,
     '发布平台：抖音图文/封面',
     `图片用途：${purpose}`,
-    `参考素材路径：${sourceMaterials.length ? sourceMaterials.join('；') : '暂无，按账号人设和内容阶段生成'}`,
+    `参考素材：${formatSourceMaterials(sourceMaterials)}`,
     '风格要求：自然生活感，手机拍摄质感，画面干净，适合微信发给兼职后直接保存使用。',
+    '合成要求：如果包含案例人物参考和医院/场景素材，保持人物身份特征和真实生活质感，把场景自然融合，不要做明显棚拍感。',
     '输出要求：生成后保存到指定目录，并回到系统标记待审核、已通过或已驳回。'
   ].join('\n');
+}
+
+function sourceMaterialLine(item, index) {
+  if (typeof item === 'string') return `${index + 1}. ${item}`;
+  return `${index + 1}. ${item.role || item.usage || '参考素材'}｜${item.kind || ''}｜${item.usage || item.category || ''}\n   ${item.path || ''}`;
+}
+
+function formatSourceMaterials(sourceMaterials = []) {
+  if (!sourceMaterials.length) return '暂无，按账号人设和内容阶段生成';
+  return sourceMaterials.map(sourceMaterialLine).join('\n');
 }
 
 function imageExtensionFromContentType(contentType) {
@@ -1072,6 +1083,9 @@ function writeImageTaskBrief(task, extraLines = []) {
     '',
     '正向提示词：',
     task.prompt,
+    '',
+    '参考素材：',
+    formatSourceMaterials(task.sourceMaterials || []),
     '',
     '反向提示词：',
     task.negativePrompt || '',
@@ -1254,6 +1268,9 @@ function imagePromptText(task) {
     '正向提示词：',
     task.prompt,
     '',
+    '参考素材：',
+    formatSourceMaterials(task.sourceMaterials || []),
+    '',
     '反向提示词：',
     task.negativePrompt || ''
   ].join('\n');
@@ -1340,7 +1357,7 @@ function materialTemplate(project) {
 function materialGaps(project, assets) {
   return materialTemplate(project).map((item) => {
     const matched = assets.filter((asset) => {
-      const haystack = `${asset.stage} ${asset.path}`.toLowerCase();
+      const haystack = `${asset.stage} ${asset.usage} ${asset.path}`.toLowerCase();
       return item.match.some((word) => haystack.includes(String(word).toLowerCase()));
     });
     return {
@@ -1368,7 +1385,46 @@ function assetSourceForPath(file) {
   return '真实';
 }
 
+function materialKeywordText(file) {
+  return `${file} ${path.basename(file)} ${path.dirname(file)}`.toLowerCase();
+}
+
+function includesAny(text, words) {
+  return words.some((word) => text.includes(String(word).toLowerCase()));
+}
+
+function classifyMaterialFile(file, scope = 'case') {
+  const text = materialKeywordText(file);
+  const kind = inferAssetKind(file);
+  if (scope === 'shared') {
+    if (includesAny(text, ['医院', '院内', '病房', '诊室', '前台', '大厅', '手术室', '环境'])) {
+      return { category: '医院素材', usage: '合成背景' };
+    }
+    if (includesAny(text, ['套图', '模板', '拼图', '版式', '参考图', '同款'])) {
+      return { category: '套图素材', usage: '套图参考' };
+    }
+    if (includesAny(text, ['文字卡', '封面', '标题', '卡片'])) {
+      return { category: '文字卡素材', usage: '文字卡' };
+    }
+    if (includesAny(text, ['生活', '街拍', '城市', '工作', '穿搭'])) {
+      return { category: '生活场景', usage: '通用配图' };
+    }
+    return { category: sharedAssetCategory(file), usage: kind === '视频' ? '通用视频' : '通用配图' };
+  }
+  const stage = inferStage(file);
+  if (includesAny(text, ['对比', '前后', 'before', 'after', 'compare'])) return { stage: '对比', usage: '案例对比' };
+  if (includesAny(text, ['术前', '基准', 'before'])) return { stage: '术前', usage: '案例人物' };
+  if (includesAny(text, ['自拍', '人物', '本人', '脸', '身材', '身体', '正面', '侧面'])) return { stage, usage: '案例人物' };
+  if (includesAny(text, ['d1', 'd3', 'd7', 'd14', 'd30', '术后', '恢复', '过程'])) return { stage, usage: '案例过程' };
+  if (includesAny(text, ['面诊', '探店', '医院', '咨询'])) return { stage: stage === '未分组' ? '面诊' : stage, usage: '案例场景' };
+  if (includesAny(text, ['日常', '生活', '穿搭', '工作', '城市'])) return { stage, usage: '日常素材' };
+  if (kind === '视频') return { stage, usage: '案例视频' };
+  if (kind === '文案') return { stage, usage: '案例文案' };
+  return { stage, usage: '案例素材' };
+}
+
 function insertCaseAsset(caze, file, options = {}) {
+  const classification = classifyMaterialFile(options.originPath || file, 'case');
   run(
     `INSERT INTO assets (id, case_id, path, kind, stage, source, usage, origin_path, review_status, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1377,9 +1433,9 @@ function insertCaseAsset(caze, file, options = {}) {
       caze.id,
       file,
       inferAssetKind(file),
-      options.stage || inferStage(file),
+      options.stage || classification.stage,
       options.source || assetSourceForPath(file),
-      options.usage || '备用',
+      options.usage || classification.usage,
       options.originPath || '',
       options.reviewStatus || '待处理',
       now()
@@ -1448,6 +1504,7 @@ function scanSharedAssets() {
   let inserted = 0;
   walkFiles(SHARED_MATERIAL_ROOT).forEach((file) => {
     if (!isSupportedAssetFile(file)) return;
+    const classification = classifyMaterialFile(file, 'shared');
     try {
       run(
         `INSERT INTO shared_assets (id, path, kind, category, source, usage, review_status, created_at)
@@ -1456,9 +1513,9 @@ function scanSharedAssets() {
           uid('shared_asset'),
           file,
           inferAssetKind(file),
-          sharedAssetCategory(file),
+          classification.category,
           '工作人员导入',
-          '通用',
+          classification.usage,
           '可用',
           now()
         ]
@@ -1495,6 +1552,49 @@ function deliveryAssetsForSlot(slot, caze, limit = 9) {
     .filter((asset) => fs.existsSync(asset.path));
   if (slot.contentKind === '素人种草') return caseAssets.slice(0, limit);
   return [...caseAssets, ...sharedAssetsForDelivery(limit)].slice(0, limit);
+}
+
+function imageSourceMaterialsFor(caze, slot, purpose) {
+  const caseAssets = all('SELECT * FROM assets WHERE case_id = ? AND kind IN (?, ?) AND review_status IN (?, ?) ORDER BY created_at DESC LIMIT 30', [caze.id, '图片', '视频', '可用', '待处理'])
+    .map(rowAsset)
+    .filter((asset) => fs.existsSync(asset.path));
+  const personRefs = caseAssets.filter((asset) => ['案例人物', '案例对比', '案例过程'].includes(asset.usage)).slice(0, 3);
+  const fallbackCaseRefs = personRefs.length ? [] : caseAssets.slice(0, 2);
+  const sharedRefs = sharedAssetsForDelivery(20)
+    .filter((asset) => ['合成背景', '套图参考', '通用配图', '文字卡'].includes(asset.usage) || ['医院素材', '套图素材', '生活场景', '文字卡素材'].includes(asset.stage))
+    .slice(0, 4);
+  const materials = [];
+  [...personRefs, ...fallbackCaseRefs].forEach((asset) => {
+    materials.push({
+      role: asset.usage === '案例对比' ? '案例变化参考' : '案例人物参考',
+      scope: '案例素材',
+      path: asset.path,
+      kind: asset.kind,
+      stage: asset.stage,
+      usage: asset.usage
+    });
+  });
+  sharedRefs.forEach((asset) => {
+    materials.push({
+      role: asset.usage === '套图参考' ? '套图结构参考' : asset.usage === '文字卡' ? '文字卡参考' : '医院/场景素材',
+      scope: '通用素材',
+      path: asset.path,
+      kind: asset.kind,
+      stage: asset.stage,
+      usage: asset.usage
+    });
+  });
+  if (!materials.length) {
+    materials.push({
+      role: '待补参考素材',
+      scope: '提示',
+      path: `暂无可用参考素材；先同步案例素材或扫描通用素材，再创建${purpose || slot?.contentKind || '图片'}任务`,
+      kind: '说明',
+      stage: slot?.stage || caze.stage,
+      usage: '待补素材'
+    });
+  }
+  return materials;
 }
 
 function numberOrNull(value) {
@@ -2879,7 +2979,8 @@ app.get('/api/config', (_req, res) => {
     sharedMaterialRoot: SHARED_MATERIAL_ROOT,
     sharedAssets: {
       total: all('SELECT id FROM shared_assets').length,
-      byCategory: all('SELECT category, COUNT(*) AS count FROM shared_assets GROUP BY category ORDER BY category')
+      byCategory: all('SELECT category, COUNT(*) AS count FROM shared_assets GROUP BY category ORDER BY category'),
+      byUsage: all('SELECT usage, COUNT(*) AS count FROM shared_assets GROUP BY usage ORDER BY usage')
     }
   });
 });
@@ -3202,7 +3303,7 @@ app.post('/api/image-tasks', (req, res) => {
   const purpose = body.purpose || slot?.contentKind || '日常养号';
   const outputDir = path.join(caze.localCaseDir, '02-生成补充', safeSegment(purpose));
   fs.mkdirSync(outputDir, { recursive: true });
-  const sourceMaterials = body.sourceMaterials || [];
+  const sourceMaterials = Array.isArray(body.sourceMaterials) ? body.sourceMaterials : imageSourceMaterialsFor(caze, slot, purpose);
   const prompt = body.prompt || imagePromptFor(caze, slot, purpose, sourceMaterials);
   const negativePrompt = body.negativePrompt || '过度精修，夸张效果，水印，低清晰度，错误文字，变形肢体，不符合账号人设的场景';
   const status = imageSettings().ready ? 'draft' : 'waiting_key';

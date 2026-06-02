@@ -287,7 +287,7 @@ async function main() {
     assert(syncedMaterials.copied === 1 && syncedMaterials.inserted === 1, 'source material sync did not copy and insert shared asset');
     const syncedAssetPath = path.join(caze.localCaseDir, '00-原始素材', '共享同步', '共享-D1.jpg');
     assert(fs.existsSync(syncedAssetPath), 'synced source material missing in local case dir');
-    assert(syncedMaterials.assets.some((asset) => asset.path === syncedAssetPath && asset.originPath === path.join(sharedSourceDir, '共享-D1.jpg') && asset.source === '共享导入'), 'synced source material metadata missing');
+    assert(syncedMaterials.assets.some((asset) => asset.path === syncedAssetPath && asset.originPath === path.join(sharedSourceDir, '共享-D1.jpg') && asset.source === '共享导入' && asset.usage === '案例过程'), 'synced source material metadata missing');
     const minimalCase = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', staff: '咨询Z', generateSlots: true, days: 3 })
@@ -347,9 +347,15 @@ async function main() {
     fs.mkdirSync(hospitalSharedDir, { recursive: true });
     fs.writeFileSync(path.join(hospitalSharedDir, '医院环境.jpg'), 'fake hospital shared material');
     const sharedAssetScan = await api('/shared-assets/scan', { method: 'POST' });
-    assert(sharedAssetScan.inserted === 1 && sharedAssetScan.assets.some((asset) => asset.category === '医院素材'), 'shared material scan failed');
+    assert(sharedAssetScan.inserted === 1 && sharedAssetScan.assets.some((asset) => asset.category === '医院素材' && asset.usage === '合成背景'), 'shared material scan failed');
     const sharedConfig = await api('/config');
-    assert(sharedConfig.sharedMaterialRoot.endsWith(path.join('素材库', '通用素材')) && sharedConfig.sharedAssets.total === 1, 'config missing shared material stats');
+    assert(sharedConfig.sharedMaterialRoot.endsWith(path.join('素材库', '通用素材')) && sharedConfig.sharedAssets.total === 1 && sharedConfig.sharedAssets.byUsage.some((item) => item.usage === '合成背景'), 'config missing shared material stats');
+    const compositionImage = await api('/image-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: caze.id, purpose: '种草配图' })
+    });
+    assert(compositionImage.sourceMaterials.some((item) => item.role === '案例人物参考' || item.role === '案例变化参考'), 'image task missing case reference material');
+    assert(compositionImage.sourceMaterials.some((item) => item.role === '医院/场景素材' && item.usage === '合成背景'), 'image task missing shared hospital material');
 
     const prepareSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',

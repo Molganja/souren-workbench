@@ -841,6 +841,13 @@ function ImageTaskSection({ items, onOpenCase, onAct, onCopy }) {
                 </div>
                 <p>{task.purpose}</p>
                 <small>{task.prompt}</small>
+                {task.sourceMaterials?.length > 0 && (
+                  <div className="deliveryMeta">
+                    {task.sourceMaterials.slice(0, 4).map((item, index) => (
+                      <span key={`${item.path || item}-${index}`}>{typeof item === 'string' ? item : `${item.role || item.usage}｜${item.usage || item.stage}`}</span>
+                    ))}
+                  </div>
+                )}
                 <GeneratedImageStrip files={task.generatedFiles || []} />
               </div>
               <div className="rowActions">
@@ -1481,12 +1488,15 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
               {assets.slice(0, 30).map((asset) => (
                 <div className="assetRow assetEditable" key={asset.id}>
                   <strong>{asset.kind}</strong>
-                  <span>{asset.stage} · {asset.source} · {asset.reviewStatus}</span>
+                  <span>{asset.stage} · {asset.usage} · {asset.source} · {asset.reviewStatus}</span>
                   <small>{asset.path}</small>
                   {asset.originPath && <small>来源：{asset.originPath}</small>}
                   <div className="inlineActions">
                     {['可用', '需处理', '不可用'].map((status) => (
                       <button key={status} onClick={() => onAct(() => request(`/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: status }) }), `素材已标记：${status}`)}>{status}</button>
+                    ))}
+                    {['案例人物', '案例过程', '案例对比', '案例场景', '日常素材'].map((usage) => (
+                      <button key={usage} onClick={() => onAct(() => request(`/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ usage }) }), `素材用途已标记：${usage}`)}>{usage}</button>
                     ))}
                   </div>
                 </div>
@@ -1998,6 +2008,12 @@ function SettingsView({ config, onCopy, onAct }) {
           {(config.sharedAssets?.byCategory || []).map((item) => (
             <div className="templateRow" key={item.category}>
               <strong>{item.category}</strong>
+              <span>{item.count} 个</span>
+            </div>
+          ))}
+          {(config.sharedAssets?.byUsage || []).map((item) => (
+            <div className="templateRow" key={item.usage}>
+              <strong>{item.usage}</strong>
               <span>{item.count} 个</span>
             </div>
           ))}
