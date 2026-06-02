@@ -83,6 +83,9 @@ else fail('交付弹窗缺少单账号固定步骤');
 if (mainSource.includes("copyAllowed = view.slot.status === '可交付'") && mainSource.includes('交付内容只读，避免重复发给同一个兼职') && mainSource.includes('核对发给兼职文案')) ok('已派发交付内容只读，避免重复发送');
 else fail('已派发交付内容仍可能继续复制重发');
 
+if (mainSource.includes('已用微信发送') && !mainSource.includes('>标记派发</button>') && !mainSource.includes('>已微信发送</button>')) ok('派发确认只保留在交付弹窗内');
+else fail('列表页仍有绕过交付弹窗的派发按钮');
+
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');
 fs.mkdirSync(dataDir, { recursive: true });

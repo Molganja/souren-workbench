@@ -668,7 +668,6 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, canOpenLoc
     return (
       <div className="rowActions">
         <button onClick={() => onDelivery(item.slot)}>查看交付</button>
-        <button onClick={() => onAct(() => request(`/slots/${item.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>已微信发送</button>
       </div>
     );
   }
@@ -838,7 +837,7 @@ function nextActionText(slot) {
   if (slot.status === '候选待选') return '选择一条候选';
   if (slot.status === '已锁定') return '生成交付内容';
   if (slot.status === '素材阻塞') return '补素材后重新生成交付内容';
-  if (slot.status === '可交付') return '复制文案和素材发微信';
+  if (slot.status === '可交付') return '打开交付内容，按步骤发微信';
   if (slot.status === '已派发') return '确认发布/交付后标记完成';
   if (slot.status === '已完成') return '任务已闭环';
   return '查看任务';
@@ -1066,7 +1065,6 @@ function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, canOpenLocalPaths })
         {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
-        {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => markCompleted(slot, onAct)}>标记完成</button>}
       </div>
     </div>
@@ -1522,7 +1520,6 @@ function SlotCard({ slot, candidates, caze, onAct, onDelivery, canOpenLocalPaths
         {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
         {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
-        {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => markCompleted({ ...slot, case: caze }, onAct)}>标记完成</button>}
         {slot.status !== '已完成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
       </div>
