@@ -2185,12 +2185,12 @@ function createMonitorActionSlot(input = {}) {
     偏冷补内容: {
       contentKind: '爆款提权',
       title: '播放偏低，补一条爆款提权/互动版内容',
-      goal: '账号数据动作：播放偏低，下一条补爆款提权或互动版内容，先把账号热度拉起来。'
+      goal: '账号策略动作：播放偏低，下一条补爆款提权或互动版内容，先把账号热度拉起来。'
     },
     增长承接: {
       contentKind: '素人种草',
       title: '粉丝增长明显，补一条答疑/复盘承接内容',
-      goal: '账号数据动作：粉丝增长明显，下一条补答疑或复盘内容，承接评论区咨询问题。'
+      goal: '账号策略动作：粉丝增长明显，下一条补答疑或复盘内容，承接评论区咨询问题。'
     }
   };
   const plan = plans[kind];
@@ -2257,7 +2257,7 @@ function buildChromeCollectionText(queue) {
     `回填接口：POST ${endpoint}`,
     '',
     '采集方式：用已登录抖音的 Chrome 打开账号主页，读取账号粉丝/关注/获赞/作品数，并记录最近作品的播放、点赞、评论、转发、收藏。',
-    '回填要求：优先回到首页账号卡片点「采集回填入口」填写；JSON 模板只作为自动回填备用。系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
+    '回填要求：优先回到网页底部折叠的「后台采集状态」填写；JSON 模板只作为自动回填备用。系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
     ''
   ];
   if (!queue.targets.length) {
@@ -2508,10 +2508,6 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
     reasons.push('出现爆款作品');
     actions.push('安排助理号/阑尾号互动，优先顶评论、回复咨询问题并承接转化');
   }
-  if (caze.douyinUrl && monitor.dueCollection) {
-    reasons.push(monitor.latestSnapshot ? '账号数据超过24小时未更新' : '账号数据待采集');
-    actions.push('首页生成 Chrome 采集清单，我用已登录抖音的 Chrome 打开主页并通过采集回填入口写回数据');
-  }
   if (futureSlots === 0) {
     reasons.push('缺少排期');
     actions.push('补未来 7-30 天排期，起号期优先日常养号和爆款提权');
@@ -2737,7 +2733,7 @@ function reviewSummary() {
     .sort((a, b) => (b.topVideo?.latestSnapshot?.plays || b.latestSnapshot?.fans || 0) - (a.topVideo?.latestSnapshot?.plays || a.latestSnapshot?.fans || 0))
     .slice(0, 12);
   const needsAttention = caseRows
-    .filter((item) => item.reasons.length > 0 || item.materialGaps > 0 || item.activeViralAlerts.length > 0 || item.dueCollection)
+    .filter((item) => item.reasons.length > 0 || item.materialGaps > 0 || item.activeViralAlerts.length > 0)
     .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.materialGaps + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.materialGaps + a.reasons.length))
     .slice(0, 20);
 
@@ -2914,7 +2910,7 @@ function dashboard() {
     pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
     materialSync: materialSyncRows,
     abnormalCases: caseHealthRows
-      .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0 || caze.activeViralAlerts.length > 0 || caze.dueCollection)
+      .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0 || caze.activeViralAlerts.length > 0)
       .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.requiredGapCount + b.materialGaps.length + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.requiredGapCount + a.materialGaps.length + a.reasons.length))
   };
 }
@@ -2926,7 +2922,7 @@ const OPERATOR_FLOW = [
   ['素材阻塞', '补素材或创建图片/剪辑任务'],
   ['可交付', '复制文案和素材发微信'],
   ['已派发', '确认已发布后标记完成'],
-  ['已完成', '等待系统采集账号数据']
+  ['已完成', '任务已闭环']
 ];
 
 function systemReadiness() {

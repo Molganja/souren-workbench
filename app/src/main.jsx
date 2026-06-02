@@ -367,14 +367,16 @@ function App() {
 function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, canOpenLocalPaths }) {
   const contactGroups = groupTodayByContact(data.todaySlots);
   const flowGroups = buildTodayFlow(data.todaySlots);
-  const beginnerSteps = buildBeginnerSteps(data);
+  const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
+  const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
+  const beginnerSteps = buildBeginnerSteps(data, operatorMonitorActions);
   return (
     <div className="stack">
       <section className="hero">
         <div>
           <p className="eyebrow">今日 {data.today}</p>
           <h1>运营中控台</h1>
-          <p>先处理待生成、待选择、待交付和已派发确认；账号表现由系统按周期采集，爆款作品会自动浮到前面提醒互动。</p>
+          <p>先看今天要发给谁、哪些内容要生成或交付、哪些爆款需要安排互动；首页只放工作人员需要处理的动作。</p>
           <div className="heroActions">
             <button className="primary" onClick={() => onAct(
               () => request('/dashboard/prepare-today', { method: 'POST' }),
@@ -391,26 +393,23 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
           </div>
         </div>
         <div className="stats">
-          <Metric label="案例" value={data.counts.cases} />
+          <Metric label="今日任务" value={data.todaySlots.length} />
           <Metric label="待生成" value={data.counts.pendingGenerate} />
           <Metric label="待选择" value={data.counts.pendingChoose} />
           <Metric label="待交付" value={data.counts.readyDelivery} />
           <Metric label="等回传" value={data.counts.sentWaitReport} />
           <Metric label="爆款提醒" value={data.counts.viralAlerts || 0} />
-          <Metric label="待采集" value={data.counts.dueCollection || 0} />
-          <Metric label="数据动作" value={data.counts.monitorActions || 0} />
+          <Metric label="策略动作" value={strategyActions.length} />
           <Metric label="阻塞" value={data.counts.blocked || 0} />
           <Metric label="待同步" value={data.counts.materialSync || 0} />
-          <Metric label="必补素材" value={data.counts.requiredMaterialGaps || 0} />
           <Metric label="图片任务" value={data.counts.imageTasks || 0} />
           <Metric label="剪辑任务" value={data.counts.clipTasks || 0} />
           <Metric label="待爆款" value={data.counts.pendingViral || 0} />
         </div>
       </section>
 
-      <MonitorActionSection items={data.monitorActions || []} onOpenCase={onOpenCase} onAct={onAct} />
-      <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
-      <MaterialSyncSection items={data.materialSync || []} onOpenCase={onOpenCase} onAct={onAct} canOpenLocalPaths={canOpenLocalPaths} />
+      {(data.viralAlerts || []).length > 0 && <ViralAlertSection items={data.viralAlerts || []} onOpenCase={onOpenCase} onAct={onAct} />}
+      {strategyActions.length > 0 && <MonitorActionSection title="账号策略动作" empty="暂无需要工作人员处理的账号策略动作" items={strategyActions} onOpenCase={onOpenCase} onAct={onAct} />}
 
       <section className="panel beginnerPanel">
         <div className="sectionHead">
@@ -454,6 +453,14 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
         )}
       </section>
 
+      {data.readyDelivery.length > 0 && <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
+      {data.pendingChoose.length > 0 && <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
+      {data.pendingGenerate.length > 0 && <TaskSection title="待生成候选稿" items={data.pendingGenerate} empty="没有待生成内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
+      {(data.materialSync || []).length > 0 && <MaterialSyncSection items={data.materialSync || []} onOpenCase={onOpenCase} onAct={onAct} canOpenLocalPaths={canOpenLocalPaths} />}
+      {(data.pendingViralTemplates || []).length > 0 && <PendingViralSection items={data.pendingViralTemplates || []} onCopy={onCopy} onOpenViral={onOpenViral} />}
+      {(data.imageTasks || []).length > 0 && <ImageTaskSection items={data.imageTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />}
+      {(data.clipTasks || []).length > 0 && <ClipTaskSection items={data.clipTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} canOpenLocalPaths={canOpenLocalPaths} />}
+
       <section className="panel">
         <div className="sectionHead">
           <h2>今日链路复盘</h2>
@@ -480,35 +487,27 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
         )}
       </section>
 
-      <TaskSection title="今天要处理" items={data.todaySlots} empty="今天没有到期任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
-      <TaskSection title="待生成候选稿" items={data.pendingGenerate} empty="没有待生成内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
-      <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
-      <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
-      <PendingViralSection items={data.pendingViralTemplates || []} onCopy={onCopy} onOpenViral={onOpenViral} />
-      <ImageTaskSection items={data.imageTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
-      <ClipTaskSection items={data.clipTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} canOpenLocalPaths={canOpenLocalPaths} />
+      {data.todaySlots.length > 0 && <TaskSection title="今天全部任务" items={data.todaySlots} empty="今天没有到期任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
 
-      <section className="panel">
+      {data.abnormalCases.length > 0 && <section className="panel">
         <div className="sectionHead">
           <h2>异常账号</h2>
           <span>{data.abnormalCases.length} 个</span>
         </div>
-        {data.abnormalCases.length === 0 ? (
-          <div className="empty">暂无异常账号</div>
-        ) : (
-          <div className="caseGrid">
-            {data.abnormalCases.map((item) => (
-              <button key={item.id} className="caseTile" onClick={() => onOpenCase(item.id)}>
-                <strong>{item.weixinNick}</strong>
-                <span>{item.caseCode} · {item.project}</span>
-                <em>{item.reasons.join(' / ')}</em>
-                {item.materialGaps?.length > 0 && <small>缺口：{item.materialGaps.slice(0, 3).map((gap) => `${gap.status}-${gap.label}`).join(' / ')}</small>}
-                {item.actions?.[0] && <small>{item.actions[0]}</small>}
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
+        <div className="caseGrid">
+          {data.abnormalCases.map((item) => (
+            <button key={item.id} className="caseTile" onClick={() => onOpenCase(item.id)}>
+              <strong>{item.weixinNick}</strong>
+              <span>{item.caseCode} · {item.project}</span>
+              <em>{item.reasons.join(' / ')}</em>
+              {item.materialGaps?.length > 0 && <small>缺口：{item.materialGaps.slice(0, 3).map((gap) => `${gap.status}-${gap.label}`).join(' / ')}</small>}
+              {item.actions?.[0] && <small>{item.actions[0]}</small>}
+            </button>
+          ))}
+        </div>
+      </section>}
+
+      <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
     </div>
   );
 }
@@ -571,14 +570,14 @@ function monitorActionSlotLabel(kind) {
   return '';
 }
 
-function MonitorActionSection({ items, onOpenCase, onAct }) {
+function MonitorActionSection({ title = '账号策略动作', empty = '暂无需要工作人员处理的账号策略动作', items, onOpenCase, onAct }) {
   return (
     <section className="panel alertPanel">
       <div className="sectionHead">
-        <h2>账号数据动作</h2>
+        <h2>{title}</h2>
         <span>{items.length} 条</span>
       </div>
-      {items.length === 0 ? <div className="empty">暂无需要处理的账号数据动作</div> : (
+      {items.length === 0 ? <div className="empty">{empty}</div> : (
         <div className="taskList">
           {items.map((item) => (
             <div className="taskRow" key={item.id}>
@@ -628,36 +627,44 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
   const due = accounts.filter((item) => item.dueCollection).slice(0, 8);
   const [ingestAccount, setIngestAccount] = useState(null);
   return (
-    <section className="panel">
-      <div className="sectionHead">
-        <h2>账号数据监控</h2>
-        <div className="headerActions">
+    <section className="panel backstagePanel">
+      <details>
+        <summary>
+          <strong>后台采集状态</strong>
           <span>{monitor?.totals?.monitoredAccounts || 0} 个账号 · {monitor?.totals?.dueCollection || 0} 个待采集 · {monitor?.totals?.waitingChrome || 0} 个等Chrome</span>
-          <button onClick={() => onAct(
-            () => request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 80 }) }),
-            (result) => `Chrome采集清单已生成：${result.registeredCount} 个账号`
-          )}>生成Chrome采集清单</button>
-          <button onClick={() => onAct(
-            () => copyChromeCollectionQueue(onCopy),
-            (result) => `已复制Chrome采集清单：${result.count} 个账号`
-          )}>复制给我采集清单</button>
-        </div>
-      </div>
-      {accounts.length === 0 ? <div className="empty">新建案例时填写抖音主页后，会进入 24 小时账号数据监控</div> : (
-        <div className="contactGrid">
-          {(due.length ? due : accounts.slice(0, 8)).map((item) => (
-            <div className="contactCard" key={item.case.id}>
-              <button className="linkButton" onClick={() => onOpenCase(item.case.id)}>{item.case.weixinNick}</button>
-              <span>{item.dueCollection ? '待采集' : '已采集'} · 粉丝 {formatNumber(item.latestSnapshot?.fans)} · 初始 {formatNumber(item.initialSnapshot?.fans)}</span>
-              <small>{item.topVideo ? `最高播放 ${formatNumber(item.topVideo.latestSnapshot?.plays)}｜${item.topVideo.title || '未命名作品'}` : `最近采集：${shortTime(item.lastCollectedAt)}`}</small>
-              <div className="inlineActions compactActions">
-                {item.case.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
-                <button onClick={() => setIngestAccount(item)}>采集回填入口</button>
-              </div>
+        </summary>
+        <div className="backstageBody">
+          <div className="sectionHead">
+            <h2>抖音账号采集</h2>
+            <div className="headerActions">
+              <span>这是后台数据入口，不是工作人员每日首要动作</span>
+              <button onClick={() => onAct(
+                () => request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 80 }) }),
+                (result) => `Chrome采集清单已生成：${result.registeredCount} 个账号`
+              )}>生成Chrome采集清单</button>
+              <button onClick={() => onAct(
+                () => copyChromeCollectionQueue(onCopy),
+                (result) => `已复制Chrome采集清单：${result.count} 个账号`
+              )}>复制给我采集清单</button>
             </div>
-          ))}
+          </div>
+          {accounts.length === 0 ? <div className="empty">新建案例时填写抖音主页后，会进入 24 小时账号数据监控</div> : (
+            <div className="contactGrid">
+              {(due.length ? due : accounts.slice(0, 8)).map((item) => (
+                <div className="contactCard" key={item.case.id}>
+                  <button className="linkButton" onClick={() => onOpenCase(item.case.id)}>{item.case.weixinNick}</button>
+                  <span>{item.dueCollection ? '待采集' : '已采集'} · 粉丝 {formatNumber(item.latestSnapshot?.fans)} · 初始 {formatNumber(item.initialSnapshot?.fans)}</span>
+                  <small>{item.topVideo ? `最高播放 ${formatNumber(item.topVideo.latestSnapshot?.plays)}｜${item.topVideo.title || '未命名作品'}` : `最近采集：${shortTime(item.lastCollectedAt)}`}</small>
+                  <div className="inlineActions compactActions">
+                    {item.case.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
+                    <button onClick={() => setIngestAccount(item)}>采集回填入口</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </details>
       {ingestAccount && (
         <DouyinIngestForm
           account={ingestAccount}
@@ -1003,7 +1010,7 @@ const TODAY_FLOW = [
   ['素材阻塞', '补素材或创建图片/剪辑任务'],
   ['可交付', '复制文案和素材发微信'],
   ['已派发', '确认发布/交付后标记完成'],
-  ['已完成', '等待系统采集账号数据']
+  ['已完成', '任务已闭环']
 ];
 
 function buildTodayFlow(slots) {
@@ -1016,9 +1023,15 @@ function buildTodayFlow(slots) {
     .filter((group) => group.items.length > 0);
 }
 
-function buildBeginnerSteps(data) {
+function buildBeginnerSteps(data, operatorMonitorActions = []) {
   const counts = data.counts || {};
+  const strategyCount = operatorMonitorActions.filter((item) => item.kind !== '爆款互动').length;
   return [
+    {
+      title: '先看爆款',
+      count: counts.viralAlerts || 0,
+      note: '有爆款作品时，先安排助理号/阑尾号去评论区互动。'
+    },
     {
       title: '生成今天内容',
       count: counts.pendingGenerate || 0,
@@ -1045,14 +1058,9 @@ function buildBeginnerSteps(data) {
       note: '复制任务单，剪完或安排发布后标记完成。'
     },
     {
-      title: '爆款互动',
-      count: counts.viralAlerts || 0,
-      note: '有爆款作品时，安排助理号/阑尾号去评论区互动。'
-    },
-    {
-      title: '账号数据动作',
-      count: counts.monitorActions || 0,
-      note: '按优先级处理待采集、爆款互动、偏冷补内容和增长承接。'
+      title: '账号策略',
+      count: strategyCount,
+      note: '只看需要工作人员处理的偏冷补内容和增长承接。'
     }
   ];
 }
@@ -1082,7 +1090,7 @@ function nextActionText(slot) {
   if (slot.status === '素材阻塞') return '补素材后重新生成交付内容';
   if (slot.status === '可交付') return '复制文案和素材发微信';
   if (slot.status === '已派发') return '确认发布/交付后标记完成';
-  if (slot.status === '已完成') return '等待系统采集账号数据';
+  if (slot.status === '已完成') return '任务已闭环';
   return '查看任务';
 }
 
@@ -1731,7 +1739,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
 
       <section className="panel">
         <div className="sectionHead"><h2>账号监控</h2><span>{videos.length} 条作品</span></div>
-        {!monitor.latestSnapshot && videos.length === 0 ? <div className="empty">填写抖音主页后，首页可生成 Chrome 采集清单；回填后这里显示粉丝和作品数据</div> : (
+        {!monitor.latestSnapshot && videos.length === 0 ? <div className="empty">填写抖音主页后，底部后台采集区可生成 Chrome 采集清单；回填后这里显示粉丝和作品数据</div> : (
           <div className="metricTable">
             <div className="metricHeader"><span>初始粉丝</span><span>最新粉丝</span><span>粉丝变化</span><span>作品数</span><span>最近采集</span><span>采集状态</span></div>
             <div className="metricLine">

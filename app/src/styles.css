@@ -718,6 +718,34 @@ button.primary, .button.primary {
   justify-content: flex-start;
 }
 
+.backstagePanel {
+  background: #fafbfc;
+}
+
+.backstagePanel details {
+  display: grid;
+  gap: 12px;
+}
+
+.backstagePanel summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.backstagePanel summary strong {
+  color: var(--ink);
+}
+
+.backstageBody {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
 .scheduleFilters {
   grid-template-columns: minmax(260px, 1fr) 130px 140px 140px auto;
 }
