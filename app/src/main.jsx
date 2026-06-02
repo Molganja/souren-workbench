@@ -247,7 +247,7 @@ function App() {
           <ReviewView data={review} />
         )}
         {!loading && canUseWorkbench && view === 'schedule' && schedule && (
-          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} activeQueueItem={activeQueueItem} />
+          <ScheduleView data={schedule} />
         )}
         {!loading && canUseWorkbench && view === 'cases' && (
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
@@ -1030,7 +1030,7 @@ function caseAccountLine(caze = {}) {
   ].filter(Boolean).join(' · ');
 }
 
-function ScheduleView({ data, onOpenCase, onAct, onDelivery, activeQueueItem }) {
+function ScheduleView({ data }) {
   const [range, setRange] = useState('14');
   const [status, setStatus] = useState('全部状态');
   const [kind, setKind] = useState('全部内容');
@@ -1058,7 +1058,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, activeQueueItem }) 
         <div>
           <p className="eyebrow">排期 {data.today}</p>
           <h1>全局排期规划</h1>
-          <p>按日期查看所有兼职/账号未来要发什么；执行动作回到今日操作队列，排到第一条再处理。</p>
+          <p>按日期查看所有兼职/账号未来要发什么；这里只看安排，不做执行，具体动作回到今日操作队列。</p>
         </div>
         <div className="stats reviewStats">
           <Metric label="总排期" value={data.counts.total} />
@@ -1092,7 +1092,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, activeQueueItem }) 
           <div className="sectionHead"><h2>{date}</h2><span>{items.length} 条</span></div>
           <div className="taskList">
             {items.map((slot) => (
-              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onDelivery={onDelivery} activeQueueItem={activeQueueItem} />
+              <ScheduleRow key={slot.id} slot={slot} />
             ))}
           </div>
         </section>
@@ -1101,9 +1101,8 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, activeQueueItem }) 
   );
 }
 
-function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, activeQueueItem }) {
+function ScheduleRow({ slot }) {
   const caze = slot.case || {};
-  const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, slot);
   const hasQueueAction = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发'].includes(slot.status);
   return (
     <div className="taskRow">
@@ -1113,7 +1112,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, activeQueueItem }) {
       </div>
       <div className="taskMain">
         <div className="rowTitle">
-          <button className="linkButton" onClick={() => caze.id && onOpenCase(caze.id)}>{caze.weixinNick || '未命名账号'}</button>
+          <strong className="metricName">{caze.weixinNick || '未命名账号'}</strong>
           <span className={`kind k-${slot.contentKind}`}>{slot.contentKind}</span>
           <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
         </div>
@@ -1121,11 +1120,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, activeQueueItem }) {
         <small>{caseAccountLine(caze)} · 候选 {slot.candidateCount}</small>
       </div>
       <div className="rowActions">
-        {isActiveQueueSlot && slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
-        {isActiveQueueSlot && slot.status === '候选待选' && <button onClick={() => caze.id && onOpenCase(caze.id)}>去选择</button>}
-        {isActiveQueueSlot && ['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
-        {isActiveQueueSlot && slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
-        {!isActiveQueueSlot && hasQueueAction && <span className="lockedNote">排到今日队列队首后处理</span>}
+        {hasQueueAction && <span className="lockedNote">回今日操作队列处理</span>}
       </div>
     </div>
   );

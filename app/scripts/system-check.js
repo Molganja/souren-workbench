@@ -158,6 +158,19 @@ if (
 ) ok('数据复盘页只读，不再提供打开案例的执行入口');
 else fail('数据复盘页仍可能绕过今日队列打开案例或文档未说明只读边界');
 
+if (
+  mainSource.includes('function ScheduleView({ data })') &&
+  mainSource.includes('这里只看安排，不做执行') &&
+  mainSource.includes('function ScheduleRow({ slot })') &&
+  mainSource.includes('回今日操作队列处理') &&
+  !mainSource.includes('<ScheduleView data={schedule} onOpenCase={openCase}') &&
+  !mainSource.includes('<ScheduleRow key={slot.id} slot={slot} onOpenCase=') &&
+  !mainSource.includes('function ScheduleRow({ slot, onOpenCase') &&
+  readmeSource.includes('排期规划只看未来安排') &&
+  sopSource.includes('排期规划」只用于看安排')
+) ok('排期规划页只读，不再提供生成、交付或打开案例入口');
+else fail('排期规划页仍可能绕过今日队列执行任务或文档未说明只读边界');
+
 if (serverSource.includes('function caseIntakeIssue') && serverSource.includes('intakeIssues: intakeIssueRows') && serverSource.includes("kind: '补登记'") && serverSource.includes('缺少抖音链接') && serverSource.includes('缺少项目') && serverSource.includes('缺少共享原始素材路径') && serverSource.includes('补齐微信、抖音主页、项目和共享原始素材路径') && mainSource.includes('item.intakeIssue') && smokeSource.includes('legacy missing account did not enter intake issue queue') && smokeSource.includes("intakeIssue.issues.includes('缺少项目')")) ok('旧账号缺抖音、项目或共享素材路径会进入补登记队列');
 else fail('缺登记资料的旧账号仍可能躲在异常列表之外，不进入首页队列');
 
