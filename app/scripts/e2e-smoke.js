@@ -1001,6 +1001,30 @@ async function main() {
     assert(viralBulk.createdCount === 4, 'viral bulk generation failed');
     assert(viralBulk.skipped.some((item) => item.caseId === pausedViralCase.id && item.reason.includes('暂停')), 'viral bulk did not skip paused account');
     assert(!viralBulk.slots.some((item) => item.caseId === pausedViralCase.id), 'viral bulk created slot for paused account');
+    const pausedViralIngest = await api('/douyin-monitor/ingest', {
+      method: 'POST',
+      body: JSON.stringify({
+        caseId: pausedViralCase.id,
+        collectedAt: '2026-06-01T15:00:00.000Z',
+        source: 'paused-viral-smoke',
+        account: { fans: 200, following: 10, totalLikes: 1000, totalWorks: 1 },
+        videos: [
+          {
+            videoId: 'paused-viral-video',
+            url: 'https://www.douyin.com/video/paused-viral',
+            title: '暂停账号历史爆款',
+            publishTime: '2026-06-01',
+            plays: 9000,
+            likes: 600,
+            comments: 80
+          }
+        ]
+      })
+    });
+    assert(pausedViralIngest.viralAlerts.length >= 1, 'paused account ingest did not create raw viral alert');
+    const pausedViralDashboard = await api('/dashboard');
+    assert(!pausedViralDashboard.viralAlerts.some((item) => item.case?.id === pausedViralCase.id), 'paused account viral alert leaked into dashboard queue');
+    assert(!pausedViralDashboard.monitorActions.some((item) => item.kind === '爆款互动' && item.case?.id === pausedViralCase.id), 'paused account viral action leaked into monitor actions');
     await api(`/cases/${pausedViralCase.id}`, { method: 'DELETE' });
     const filteredBulk = await api(`/viral-templates/${filteredViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-03' }) });
     assert(filteredBulk.createdCount >= 1 && filteredBulk.skippedCount >= 1, 'viral persona filter bulk generation failed');

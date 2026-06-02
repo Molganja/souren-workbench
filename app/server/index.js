@@ -2357,7 +2357,8 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
   const videoSnapshots = all('SELECT * FROM video_snapshots ORDER BY collected_at DESC, created_at DESC').map(rowVideoSnapshot);
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
   const collectionRuns = all('SELECT * FROM collection_runs ORDER BY started_at DESC, created_at DESC').map(rowCollectionRun);
-  const viralAlerts = joinedViralAlerts('va.status = ?', ['active'], 30);
+  const viralAlerts = joinedViralAlerts('va.status = ?', ['active'], 30)
+    .filter((alert) => !caseIsPaused(byCase[alert.caseId]));
   const latestVideoSnapshots = latestSnapshotsByVideo(videoSnapshots);
   const accountByCase = {};
   const videosByCase = {};

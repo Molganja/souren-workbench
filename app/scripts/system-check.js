@@ -124,6 +124,9 @@ else fail('已派发任务仍保留回传口径或旧计数字段');
 if (serverSource.includes('失联处理') && serverSource.includes('失联暂停') && serverSource.includes('不进入采集队列')) ok('失联账号会暂停排期和采集');
 else fail('缺少失联账号暂停逻辑');
 
+if (serverSource.includes("joinedViralAlerts('va.status = ?', ['active'], 30)") && serverSource.includes('!caseIsPaused(byCase[alert.caseId])')) ok('暂停账号的爆款提醒不会回到今日队列');
+else fail('暂停账号的爆款提醒仍可能进入今日队列');
+
 if (serverSource.includes('/api/cases/:id/resume') && serverSource.includes('已取消') && mainSource.includes('恢复账号')) ok('失联暂停账号支持一键恢复');
 else fail('缺少失联暂停账号恢复闭环');
 
