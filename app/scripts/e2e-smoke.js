@@ -1400,6 +1400,7 @@ async function main() {
     const complianceDelivery = await api(`/slots/${complianceSlot.id}/delivery`, { method: 'POST' });
     assert(complianceDelivery.blocked === true && complianceDelivery.reason === 'compliance_hits', 'compliance delivery was not blocked');
     assert(complianceDelivery.slot.status === '异常', 'compliance blocked slot was not marked abnormal');
+    assert(complianceDelivery.slot.operatorNote === '文案命中合规提示', 'compliance blocked slot missing abnormal note');
     assert(fs.existsSync(path.join(complianceDelivery.deliveryDir, '00-合规阻塞说明.txt')), 'compliance blocked note missing');
     const complianceView = await api(`/slots/${complianceSlot.id}/delivery-view`);
     assert(complianceView.texts.complianceNote.includes('合规提示'), 'compliance delivery view missing note');
@@ -1663,8 +1664,16 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({ date: '2026-06-07', contentKind: '日常养号', stage: '起号期', goal: '异常标记验收' })
     });
-    const abnormalSlot = await api(`/slots/${abnormalTestSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
+    let abnormalWithoutNoteRejected = false;
+    try {
+      await api(`/slots/${abnormalTestSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
+    } catch (error) {
+      abnormalWithoutNoteRejected = /填写原因/.test(error.message);
+    }
+    assert(abnormalWithoutNoteRejected, 'manual abnormal status without note was accepted');
+    const abnormalSlot = await api(`/slots/${abnormalTestSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常', operatorNote: '素材没法确认：烟测暂缓' }) });
     assert(abnormalSlot.status === '异常', 'manual abnormal status failed');
+    assert(abnormalSlot.operatorNote === '素材没法确认：烟测暂缓', 'manual abnormal note was not persisted');
     let invalidSlotStatusRejected = false;
     try {
       await api(`/slots/${abnormalTestSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '乱写状态' }) });

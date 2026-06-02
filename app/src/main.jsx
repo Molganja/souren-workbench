@@ -1654,7 +1654,42 @@ function deliveryResultMessage(result) {
   return '缺少素材，已打开阻塞说明';
 }
 
+function SlotExceptionModal({ slot, onClose, onSubmit }) {
+  const [reason, setReason] = useState('');
+  const [detail, setDetail] = useState('');
+  const note = [reason, detail.trim()].filter(Boolean).join('：');
+  const ready = note.trim().length >= 2;
+  return (
+    <Modal title="暂缓这条" onClose={onClose}>
+      <div className="hintBox">只有当前任务确实无法继续时才暂缓；系统会记录原因，后面排到队首时能接着处理。</div>
+      <div className="templateList">
+        <div className="templateRow">
+          <strong>当前排期</strong>
+          <span>{slot.date} · {slot.contentKind}</span>
+        </div>
+      </div>
+      <div className="formGrid">
+        <label>暂缓原因
+          <select value={reason} onChange={(event) => setReason(event.target.value)}>
+            <option value="">选择原因</option>
+            <option value="素材没法确认">素材没法确认</option>
+            <option value="文案需要再看">文案需要再看</option>
+            <option value="兼职临时有问题">兼职临时有问题</option>
+            <option value="其他原因">其他原因</option>
+          </select>
+        </label>
+        <label className="wide">补充说明<input value={detail} onChange={(event) => setDetail(event.target.value)} placeholder="一句话说明卡在哪里" /></label>
+      </div>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="primary" disabled={!ready} onClick={() => onSubmit(note.trim())}>确认暂缓</button>
+      </div>
+    </Modal>
+  );
+}
+
 function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery, activeQueueItem }) {
+  const [exceptionOpen, setExceptionOpen] = useState(false);
   const selected = candidates.find((item) => item.selected);
   const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, slot);
   const hasQueueAction = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'].includes(slot.status);
@@ -1680,10 +1715,25 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
         {canCreateClipTask && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), (result) => result.alreadyExisting ? '已有剪辑任务' : '剪辑任务已创建')}>创建剪辑任务</button>}
         {existingClipTask && <span className="lockedNote">剪辑任务已建</span>}
         {isActiveQueueSlot && slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
-        {canMarkException && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已暂缓处理')}>暂缓这条</button>}
+        {canMarkException && <button onClick={() => setExceptionOpen(true)}>暂缓这条</button>}
         {!isActiveQueueSlot && hasQueueAction && <span className="lockedNote">排到今日队列队首后处理</span>}
       </div>
       {slot.deliveryDir && <div className="path">交付内容已生成，可在网页内查看、复制和下载。</div>}
+      {slot.operatorNote && <div className="hintBox">暂缓原因：{slot.operatorNote}</div>}
+      {exceptionOpen && (
+        <SlotExceptionModal
+          slot={slot}
+          onClose={() => setExceptionOpen(false)}
+          onSubmit={(operatorNote) => onAct(async () => {
+            const result = await request(`/slots/${slot.id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: '异常', operatorNote })
+            });
+            setExceptionOpen(false);
+            return result;
+          }, '已暂缓处理')}
+        />
+      )}
       {candidates.length > 0 && (
         <div className="draftGrid">
           {candidates.map((draft) => (

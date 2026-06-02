@@ -629,6 +629,22 @@ if (serverSource.includes('canPatchSlotStatus') && serverSource.includes("nextSt
 else fail('交付链路仍可能被直接改成异常');
 
 if (
+  dbSource.includes('operator_note TEXT')
+  && serverSource.includes('operatorNote.length < 2')
+  && serverSource.includes('暂缓这条前必须填写原因')
+  && serverSource.includes('文案命中合规提示')
+  && mainSource.includes('SlotExceptionModal')
+  && mainSource.includes('暂缓原因')
+  && mainSource.includes('operatorNote')
+  && smokeSource.includes('manual abnormal status without note was accepted')
+  && smokeSource.includes('manual abnormal note was not persisted')
+  && smokeSource.includes('compliance blocked slot missing abnormal note')
+  && readmeSource.includes('暂缓当前队首任务时必须选择或填写原因')
+  && sopSource.includes('暂缓不是跳过任务')
+) ok('暂缓任务必须记录原因，不能无痕藏起队首任务');
+else fail('暂缓任务仍可能不填原因，导致后续不知道为什么异常');
+
+if (
   serverSource.includes('const nextSourceMaterialDir')
   && serverSource.includes('normalizeSourceMaterialDir(body.sourceMaterialDir')
   && serverSource.includes('existingSourceCase')

@@ -433,6 +433,7 @@ function rowSlot(row) {
     selectedCandidateId: row.selected_candidate_id,
     deliveryDir: row.delivery_dir,
     handoffDone: parseJson(row.handoff_done, []),
+    operatorNote: row.operator_note || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -4683,6 +4684,10 @@ app.patch('/api/slots/:id/status', (req, res) => {
   if (status === '已完成' && slot.status === '已派发' && req.body?.completionConfirmed !== true) {
     return res.status(409).json({ error: '收到兼职或剪辑人员完成回复后，才能标记已完成' });
   }
+  const operatorNote = String(req.body?.operatorNote || '').trim();
+  if (status === '异常' && operatorNote.length < 2) {
+    return res.status(409).json({ error: '暂缓这条前必须填写原因，方便后面接着处理' });
+  }
   let handoffGuard = null;
   if (status === '已派发') {
     const deliveryView = deliveryViewForSlot(slot);
@@ -4695,9 +4700,11 @@ app.patch('/api/slots/:id/status', (req, res) => {
     }
   }
   if (status === '已派发') {
-    run('UPDATE plan_slots SET status = ?, handoff_done = ?, updated_at = ? WHERE id = ?', [status, JSON.stringify(handoffGuard.completedKeys || []), now(), slot.id]);
+    run('UPDATE plan_slots SET status = ?, handoff_done = ?, operator_note = ?, updated_at = ? WHERE id = ?', [status, JSON.stringify(handoffGuard.completedKeys || []), '', now(), slot.id]);
+  } else if (status === '异常') {
+    run('UPDATE plan_slots SET status = ?, operator_note = ?, updated_at = ? WHERE id = ?', [status, operatorNote, now(), slot.id]);
   } else {
-    run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', [status, now(), slot.id]);
+    run('UPDATE plan_slots SET status = ?, operator_note = ?, updated_at = ? WHERE id = ?', [status, '', now(), slot.id]);
   }
   res.json(slotById(slot.id));
 });
@@ -4779,7 +4786,7 @@ function createDeliveryForSlot(slot) {
       '2. 必要时人工改写标题和正文',
       '3. 再重新生成交付内容'
     ].join('\n'));
-    run('UPDATE plan_slots SET status = ?, delivery_dir = ?, handoff_done = ?, updated_at = ? WHERE id = ?', ['异常', deliveryDir, '[]', now(), slot.id]);
+    run('UPDATE plan_slots SET status = ?, delivery_dir = ?, handoff_done = ?, operator_note = ?, updated_at = ? WHERE id = ?', ['异常', deliveryDir, '[]', '文案命中合规提示', now(), slot.id]);
     return { blocked: true, reason: 'compliance_hits', complianceHits, deliveryDir, copiedAssets: [], slot: slotById(slot.id) };
   }
   const freelancerGuide = writeFreelancerGuide(caze);

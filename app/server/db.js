@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS plan_slots (
   selected_candidate_id TEXT,
   delivery_dir TEXT,
   handoff_done TEXT NOT NULL DEFAULT '[]',
+  operator_note TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -245,6 +246,7 @@ function dropColumn(table, column) {
 
 ensureColumn('cases', 'source_material_dir', 'TEXT');
 ensureColumn('plan_slots', 'handoff_done', "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn('plan_slots', 'operator_note', 'TEXT');
 ensureColumn('assets', 'origin_path', 'TEXT');
 dropColumn('clip_tasks', 'output_dir');
 dropColumn('clip_tasks', 'final_video_path');
