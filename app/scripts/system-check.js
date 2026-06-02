@@ -75,6 +75,9 @@ else fail('爆款链接缺少专用分析写回接口，或未验证半分析结
 if (serverSource.includes("app.get('/api/agent-work'") && serverSource.includes('function agentWorkQueue') && mainSource.includes('主机侧工作清单') && mainSource.includes('/agent-work') && smokeSource.includes('agent work queue missing pending viral analysis')) ok('主机侧工作清单聚合爆款分析、Chrome采集和图片任务，且不进入首页');
 else fail('缺少主机侧后台工作清单，或没有覆盖待分析爆款/采集/图片任务');
 
+if (serverSource.includes('DEFAULT_IMAGE_API_URL') && serverSource.includes("DEFAULT_IMAGE_MODEL = 'gpt-image-1'") && serverSource.includes('apiUrlDefaulted') && !serverSource.includes('IMAGE_API_KEY 和 IMAGE_API_URL') && !readmeSource.includes('同时填写 `IMAGE_API_KEY` 和 `IMAGE_API_URL`') && smokeSource.includes('image config should be ready with key only')) ok('图片接口只要求 IMAGE_API_KEY，接口地址仅作为可选覆盖');
+else fail('图片接口仍要求同时填写 key 和 URL，或缺少 key-only 验收');
+
 if (mainSource.includes('disabled={!ready}') && mainSource.includes('sourceLink: form.sourceLink.trim()') && serverSource.includes('请先粘贴爆款视频链接') && smokeSource.includes('blankViralRejected')) ok('空爆款链接不会生成假模板');
 else fail('空爆款链接仍可能生成假模板');
 
@@ -147,8 +150,8 @@ else fail('剪辑任务仍暴露本地目录或任务单');
 if (!mainSource.includes('等回传') && !serverSource.includes('回传要求') && !serverSource.includes('sentWaitReport') && mainSource.includes('待完成') && serverSource.includes('sentWaitDone')) ok('已派发任务统一为待完成确认口径');
 else fail('已派发任务仍保留回传口径或旧计数字段');
 
-if (serverSource.includes('失联处理') && serverSource.includes('失联暂停') && serverSource.includes('不进入采集队列')) ok('失联账号会暂停排期和采集');
-else fail('缺少失联账号暂停逻辑');
+if (serverSource.includes('autoPauseLostContactCases') && serverSource.includes('失联暂停') && serverSource.includes('不进入采集队列') && !mainSource.includes('确认暂停') && smokeSource.includes('lost account should not ask staff to confirm pause')) ok('失联账号自动暂停排期和采集，不再占用首页队列');
+else fail('失联账号仍可能要求工作人员确认暂停，或缺少自动暂停验收');
 
 if (serverSource.includes("joinedViralAlerts('va.status = ?', ['active'], 30)") && serverSource.includes('!caseIsPaused(byCase[alert.caseId])')) ok('暂停账号的爆款提醒不会回到今日队列');
 else fail('暂停账号的爆款提醒仍可能进入今日队列');
@@ -156,8 +159,8 @@ else fail('暂停账号的爆款提醒仍可能进入今日队列');
 if (serverSource.includes('/api/cases/:id/resume') && serverSource.includes('已取消') && mainSource.includes('恢复账号')) ok('失联暂停账号支持一键恢复');
 else fail('缺少失联暂停账号恢复闭环');
 
-if (serverSource.includes('pauseCaseWork') && serverSource.includes('PAUSE_CANCEL_SLOT_STATUSES') && serverSource.includes("status = ?, finished_at = ?, note = ?, updated_at = ?") && serverSource.includes('pauseMaintenance')) ok('确认暂停会撤下未完成排期和等待中的采集单');
-else fail('确认暂停仍可能只隐藏账号，不撤下旧任务或采集单');
+if (serverSource.includes('pauseCaseWork') && serverSource.includes('PAUSE_CANCEL_SLOT_STATUSES') && serverSource.includes("status = ?, finished_at = ?, note = ?, updated_at = ?") && smokeSource.includes('auto-paused lost account still has active slots')) ok('自动暂停会撤下未完成排期和等待中的采集单');
+else fail('自动暂停仍可能只隐藏账号，不撤下旧任务或采集单');
 
 if (serverSource.includes('这个爆款链接还没完成内容提取和结构分析') && serverSource.includes('已有同一天同爆款任务') && serverSource.includes('viralSuitableForCase') && serverSource.includes('shouldCreateSlotForDate(caze, targetDate, postingStrategy)') && !mainSource.includes("kind: '爆款分析'")) ok('爆款批量生成只进入可投放账号且不占用今日队列');
 else fail('爆款批量生成仍可能制造无效任务或占用今日队列');

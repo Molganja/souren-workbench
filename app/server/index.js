@@ -29,7 +29,8 @@ const ACCESS_CODE = String(process.env.SOUREN_ACCESS_CODE || '').trim();
 const AUTH_LOCAL_BYPASS = process.env.SOUREN_AUTH_LOCAL_BYPASS !== '0';
 const AUTH_COOKIE = 'souren_access';
 const AUTH_SECRET = process.env.SOUREN_AUTH_SECRET || `${ROOT_DIR}:${ACCESS_CODE || 'local'}`;
-const DEFAULT_IMAGE_MODEL = 'image-v2';
+const DEFAULT_IMAGE_MODEL = 'gpt-image-1';
+const DEFAULT_IMAGE_API_URL = 'https://api.openai.com/v1/images/generations';
 const DOUYIN_COLLECTION_CHECK_INTERVAL_MS = Number(process.env.DOUYIN_COLLECTION_CHECK_INTERVAL_MS || 6 * 60 * 60 * 1000);
 const ROLLING_SCHEDULE_DAYS = Math.max(0, Number(process.env.SOUREN_ROLLING_SCHEDULE_DAYS || 14));
 const LOOPBACK_LISTEN_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
@@ -202,12 +203,23 @@ function requireWorkbenchAccess(req, res, next) {
 
 function imageSettings() {
   const apiKey = process.env.IMAGE_API_KEY || '';
-  const apiUrl = String(process.env.IMAGE_API_URL || process.env.IMAGE_GENERATE_URL || '').trim();
+  const explicitApiUrl = String(process.env.IMAGE_API_URL || process.env.IMAGE_GENERATE_URL || '').trim();
+  const apiUrl = apiKey ? (explicitApiUrl || DEFAULT_IMAGE_API_URL) : '';
   const model = process.env.IMAGE_MODEL || DEFAULT_IMAGE_MODEL;
   const size = process.env.IMAGE_SIZE || '1024x1024';
   const timeoutMs = Number(process.env.IMAGE_TIMEOUT_MS || 90000);
-  const missing = !apiKey ? '未填写图片密钥' : !apiUrl ? '未填写图片接口地址' : '';
-  return { ready: Boolean(apiKey && apiUrl), apiKey, apiUrl, model, size, timeoutMs, missing };
+  const missing = !apiKey ? '未填写图片密钥' : '';
+  return {
+    ready: Boolean(apiKey),
+    apiKey,
+    apiUrl,
+    apiUrlConfigured: Boolean(explicitApiUrl),
+    apiUrlDefaulted: Boolean(apiKey && !explicitApiUrl),
+    model,
+    size,
+    timeoutMs,
+    missing
+  };
 }
 
 const STAGE_RATIOS = {
@@ -1029,7 +1041,10 @@ function generateSlotsForCase(caze, input = {}) {
   for (let i = 0; i < days; i += 1) {
     const date = addDays(startDate, i);
     if (!shouldCreateSlotForDate(caze, date, postingStrategy)) continue;
-    const exists = get('SELECT id FROM plan_slots WHERE case_id = ? AND date = ?', [caze.id, date]);
+    const exists = get(
+      'SELECT id FROM plan_slots WHERE case_id = ? AND date = ? AND status NOT IN (?, ?)',
+      [caze.id, date, '已取消', '已完成']
+    );
     if (exists) continue;
     const stage = stageForDay(caze.stage, i);
     const contentKind = pickWeighted(STAGE_RATIOS[stage] || STAGE_RATIOS.起号期);
@@ -1045,8 +1060,13 @@ function generateSlotsForCase(caze, input = {}) {
 
 function maintainRollingSchedule(cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase), input = {}) {
   const days = Math.max(0, Number(input.days ?? ROLLING_SCHEDULE_DAYS));
-  if (!days) return { days, createdCount: 0, prunedCount: 0, canceledCount: 0, touchedCases: 0, created: [] };
+  if (!days) return { days, createdCount: 0, prunedCount: 0, canceledCount: 0, touchedCases: 0, autoPausedLostContact: [], created: [] };
   const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+  const autoPausedLostContact = autoPauseLostContactCases(cases);
+  if (autoPausedLostContact.length) {
+    const pausedIds = new Set(autoPausedLostContact.map((item) => item.caseId));
+    cases = cases.map((caze) => (pausedIds.has(caze.id) ? caseById(caze.id) : caze)).filter(Boolean);
+  }
   const created = [];
   let prunedCount = 0;
   let canceledCount = 0;
@@ -1061,7 +1081,7 @@ function maintainRollingSchedule(cases = all('SELECT * FROM cases ORDER BY creat
       created.push(...rows);
     }
   });
-  return { days, startDate, createdCount: created.length, prunedCount, canceledCount, touchedCases, created };
+  return { days, startDate, createdCount: created.length, prunedCount, canceledCount, touchedCases, autoPausedLostContact, created };
 }
 
 function normalizeDouyinUrl(value) {
@@ -1438,6 +1458,20 @@ function collectImageResponseItems(body) {
   return items;
 }
 
+function imageRequestBody(settings, task) {
+  const body = {
+    model: settings.model,
+    prompt: task.prompt,
+    size: settings.size,
+    n: 1
+  };
+  if (!settings.apiUrlDefaulted) {
+    body.negative_prompt = task.negativePrompt || '';
+    body.response_format = 'b64_json';
+  }
+  return body;
+}
+
 async function materializeImageItem(item, task, index, signal) {
   fs.mkdirSync(task.outputDir, { recursive: true });
   let buffer;
@@ -1504,7 +1538,7 @@ async function generateImageFiles(task) {
     run('UPDATE image_tasks SET status = ?, updated_at = ? WHERE id = ?', ['waiting_key', now(), task.id]);
     const updated = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id]));
     writeImageTaskBrief(updated, ['', `提示：${settings.missing}，当前会保留提示词，等待图片接口接入后再生成。`]);
-    const err = new Error(`${settings.missing}，请先在 app/.env 填 IMAGE_API_KEY 和 IMAGE_API_URL`);
+    const err = new Error(`${settings.missing}，请先在 app/.env 填 IMAGE_API_KEY`);
     err.status = 409;
     throw err;
   }
@@ -1523,14 +1557,7 @@ async function generateImageFiles(task) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${settings.apiKey}`
       },
-      body: JSON.stringify({
-        model: settings.model,
-        prompt: task.prompt,
-        negative_prompt: task.negativePrompt || '',
-        size: settings.size,
-        n: 1,
-        response_format: 'b64_json'
-      })
+      body: JSON.stringify(imageRequestBody(settings, task))
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body?.error?.message || body?.message || `图片接口失败：${res.status}`);
@@ -1567,7 +1594,7 @@ async function generateImageFiles(task) {
       `失败时间：${now()}`,
       `错误：${error.name === 'AbortError' ? '图片接口超时' : error.message}`,
       '',
-      '下一步：检查图片接口地址、密钥和模型名；必要时在任务详情查看提示词。'
+      '下一步：检查图片密钥、模型名和可选接口地址；必要时在任务详情查看提示词。'
     ].join('\n'));
     writeImageTaskBrief(updated, ['', `最近生成失败：${error.name === 'AbortError' ? '图片接口超时' : error.message}`]);
     const err = new Error(error.name === 'AbortError' ? '图片接口超时，请稍后重试' : error.message);
@@ -2095,7 +2122,7 @@ function lostContactSignal(slots = [], today = new Date().toISOString().slice(0,
     active: true,
     overdueSentCount: overdueSent.length,
     oldestOverdueDays: oldest.overdueDays,
-    reason: `已派发 ${oldest.overdueDays} 天仍未确认完成，先按失联处理。`
+    reason: `已派发 ${oldest.overdueDays} 天仍未确认完成，系统已自动暂停。`
   };
 }
 
@@ -2132,6 +2159,26 @@ function pauseCaseWork(caze, reason = '账号已暂停，撤下未完成任务�
     canceledCollectionCount: canceledCollectionRuns.length,
     canceledCollectionRuns: canceledCollectionRuns.map((item) => ({ ...item, status: 'canceled', note: reason }))
   };
+}
+
+function autoPauseLostContactCases(cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase)) {
+  const autoPaused = [];
+  cases.forEach((caze) => {
+    if (!caze?.id || caseIsPaused(caze)) return;
+    const slots = all('SELECT * FROM plan_slots WHERE case_id = ? ORDER BY date ASC', [caze.id]).map(rowSlot);
+    const lostContact = lostContactSignal(slots);
+    if (!lostContact.active) return;
+    run('UPDATE cases SET health_status = ?, updated_at = ? WHERE id = ?', ['失联暂停', now(), caze.id]);
+    const updated = caseById(caze.id);
+    const pauseMaintenance = pauseCaseWork(updated, lostContact.reason);
+    writeCaseManifest(updated);
+    autoPaused.push({
+      caseId: caze.id,
+      reason: lostContact.reason,
+      pauseMaintenance
+    });
+  });
+  return autoPaused;
 }
 
 function latestUniqueVideoSnapshotsForCase(caseId, snapshots = null) {
@@ -2512,6 +2559,11 @@ function latestSnapshotsByVideo(videoSnapshots) {
 }
 
 function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase)) {
+  const autoPausedLostContact = autoPauseLostContactCases(cases);
+  if (autoPausedLostContact.length) {
+    const pausedIds = new Set(autoPausedLostContact.map((item) => item.caseId));
+    cases = cases.map((caze) => (pausedIds.has(caze.id) ? caseById(caze.id) : caze)).filter(Boolean);
+  }
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const accountSnapshots = all('SELECT * FROM account_snapshots ORDER BY collected_at DESC, created_at DESC').map(rowAccountSnapshot);
   const videos = all('SELECT * FROM douyin_videos ORDER BY updated_at DESC').map(rowDouyinVideo);
@@ -2622,8 +2674,10 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
       viralAlerts: viralAlerts.length,
       dueCollection: accounts.filter((item) => item.dueCollection).length,
       collectionQueued: accounts.filter((item) => item.collectionQueued).length,
-      waitingChrome: collectionRuns.filter((item) => item.status === 'waiting_chrome').length
+      waitingChrome: collectionRuns.filter((item) => item.status === 'waiting_chrome').length,
+      autoPausedLostContact: autoPausedLostContact.length
     },
+    autoPausedLostContact,
     accounts,
     viralAlerts,
     videoLeaders,
@@ -2664,21 +2718,6 @@ function monitorActionQueue(monitor = {}) {
   (monitor.accounts || []).forEach((item) => {
     const caze = item.case;
     if (!caze?.id) return;
-    if (item.lostContact?.active && !item.lostContact?.paused) {
-      actions.push({
-        id: `lost-${caze.id}`,
-        priority: 75,
-        kind: '失联处理',
-        title: '已派发多天未完成，确认是否暂停',
-        reason: item.lostContact.reason,
-        action: '确认暂停后，这个号不再自动补排期，也不进入采集清单；后续回来再从案例库恢复。',
-        case: caze,
-        latestSnapshot: item.latestSnapshot,
-        postingStrategy: item.postingStrategy,
-        lostContact: item.lostContact
-      });
-      return;
-    }
     if (item.activityTier === '失联暂停') return;
     if (item.dueCollection) {
       const interval = item.collectionPolicy?.intervalHours;
@@ -3191,7 +3230,7 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   }
   if (monitor.activityTier === '失联暂停') {
     reasons.push('失联暂停');
-    actions.push(monitor.lostContact?.paused ? '账号已暂停自动排期和采集' : '首页确认是否暂停这个账号，避免继续消耗普通队列');
+    actions.push('系统已暂停自动排期和采集；兼职恢复配合后在案例详情点恢复账号');
   }
   if (futureSlots === 0) {
     reasons.push('缺少排期');
@@ -3604,7 +3643,14 @@ app.get('/api/health', (_req, res) => {
     rootDir: ROOT_DIR,
     materialRoot: MATERIAL_ROOT,
     imageKeyReady: Boolean(image.apiKey),
-    image: { ready: image.ready, apiUrlConfigured: Boolean(image.apiUrl), model: image.model, size: image.size, missing: image.missing },
+    image: {
+      ready: image.ready,
+      apiUrlConfigured: image.apiUrlConfigured,
+      apiUrlDefaulted: image.apiUrlDefaulted,
+      model: image.model,
+      size: image.size,
+      missing: image.missing
+    },
     network: networkSettings(),
     readiness: systemReadiness().summary
   });
@@ -3904,7 +3950,14 @@ app.get('/api/config', (_req, res) => {
   const caseLibrary = caseLibraryCandidates();
   res.json({
     imageKeyReady: Boolean(image.apiKey),
-    image: { ready: image.ready, apiUrlConfigured: Boolean(image.apiUrl), model: image.model, size: image.size, missing: image.missing },
+    image: {
+      ready: image.ready,
+      apiUrlConfigured: image.apiUrlConfigured,
+      apiUrlDefaulted: image.apiUrlDefaulted,
+      model: image.model,
+      size: image.size,
+      missing: image.missing
+    },
     network: networkSettings(),
     readiness: systemReadiness(),
     materialRoot: MATERIAL_ROOT,

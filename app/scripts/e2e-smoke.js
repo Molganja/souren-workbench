@@ -8,6 +8,7 @@ const TEST_IMAGE_APP_PORT = 5188;
 const TEST_IMAGE_PORT = 5189;
 const TEST_AUTH_PORT = 5190;
 const TEST_LAN_FAIL_PORT = 5191;
+const TEST_IMAGE_KEY_ONLY_PORT = 5192;
 const ORIGIN = `http://127.0.0.1:${TEST_PORT}`;
 const BASE = `${ORIGIN}/api`;
 const E2E_SETUP_HEADER = { 'X-Souren-E2E-Setup': '1' };
@@ -15,6 +16,7 @@ const APP_DIR = path.resolve(import.meta.dirname, '..');
 const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
 const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
 const IMAGE_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image');
+const IMAGE_KEY_ONLY_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image-key-only');
 const AUTH_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-auth');
 const LAN_FAIL_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-lan-fail');
 
@@ -100,6 +102,7 @@ async function imageGenerationSmoke() {
     await waitForServer(server, imageBase);
     const config = await api('/config', {}, imageBase);
     assert(config.image.ready === true && config.image.model === 'fake-image-model', 'image config did not show ready');
+    assert(config.image.apiUrlConfigured === true && config.image.apiUrlDefaulted === false, 'custom image URL config was not reported');
     const caze = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({
@@ -124,6 +127,39 @@ async function imageGenerationSmoke() {
     imageServer.close();
     await sleep(300);
     fs.rmSync(IMAGE_ROOT_DIR, { recursive: true, force: true });
+  }
+}
+
+async function imageKeyOnlyConfigSmoke() {
+  fs.rmSync(path.join(IMAGE_KEY_ONLY_ROOT_DIR, 'data'), { recursive: true, force: true });
+  fs.rmSync(path.join(IMAGE_KEY_ONLY_ROOT_DIR, '素材库'), { recursive: true, force: true });
+  fs.mkdirSync(IMAGE_KEY_ONLY_ROOT_DIR, { recursive: true });
+  const imageBase = `http://127.0.0.1:${TEST_IMAGE_KEY_ONLY_PORT}/api`;
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: {
+      ...process.env,
+      PORT: String(TEST_IMAGE_KEY_ONLY_PORT),
+      SOUREN_ROOT_DIR: IMAGE_KEY_ONLY_ROOT_DIR,
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
+      IMAGE_API_KEY: 'key-only-image-key',
+      IMAGE_API_URL: '',
+      IMAGE_MODEL: ''
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  try {
+    await waitForServer(server, imageBase);
+    const config = await api('/config', {}, imageBase);
+    assert(config.image.ready === true, 'image config should be ready with key only');
+    assert(config.image.model === 'gpt-image-1', 'key-only image config should use the default GPT image model');
+    assert(config.image.apiUrlConfigured === false && config.image.apiUrlDefaulted === true, 'key-only image config did not use default endpoint');
+  } finally {
+    server.kill('SIGTERM');
+    await sleep(300);
+    fs.rmSync(IMAGE_KEY_ONLY_ROOT_DIR, { recursive: true, force: true });
   }
 }
 
@@ -627,19 +663,18 @@ async function main() {
     const lostMonitor = await api('/douyin-monitor');
     const lostAccount = lostMonitor.accounts.find((item) => item.case?.id === lostCase.id);
     assert(lostAccount?.activityTier === '失联暂停', 'overdue sent slot should mark account lost');
+    assert(lostAccount.lostContact?.paused === true, 'lost account should be automatically paused');
     assert(lostAccount.postingStrategy?.mode === '暂停自动补', 'lost account should pause automatic posting');
     assert(lostAccount.collectionPolicy?.intervalHours == null, 'lost account should not enter collection queue');
     const lostDashboard = await api('/dashboard');
-    assert(lostDashboard.monitorActions.some((item) => item.kind === '失联处理' && item.case?.id === lostCase.id), 'lost account action missing');
+    assert(!lostDashboard.monitorActions.some((item) => item.kind === '失联处理' && item.case?.id === lostCase.id), 'lost account should not ask staff to confirm pause');
     assert(!lostDashboard.todaySlots.some((item) => item.case?.id === lostCase.id), 'lost account leaked into normal due slots');
     const lostAfterPrune = await api(`/cases/${lostCase.id}`);
+    assert(lostAfterPrune.case.healthStatus === '失联暂停', 'lost account case was not auto-paused');
+    assert(!lostAfterPrune.slots.some((item) => ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'].includes(item.status)), 'auto-paused lost account still has active slots');
     assert(!lostAfterPrune.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'lost account future pending slots were not pruned');
     const lostChromeQueue = await api('/douyin-monitor/chrome-queue?includeFresh=1&limit=200');
     assert(!lostChromeQueue.targets.some((item) => item.caseId === lostCase.id), 'lost account appeared in chrome collection queue');
-    const lostPaused = await api(`/cases/${lostCase.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) });
-    assert(lostPaused.pauseMaintenance?.canceledSlotCount >= 1, 'confirmed lost pause did not cancel stale sent slot');
-    const lostPausedDashboard = await api('/dashboard');
-    assert(!lostPausedDashboard.monitorActions.some((item) => item.kind === '失联处理' && item.case?.id === lostCase.id), 'paused lost account still prompted action');
     const resumedLost = await api(`/cases/${lostCase.id}/resume`, { method: 'POST' });
     assert(resumedLost.case.healthStatus === '健康', 'resume did not restore case health');
     assert(resumedLost.slotsCreated >= 1, 'resume did not create new schedule');
@@ -926,6 +961,7 @@ async function main() {
     await api(`/cases/${complianceCase.id}`, { method: 'DELETE' });
 
     await imageGenerationSmoke();
+    await imageKeyOnlyConfigSmoke();
     await authAccessSmoke();
     await lanFailClosedSmoke();
 
@@ -1284,6 +1320,7 @@ async function main() {
     await sleep(300);
     fs.rmSync(ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(IMAGE_ROOT_DIR, { recursive: true, force: true });
+    fs.rmSync(IMAGE_KEY_ONLY_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(AUTH_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(LAN_FAIL_ROOT_DIR, { recursive: true, force: true });
   }

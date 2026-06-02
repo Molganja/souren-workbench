@@ -401,7 +401,6 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask, canOpenLoc
 
 function monitorActionClass(kind) {
   if (kind === '爆款互动') return 'bad';
-  if (kind === '失联处理') return 'bad';
   if (kind === '账号采集') return 'wait';
   if (kind === '偏冷补内容') return 'report';
   if (kind === '增长承接') return 'ok';
@@ -734,10 +733,6 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, onClipTask
   if (item.monitorAction) {
     return (
       <div className="rowActions">
-        {item.monitorAction.kind === '失联处理' && item.case?.id && <button onClick={() => onAct(
-          () => request(`/cases/${item.case.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) }),
-          '已暂停这个账号的自动排期和采集'
-        )}>确认暂停</button>}
         {monitorActionSlotLabel(item.monitorAction.kind) && item.case?.id && <button onClick={() => onAct(
           () => request('/douyin-monitor/actions/slot', { method: 'POST', body: JSON.stringify({ caseId: item.case.id, kind: item.monitorAction.kind }) }),
           (result) => result.created
@@ -2324,7 +2319,7 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
         <div className="templateList">
           <div className="templateRow">
             <strong>状态</strong>
-            <span>{config.image?.ready ? `${config.image.model}｜${config.image.size}` : `${config.image?.missing || '未接入'}，图片任务仍会保留提示词`}</span>
+            <span>{config.image?.ready ? `${config.image.model}｜${config.image.size}｜${config.image.apiUrlConfigured ? '自定义地址' : '默认地址'}` : `${config.image?.missing || '未接入'}，图片任务仍会保留提示词`}</span>
           </div>
         </div>
       </section>
