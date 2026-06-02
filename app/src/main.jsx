@@ -1703,8 +1703,8 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
         </div>
         {mediaFiles.length === 0 ? <div className="empty">还没有可发送素材，请先补素材或生成图片</div> : (
           <div className="deliveryMediaGrid">
-            {imageFiles.map((file) => <MediaCard key={file.path} file={file} label="图片" />)}
-            {videoFiles.map((file) => <MediaCard key={file.path} file={file} label="视频" />)}
+            {imageFiles.map((file) => <MediaCard key={file.path} file={file} label="图片" allowDownload={copyAllowed} />)}
+            {videoFiles.map((file) => <MediaCard key={file.path} file={file} label="视频" allowDownload={copyAllowed} />)}
           </div>
         )}
       </section>
@@ -1727,7 +1727,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
                 <div className="sourceRow" key={asset.id}>
                   <span>{asset.kind}｜{asset.stage}｜{asset.source}</span>
                   <small>{asset.path}</small>
-                  <a className="button" href={asset.url} download>下载源素材</a>
+                  {copyAllowed ? <a className="button" href={asset.url} download>下载源素材</a> : <span className="lockedNote">只读预览</span>}
                 </div>
               ))}
             </div>
@@ -1809,13 +1809,17 @@ function TextPanel({ title, text, onCopy, copyable = true }) {
   );
 }
 
-function MediaCard({ file, label }) {
+function MediaCard({ file, label, allowDownload = true }) {
   return (
     <div className="mediaCard">
       {file.kind === '图片' ? <img src={file.url} alt={file.name} /> : <video src={file.url} controls />}
       <strong>{file.name}</strong>
       <span>{label}</span>
-      <a className="button" href={file.url} download>{file.kind === '图片' ? '下载图片' : '下载视频'}</a>
+      {allowDownload ? (
+        <a className="button" href={file.url} download>{file.kind === '图片' ? '下载图片' : '下载视频'}</a>
+      ) : (
+        <span className="lockedNote">只读预览</span>
+      )}
     </div>
   );
 }
