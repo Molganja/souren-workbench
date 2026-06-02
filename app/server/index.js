@@ -1084,7 +1084,6 @@ const CASE_LIBRARY_MATERIAL_FOLDER_WORDS = [
   '01-已筛选素材',
   '02-生成补充',
   '03-交付给兼职',
-  '04-发布回收',
   '原始',
   '原始素材',
   '已筛选',
@@ -1722,7 +1721,7 @@ function insertCaseAsset(caze, file, options = {}) {
 }
 
 function scanCaseAssets(caze) {
-  const roots = ['00-原始素材', '01-已筛选素材', '02-生成补充', '04-发布回收'].map((name) => path.join(caze.localCaseDir, name));
+  const roots = ['00-原始素材', '01-已筛选素材', '02-生成补充'].map((name) => path.join(caze.localCaseDir, name));
   let inserted = 0;
   roots.flatMap(walkFiles).forEach((file) => {
     if (!isSupportedAssetFile(file)) return;

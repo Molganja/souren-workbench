@@ -399,9 +399,11 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({ weixinNick: '最小验收兼职', douyinUrl: 'https://www.douyin.com/video/minimal-smoke' })
     });
+    const retiredReturnDir = path.join(minimalCase.localCaseDir, ['04', '发布回收'].join('-'));
     assert(minimalCase.weixinNick === '最小验收兼职', 'minimal case did not preserve required WeChat nickname');
     assert(minimalCase.persona.city && minimalCase.persona.motivation, 'minimal case defaults missing');
     assert(!minimalCase.localCaseDir.includes('未命名'), 'minimal case directory used unnamed segment');
+    assert(!fs.existsSync(retiredReturnDir), 'minimal case created retired publish return folder');
     assert(minimalCase.slotsCreated >= 14, 'minimal case did not auto generate default slots');
     const minimalDetail = await api(`/cases/${minimalCase.id}`);
     assert(minimalDetail.slots.length >= 14 && minimalDetail.slots.every((item) => item.status === '待生成'), 'minimal case default slots missing');

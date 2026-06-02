@@ -42,6 +42,11 @@ required.forEach((file) => {
 });
 
 const mainSource = fs.readFileSync(path.join(APP_DIR, 'src', 'main.jsx'), 'utf8');
+const dbSource = fs.readFileSync(path.join(APP_DIR, 'server', 'db.js'), 'utf8');
+const readmeSource = [
+  fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8'),
+  fs.readFileSync(path.join(APP_DIR, 'README.md'), 'utf8')
+].join('\n');
 const duplicateDashboardLabels = ['新手今日顺序', '今日链路复盘', '今天全部任务', '可微信交付', '待选择候选', '待生成候选稿', '今天先处理'];
 const leakedLabels = duplicateDashboardLabels.filter((label) => mainSource.includes(label));
 if (leakedLabels.length) fail(`首页仍包含重复任务区块：${leakedLabels.join('、')}`);
@@ -98,6 +103,11 @@ else fail('缺少固定剪辑配方');
 
 if (!mainSource.includes('成片保存到') && !mainSource.includes('封面保存到') && !serverSource.includes('07-成片回收说明') && !serverSource.includes('final.mp4 放回') && serverSource.includes('不需要上传成片')) ok('视频剪辑完成后只标记完成，不要求上传成片');
 else fail('视频剪辑仍要求上传成片或保存到本地目录');
+
+const retiredReturnDir = '04-' + '发布回收';
+const retiredReturnLabel = '发布' + '回收';
+if (![serverSource, dbSource, readmeSource].some((source) => source.includes(retiredReturnDir) || source.includes(retiredReturnLabel))) ok('新案例不再创建旧回收目录');
+else fail('仍保留旧回收目录');
 
 if (!mainSource.includes('打开剪辑目录') && !mainSource.includes('task.outputDir') && !mainSource.includes('clipTask.outputDir') && !serverSource.includes('剪辑任务单.txt') && serverSource.includes("const outputDir = '';")) ok('剪辑任务只在网页内展示，不生成本地任务单或打开目录');
 else fail('剪辑任务仍暴露本地目录或任务单');

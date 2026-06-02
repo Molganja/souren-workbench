@@ -279,8 +279,7 @@ export function ensureCaseDirs(caseDir) {
     '00-原始素材',
     '01-已筛选素材',
     '02-生成补充',
-    '03-交付给兼职',
-    '04-发布回收'
+    '03-交付给兼职'
   ].forEach((name) => fs.mkdirSync(path.join(caseDir, name), { recursive: true }));
 }
 
