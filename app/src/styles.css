@@ -58,6 +58,13 @@ button.primary, .button.primary {
   color: #fff;
 }
 
+button.activeSmall {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 650;
+}
+
 .button.ghost {
   background: transparent;
 }
@@ -488,6 +495,68 @@ button.primary, .button.primary {
   border-radius: 7px;
   border: 1px solid var(--line);
   background: #f2f4f7;
+}
+
+.sharedAssetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px;
+}
+
+.sharedAssetCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 10px;
+  background: #fff;
+}
+
+.sharedAssetPreview {
+  width: 104px;
+  height: 128px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: #f2f4f7;
+  object-fit: cover;
+}
+
+.sharedAssetPreview.placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.sharedAssetInfo {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sharedAssetInfo span,
+.sharedAssetInfo small {
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.sharedAssetActions {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.buttonCluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.buttonCluster button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 .deliveryPaths {

@@ -307,7 +307,7 @@ function App() {
           />
         )}
         {!loading && canUseWorkbench && view === 'settings' && config && (
-          <SettingsView config={config} onCopy={copyText} onAct={act} />
+          <SettingsView config={config} onCopy={copyText} onAct={act} canOpenLocalPaths={canOpenLocalPaths} />
         )}
       </main>
       {caseFormOpen && (
@@ -2083,7 +2083,20 @@ function pendingViralTitle(item) {
   return item.sourceLink ? '待分析爆款链接' : (item.title || '待分析爆款链接');
 }
 
-function SettingsView({ config, onCopy, onAct }) {
+function SettingsView({ config, onCopy, onAct, canOpenLocalPaths }) {
+  const [sharedAssets, setSharedAssets] = useState([]);
+  const [sharedAssetsLoading, setSharedAssetsLoading] = useState(false);
+  async function loadSharedAssets() {
+    setSharedAssetsLoading(true);
+    try {
+      setSharedAssets(await request('/shared-assets'));
+    } finally {
+      setSharedAssetsLoading(false);
+    }
+  }
+  useEffect(() => {
+    loadSharedAssets();
+  }, []);
   return (
     <div className="stack">
       <section className="hero">
@@ -2155,7 +2168,11 @@ function SettingsView({ config, onCopy, onAct }) {
         <div className="sectionHead">
           <h2>通用素材库</h2>
           <button onClick={() => onAct(
-            () => request('/shared-assets/scan', { method: 'POST' }),
+            async () => {
+              const result = await request('/shared-assets/scan', { method: 'POST' });
+              await loadSharedAssets();
+              return result;
+            },
             (result) => `通用素材扫描完成：新增 ${result.inserted} 个`
           )}>扫描通用素材</button>
         </div>
@@ -2179,6 +2196,13 @@ function SettingsView({ config, onCopy, onAct }) {
           ))}
         </div>
       </section>
+      <SharedAssetsManager
+        assets={sharedAssets}
+        loading={sharedAssetsLoading}
+        onReload={loadSharedAssets}
+        onAct={onAct}
+        canOpenLocalPaths={canOpenLocalPaths}
+      />
       <section className="panel">
         <div className="sectionHead"><h2>图片生成接口</h2></div>
         <div className="templateList">
@@ -2214,6 +2238,86 @@ function SettingsView({ config, onCopy, onAct }) {
       </section>
     </div>
   );
+}
+
+const SHARED_ASSET_CATEGORIES = ['医院素材', '套图素材', '生活场景', '文字卡素材', '备用素材'];
+const SHARED_ASSET_USAGES = ['合成背景', '套图参考', '通用配图', '文字卡', '通用视频'];
+const SHARED_ASSET_STATUSES = ['可用', '待处理', '需处理', '不可用'];
+
+function SharedAssetsManager({ assets, loading, onReload, onAct, canOpenLocalPaths }) {
+  const visible = (assets || []).slice(0, 60);
+  return (
+    <section className="panel">
+      <div className="sectionHead">
+        <h2>通用素材管理</h2>
+        <div className="headerActions">
+          <span>{loading ? '读取中' : `${assets.length} 个素材`}</span>
+          <button onClick={onReload}>刷新列表</button>
+        </div>
+      </div>
+      {visible.length === 0 ? <div className="empty">还没有通用素材。把医院素材、套图素材或生活场景放入通用素材库后，点击“扫描通用素材”。</div> : (
+        <div className="sharedAssetGrid">
+          {visible.map((asset) => (
+            <div className="sharedAssetCard" key={asset.id}>
+              <SharedAssetPreview asset={asset} />
+              <div className="sharedAssetInfo">
+                <strong>{asset.category}</strong>
+                <span>{asset.kind} · {asset.usage} · {asset.reviewStatus}</span>
+                <small>{asset.path}</small>
+              </div>
+              <div className="sharedAssetActions">
+                <div className="buttonCluster">
+                  {SHARED_ASSET_CATEGORIES.map((category) => (
+                    <button
+                      key={category}
+                      className={asset.category === category ? 'activeSmall' : ''}
+                      onClick={() => updateSharedAsset(asset, { category }, onAct, onReload)}
+                    >{category}</button>
+                  ))}
+                </div>
+                <div className="buttonCluster">
+                  {SHARED_ASSET_USAGES.map((usage) => (
+                    <button
+                      key={usage}
+                      className={asset.usage === usage ? 'activeSmall' : ''}
+                      onClick={() => updateSharedAsset(asset, { usage }, onAct, onReload)}
+                    >{usage}</button>
+                  ))}
+                </div>
+                <div className="buttonCluster">
+                  {SHARED_ASSET_STATUSES.map((reviewStatus) => (
+                    <button
+                      key={reviewStatus}
+                      className={asset.reviewStatus === reviewStatus ? 'activeSmall' : ''}
+                      onClick={() => updateSharedAsset(asset, { reviewStatus }, onAct, onReload)}
+                    >{reviewStatus}</button>
+                  ))}
+                </div>
+                <div className="inlineActions compactActions">
+                  {asset.url && <a className="button" href={asset.url} download>{asset.kind === '视频' ? '下载视频' : '下载素材'}</a>}
+                  {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: asset.path }) }), '已打开通用素材')}>打开素材</button>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SharedAssetPreview({ asset }) {
+  if (asset.kind === '图片' && asset.url) return <img className="sharedAssetPreview" src={asset.url} alt={asset.path} />;
+  if (asset.kind === '视频' && asset.url) return <video className="sharedAssetPreview" src={asset.url} controls />;
+  return <div className="sharedAssetPreview placeholder">{asset.kind || '素材'}</div>;
+}
+
+function updateSharedAsset(asset, patch, onAct, onReload) {
+  onAct(async () => {
+    const result = await request(`/shared-assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    await onReload();
+    return result;
+  }, '通用素材已更新');
 }
 
 function networkSetupText(config) {

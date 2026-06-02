@@ -395,6 +395,18 @@ async function main() {
     fs.writeFileSync(path.join(hospitalSharedDir, '医院环境.jpg'), 'fake hospital shared material');
     const sharedAssetScan = await api('/shared-assets/scan', { method: 'POST' });
     assert(sharedAssetScan.inserted === 1 && sharedAssetScan.assets.some((asset) => asset.category === '医院素材' && asset.usage === '合成背景'), 'shared material scan failed');
+    const sharedAssetList = await api('/shared-assets');
+    const sharedAsset = sharedAssetList.find((asset) => asset.path.endsWith('医院环境.jpg'));
+    assert(sharedAsset?.url?.startsWith('/shared-files/') && sharedAsset.reviewStatus === '可用', 'shared material list missing url or status');
+    const patchedSharedAsset = await api(`/shared-assets/${sharedAsset.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ category: '套图素材', usage: '套图参考', reviewStatus: '待处理' })
+    });
+    assert(patchedSharedAsset.category === '套图素材' && patchedSharedAsset.usage === '套图参考' && patchedSharedAsset.reviewStatus === '待处理', 'shared material patch failed');
+    await api(`/shared-assets/${sharedAsset.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ category: '医院素材', usage: '合成背景', reviewStatus: '可用' })
+    });
     const sharedConfig = await api('/config');
     assert(sharedConfig.sharedMaterialRoot.endsWith(path.join('素材库', '通用素材')) && sharedConfig.sharedAssets.total === 1 && sharedConfig.sharedAssets.byUsage.some((item) => item.usage === '合成背景'), 'config missing shared material stats');
     const compositionImage = await api('/image-tasks', {

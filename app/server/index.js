@@ -362,6 +362,7 @@ function rowSharedAsset(row) {
   return {
     id: row.id,
     path: row.path,
+    url: safeAssetFileUrl(row.path),
     kind: row.kind,
     category: row.category,
     source: row.source,
@@ -638,6 +639,14 @@ function assetFileUrl(filePath) {
     return `/shared-files/${rel.split(path.sep).map(encodeURIComponent).join('/')}`;
   }
   return '';
+}
+
+function safeAssetFileUrl(filePath) {
+  try {
+    return assetFileUrl(filePath);
+  } catch {
+    return '';
+  }
 }
 
 function caseById(id) {
@@ -3267,6 +3276,23 @@ app.get('/api/shared-assets', (_req, res) => {
 
 app.post('/api/shared-assets/scan', (_req, res) => {
   res.json(scanSharedAssets());
+});
+
+app.patch('/api/shared-assets/:id', (req, res) => {
+  const asset = rowSharedAsset(get('SELECT * FROM shared_assets WHERE id = ?', [req.params.id]));
+  if (!asset) return res.status(404).json({ error: 'shared asset not found' });
+  const body = req.body || {};
+  run(
+    'UPDATE shared_assets SET category = ?, source = ?, usage = ?, review_status = ? WHERE id = ?',
+    [
+      body.category ?? asset.category,
+      body.source ?? asset.source,
+      body.usage ?? asset.usage,
+      body.reviewStatus ?? asset.reviewStatus,
+      asset.id
+    ]
+  );
+  res.json(rowSharedAsset(get('SELECT * FROM shared_assets WHERE id = ?', [asset.id])));
 });
 
 app.get('/api/cases/:id/material-intake-note', (req, res) => {
