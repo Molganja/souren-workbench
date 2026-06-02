@@ -848,9 +848,11 @@ function freelancerGuideForCase(caze = {}) {
     '1. 每次会收到两段文字：第一段是发给你的说明，第二段是抖音发布文案。',
     '2. 抖音发布时直接使用第二段文案，第一行作为标题。',
     '3. 图片或视频按微信收到的顺序上传；没有特别说明时，第一张图默认做封面。',
-    '4. 不临时改标题、正文、素材顺序和封面逻辑；有问题先微信确认。',
-    '5. 发完后回复“已发 + 作品链接或截图”。',
-    '6. 如果是剪辑任务，按固定剪辑配方换素材，不临时改结构。'
+    '4. 按每次任务写的时间窗发布；没写具体小时就当天发。',
+    '5. 话题只用抖音发布文案里已有的，不自己额外加。',
+    '6. 不临时改标题、正文、素材顺序和封面逻辑；有问题先微信确认。',
+    '7. 发完后回复“已发 + 作品链接或截图”。',
+    '8. 如果是剪辑任务，按固定剪辑配方换素材，不临时改结构。'
   ].join('\n');
 }
 
@@ -866,8 +868,10 @@ function fixedPublishRulesText() {
     '固定发布说明：',
     '1. 下一段“抖音发布文案”直接复制到抖音，第一行做标题。',
     '2. 图片或视频按微信收到的顺序上传；没有特别说明时，第一张图做封面。',
-    '3. 不临时改标题、正文、素材顺序和封面逻辑。',
-    '4. 发完后回复“已发 + 作品链接或截图”。'
+    '3. 按本条任务的时间窗发布；没写具体小时就当天发。',
+    '4. 话题只用文案里已有的，不额外加。',
+    '5. 不临时改标题、正文、素材顺序和封面逻辑。',
+    '6. 发完后回复“已发 + 作品链接或截图”。'
   ].join('\n');
 }
 
@@ -1772,6 +1776,75 @@ function parseBulkCaseText(text) {
       };
     })
     .filter((item) => item.weixinNick && item.douyinUrl && item.sourceMaterialDir);
+}
+
+function prepareBulkCaseRows(rows = []) {
+  const seenSources = new Set();
+  return rows.map((row, index) => {
+    const line = index + 1;
+    const weixinNick = String(row.weixinNick || row.weixin_nick || '').trim();
+    if (!weixinNick) {
+      const error = new Error(`第 ${line} 行缺少兼职微信昵称`);
+      error.status = 400;
+      throw error;
+    }
+    const douyinUrl = normalizeDouyinUrl(row.douyinUrl || row.douyin_url || '');
+    if (!douyinUrl) {
+      const error = new Error(`第 ${line} 行缺少有效抖音主页或作品链接`);
+      error.status = 400;
+      throw error;
+    }
+    const sourceMaterialDir = normalizeSourceMaterialDir(row.sourceMaterialDir || row.source_material_dir || '');
+    if (seenSources.has(sourceMaterialDir)) {
+      const error = new Error(`第 ${line} 行共享原始素材路径重复`);
+      error.status = 409;
+      throw error;
+    }
+    seenSources.add(sourceMaterialDir);
+    const existing = get('SELECT weixin_nick FROM cases WHERE source_material_dir = ?', [sourceMaterialDir]);
+    if (existing) {
+      const error = new Error(`第 ${line} 行共享原始素材路径已经登记到「${existing.weixin_nick}」`);
+      error.status = 409;
+      throw error;
+    }
+    return {
+      ...row,
+      weixinNick,
+      douyinId: row.douyinId || row.douyin_id || '',
+      douyinUrl,
+      sourceMaterialDir,
+      project: row.project || '吸脂'
+    };
+  });
+}
+
+function createBulkCases(rows = []) {
+  const preparedRows = prepareBulkCaseRows(rows);
+  if (!preparedRows.length) {
+    const error = new Error('没有有效账号行：每行必须包含微信昵称、抖音链接和共享原始素材路径');
+    error.status = 400;
+    throw error;
+  }
+  const cases = [];
+  const syncResults = [];
+  let totalSynced = 0;
+  let totalSlots = 0;
+  preparedRows.forEach((row) => {
+    const created = createCaseFromBody(row);
+    const sync = syncCaseSourceMaterials(created);
+    const slots = generateSlotsForCase(created, { days: 14 });
+    cases.push({ ...created, sync, slotsCreated: slots.length });
+    syncResults.push({ caseId: created.id, ...sync });
+    totalSynced += sync.inserted || 0;
+    totalSlots += slots.length;
+  });
+  return {
+    createdCount: cases.length,
+    syncedCount: totalSynced,
+    slotsCreated: totalSlots,
+    cases,
+    sync: syncResults
+  };
 }
 
 function inferAssetKind(file) {
@@ -3838,12 +3911,7 @@ app.post('/api/cases/bulk', (req, res) => {
   try {
     const body = req.body || {};
     const rows = Array.isArray(body.cases) ? body.cases : parseBulkCaseText(body.text);
-    if (!rows.length) return res.status(400).json({ error: '没有有效账号行：每行必须包含微信昵称、抖音链接和共享原始素材路径' });
-    const created = rows.map((row) => createCaseFromBody(row));
-    created.forEach((caze) => {
-      generateSlotsForCase(caze, { days: 14 });
-    });
-    res.json({ createdCount: created.length, cases: created });
+    res.json(createBulkCases(rows));
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }

@@ -198,7 +198,7 @@ else fail('采集状态缺少折叠后台入口，或前台仍保留手工回填
 if (!mainSource.includes('打开抖音主页') && !mainSource.includes('target="_blank">打开主页</a>')) ok('前台不要求工作人员手动打开抖音主页');
 else fail('前台仍暴露手动打开抖音主页入口');
 
-if (serverSource.includes('兼职须知') && serverSource.includes('固定发布说明') && mainSource.includes('兼职须知（首次发送）')) ok('交付内容内置固定发布说明和兼职须知');
+if (serverSource.includes('兼职须知') && serverSource.includes('固定发布说明') && serverSource.includes('话题只用文案里已有的') && serverSource.includes('话题只用抖音发布文案里已有的') && mainSource.includes('兼职须知（首次发送）')) ok('交付内容内置固定发布说明和兼职须知');
 else fail('缺少固定发布说明或兼职须知');
 
 if (serverSource.includes('caseGuideAlreadySent') && serverSource.includes('shouldSendFreelancerGuide') && mainSource.includes('showFreelancerGuide') && mainSource.includes('freelancerGuideNote')) ok('兼职须知只在首次交付时显示，后续不重复复制');
@@ -271,6 +271,9 @@ else fail('后端仍可能随机生成兼职微信名或允许缺少抖音链接
 
 if (serverSource.includes("const sync = syncCaseSourceMaterials(created)") && serverSource.includes('res.json({ ...created, sync, slotsCreated: slots.length })') && smokeSource.includes('case create did not automatically sync shared source material') && smokeSource.includes('case create allowed missing shared source directory') && mainSource.includes('案例已创建：同步素材')) ok('普通新建案例会校验共享目录并自动同步一次素材');
 else fail('普通新建案例仍可能只建账号不校验/不同步共享素材');
+
+if (serverSource.includes('function prepareBulkCaseRows') && serverSource.includes('function createBulkCases') && serverSource.includes('seenSources.has(sourceMaterialDir)') && serverSource.includes('const sync = syncCaseSourceMaterials(created)') && !serverSource.includes('const created = rows.map((row) => createCaseFromBody(row))') && smokeSource.includes('bulk import created partial cases before failing validation') && mainSource.includes('批量导入完成：账号')) ok('批量导入会整批预检并自动同步素材，不会半导入');
+else fail('批量导入仍可能逐条创建、半失败半成功或不自动同步素材');
 
 const staleOperatorDocs = [
   '先复制这个账号的清单',

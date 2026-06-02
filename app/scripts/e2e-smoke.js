@@ -357,17 +357,42 @@ async function main() {
     });
     assert(videoSeed.id, 'video content seed not created');
 
+    const invalidBulkSourceDir = makeSharedSourceDir(ROOT_DIR, '批量失败不应创建');
+    fs.writeFileSync(path.join(invalidBulkSourceDir, '批量失败素材.jpg'), 'fake failed bulk material');
+    let invalidBulkRejected = false;
+    try {
+      await api('/cases/bulk', {
+        method: 'POST',
+        body: JSON.stringify({
+          text: [
+            `批量失败小吴,https://www.douyin.com/user/bulk-fail-wu,吸脂,${invalidBulkSourceDir}`,
+            `批量失败小郑,https://www.douyin.com/user/bulk-fail-zheng,吸脂,${path.join(ROOT_DIR, '不存在的批量共享目录')}`
+          ].join('\n')
+        })
+      });
+    } catch (error) {
+      invalidBulkRejected = /不存在或不是目录/.test(error.message);
+    }
+    assert(invalidBulkRejected, 'bulk import allowed a row with missing shared source directory');
+    const afterInvalidBulk = await api('/cases');
+    assert(afterInvalidBulk.length === 0, 'bulk import created partial cases before failing validation');
+
+    const bulkLinDir = makeSharedSourceDir(ROOT_DIR, '批量小林');
+    const bulkChenDir = makeSharedSourceDir(ROOT_DIR, '批量小陈');
+    fs.writeFileSync(path.join(bulkLinDir, '批量小林-D1.jpg'), 'fake bulk lin material');
+    fs.writeFileSync(path.join(bulkChenDir, '批量小陈-D1.jpg'), 'fake bulk chen material');
     const bulk = await api('/cases/bulk', {
       method: 'POST',
       body: JSON.stringify({
         text: [
-          `批量小林,https://www.douyin.com/user/bulk-lin,吸脂,${makeSharedSourceDir(ROOT_DIR, '批量小林')}`,
-          `批量小陈,https://www.douyin.com/user/bulk-chen,复诊,${makeSharedSourceDir(ROOT_DIR, '批量小陈')}`,
+          `批量小林,https://www.douyin.com/user/bulk-lin,吸脂,${bulkLinDir}`,
+          `批量小陈,https://www.douyin.com/user/bulk-chen,复诊,${bulkChenDir}`,
           '无效账号,不是抖音链接,吸脂,/Volumes/共享素材/无效账号'
         ].join('\n')
       })
     });
     assert(bulk.createdCount === 2, 'bulk import should only accept rows with WeChat, Douyin link and shared source path');
+    assert(bulk.syncedCount === 2 && bulk.cases.every((item) => item.sync?.inserted === 1), 'bulk import did not automatically sync shared materials');
     assert(bulk.cases[0].douyinUrl.includes('bulk-lin') && bulk.cases[1].project === '复诊', 'bulk simplified fields missing');
     assert(bulk.cases.every((item) => item.stage === '起号期'), 'bulk import accepted external case stage');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
@@ -866,8 +891,8 @@ async function main() {
     assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');
     const deliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(deliveryView.texts.operatorInstruction.includes('微信收件人：验收兼职改名'), 'delivery view missing operator instruction');
-    assert(deliveryView.texts.operatorInstruction.includes('固定发布说明'), 'delivery view missing fixed publish instructions');
-    assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复'), 'delivery view missing freelancer guide');
+    assert(deliveryView.texts.operatorInstruction.includes('固定发布说明') && deliveryView.texts.operatorInstruction.includes('时间窗') && deliveryView.texts.operatorInstruction.includes('话题只用文案里已有的'), 'delivery view missing fixed publish instructions');
+    assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复') && deliveryView.texts.freelancerGuide.includes('话题只用抖音发布文案里已有的'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
     const nonHeadGenerateSlot = await api(`/cases/${caze.id}/slots`, {

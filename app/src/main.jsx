@@ -283,10 +283,11 @@ function App() {
         <BulkCaseForm
           onClose={() => setBulkCaseOpen(false)}
           onSubmit={(payload) => act(async () => {
-            await request('/cases/bulk', { method: 'POST', body: JSON.stringify(payload) });
+            const result = await request('/cases/bulk', { method: 'POST', body: JSON.stringify(payload) });
             setBulkCaseOpen(false);
             setView('cases');
-          }, '批量案例已导入')}
+            return result;
+          }, (result) => `批量导入完成：账号 ${result.createdCount || 0} 个，同步素材 ${result.syncedCount || 0} 个，排期 ${result.slotsCreated || 0} 条`)}
         />
       )}
       {viralFormOpen && (
@@ -2539,7 +2540,7 @@ function BulkCaseForm({ onClose, onSubmit }) {
     <Modal title="批量导入兼职/账号" onClose={onClose}>
       <div className="hintBox">
         每行一个账号，支持逗号或 Tab 分隔。字段顺序：
-        微信昵称, 抖音主页链接, 项目, 共享原始素材路径。四项都要填，导入后系统会自动建立近期排期。
+        微信昵称, 抖音主页链接, 项目, 共享原始素材路径。四项都要填，目录必须存在；导入通过后系统会自动同步素材并建立近期排期。
       </div>
       <div className="formGrid">
         <label className="wide">导入内容<textarea rows="10" value={text} onChange={(e) => setText(e.target.value)} /></label>
