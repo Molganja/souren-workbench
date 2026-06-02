@@ -1035,7 +1035,15 @@ async function main() {
     assert(!lostAfterPrune.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'lost account future pending slots were not pruned');
     const lostChromeQueue = await api('/douyin-monitor/chrome-queue?includeFresh=1&limit=200');
     assert(!lostChromeQueue.targets.some((item) => item.caseId === lostCase.id), 'lost account appeared in chrome collection queue');
-    const resumedLost = await api(`/cases/${lostCase.id}/resume`, { method: 'POST' });
+    const resumeWithoutConfirm = await fetch(`${BASE}/cases/${lostCase.id}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER }
+    });
+    assert(resumeWithoutConfirm.status === 409, 'resume without reply confirmation should be blocked');
+    const stillPausedLost = await api(`/cases/${lostCase.id}`);
+    assert(stillPausedLost.case.healthStatus === '失联暂停', 'unconfirmed resume changed paused account status');
+    assert(!stillPausedLost.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'unconfirmed resume created new schedule');
+    const resumedLost = await api(`/cases/${lostCase.id}/resume`, { method: 'POST', body: JSON.stringify({ resumeConfirmed: true }) });
     assert(resumedLost.case.healthStatus === '健康', 'resume did not restore case health');
     assert(resumedLost.slotsCreated >= 1, 'resume did not create new schedule');
     assert(resumedLost.collectionQueue?.registeredCount === 1 && resumedLost.collectionQueue.runs[0]?.caseId === lostCase.id, 'resume did not immediately queue Chrome collection');

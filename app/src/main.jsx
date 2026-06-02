@@ -1242,6 +1242,44 @@ function deleteCase(item, confirmText, onAct, onDone) {
   }, (result) => result.removedDir ? '案例已删除，本地素材副本已同步删除' : '案例已删除，本地素材副本原本不存在');
 }
 
+function ResumeAccountModal({ item, onClose, onResume }) {
+  const [confirmed, setConfirmed] = useState(false);
+  return (
+    <Modal title="恢复账号" onClose={onClose}>
+      <div className="hintBox">只有确认这个兼职已经重新回复，并且愿意继续按要求发布时，才恢复账号。恢复后系统会补近期排期并重新进入采集。</div>
+      <div className="templateList">
+        <div className="templateRow">
+          <strong>微信昵称</strong>
+          <span>{item.weixinNick}</span>
+        </div>
+        <div className="templateRow">
+          <strong>当前状态</strong>
+          <span>{item.healthStatus}</span>
+        </div>
+      </div>
+      <label className="checkRow">
+        <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+        <span>已收到兼职回复，确认这个账号继续配合</span>
+      </label>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="primary" disabled={!confirmed} onClick={() => onResume()}>确认恢复</button>
+      </div>
+    </Modal>
+  );
+}
+
+function resumeCase(item, onAct, onDone) {
+  onAct(async () => {
+    const result = await request(`/cases/${item.id}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({ resumeConfirmed: true })
+    });
+    onDone?.();
+    return result;
+  }, (result) => `已恢复账号：取消旧派发 ${result.canceledCount} 条，新排期 ${result.slotsCreated} 条`);
+}
+
 function caseCanResume(caze = {}) {
   return ['失联暂停', '已放弃', '停用'].includes(caze.healthStatus);
 }
@@ -1249,6 +1287,7 @@ function caseCanResume(caze = {}) {
 function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueueItem, editRequest = null, onEditRequestDone, onAfterEditSaved }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], monitor = {}, videos = [], viralAlerts = [], metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
+  const [resumeOpen, setResumeOpen] = useState(false);
   const canRunMaterialActions = activeQueueMatchesCaseMaterial(activeQueueItem, caze);
   useEffect(() => {
     if (editRequest?.token) setEditOpen(true);
@@ -1288,12 +1327,16 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueue
           )}>同步共享素材</button>}
           {canRunMaterialActions && <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>}
           {!canRunMaterialActions && <span className="lockedNote">素材动作排到今日队列队首后处理</span>}
-          {caseCanResume(caze) && <button className="primary" onClick={() => onAct(
-            () => request(`/cases/${caze.id}/resume`, { method: 'POST' }),
-            (result) => `已恢复账号：取消旧派发 ${result.canceledCount} 条，新排期 ${result.slotsCreated} 条`
-          )}>恢复账号</button>}
+          {caseCanResume(caze) && <button className="primary" onClick={() => setResumeOpen(true)}>恢复账号</button>}
         </div>
       </section>
+      {resumeOpen && (
+        <ResumeAccountModal
+          item={caze}
+          onClose={() => setResumeOpen(false)}
+          onResume={() => resumeCase(caze, onAct, () => setResumeOpen(false))}
+        />
+      )}
       {editOpen && (
         <CaseForm
           initial={caze}

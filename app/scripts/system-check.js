@@ -408,8 +408,16 @@ else fail('失联账号仍可能要求工作人员确认暂停，或缺少自动
 if (serverSource.includes("joinedViralAlerts('va.status = ?', ['active'], 30)") && serverSource.includes('!caseIsPaused(byCase[alert.caseId])')) ok('暂停账号的爆款提醒不会回到今日队列');
 else fail('暂停账号的爆款提醒仍可能进入今日队列');
 
-if (serverSource.includes('/api/cases/:id/resume') && serverSource.includes('已取消') && mainSource.includes('恢复账号')) ok('失联暂停账号支持一键恢复');
-else fail('缺少失联暂停账号恢复闭环');
+if (
+  serverSource.includes('/api/cases/:id/resume')
+  && serverSource.includes('function assertCaseResumeConfirmed')
+  && serverSource.includes('resumeConfirmed === true')
+  && serverSource.includes('已取消')
+  && mainSource.includes('ResumeAccountModal')
+  && mainSource.includes('已收到兼职回复，确认这个账号继续配合')
+  && smokeSource.includes('resume without reply confirmation should be blocked')
+) ok('失联暂停账号必须确认兼职回复后才能恢复');
+else fail('失联暂停账号恢复仍可能一键误恢复，或缺少确认验收');
 
 if (serverSource.includes('pauseCaseWork') && serverSource.includes('PAUSE_CANCEL_SLOT_STATUSES') && serverSource.includes("status = ?, finished_at = ?, note = ?, updated_at = ?") && smokeSource.includes('auto-paused lost account still has active slots')) ok('自动暂停会撤下未完成排期和等待中的采集单');
 else fail('自动暂停仍可能只隐藏账号，不撤下旧任务或采集单');

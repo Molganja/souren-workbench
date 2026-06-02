@@ -1306,6 +1306,21 @@ button:disabled:hover,
   margin: 3px 0 0;
 }
 
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--text);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.checkRow input {
+  width: auto;
+  margin-top: 4px;
+}
+
 .lanSetupResult {
   margin-top: 10px;
   display: grid;

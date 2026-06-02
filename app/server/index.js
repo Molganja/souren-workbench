@@ -1267,13 +1267,21 @@ function createCaseFromBody(body = {}) {
   return createdCase;
 }
 
-function resumeCaseAccount(caseId) {
+function assertCaseResumeConfirmed(input = {}, caze = {}) {
+  if (input.resumeConfirmed === true) return;
+  const err = new Error(`恢复账号前必须确认「${caze.weixinNick || '这个兼职'}」已经重新回复并愿意继续配合`);
+  err.status = 409;
+  throw err;
+}
+
+function resumeCaseAccount(caseId, input = {}) {
   const caze = caseById(caseId);
   if (!caze) {
     const error = new Error('case not found');
     error.status = 404;
     throw error;
   }
+  assertCaseResumeConfirmed(input, caze);
   const today = localDate();
   const staleSentSlots = all(
     'SELECT * FROM plan_slots WHERE case_id = ? AND status = ? ORDER BY date ASC',
@@ -4426,7 +4434,7 @@ app.patch('/api/cases/:id', (req, res) => {
 
 app.post('/api/cases/:id/resume', (req, res) => {
   try {
-    res.json(resumeCaseAccount(req.params.id));
+    res.json(resumeCaseAccount(req.params.id, req.body || {}));
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }
