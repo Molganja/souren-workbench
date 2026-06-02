@@ -157,6 +157,75 @@ CREATE TABLE IF NOT EXISTS metrics (
   note TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS account_snapshots (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  collected_at TEXT NOT NULL,
+  fans INTEGER,
+  following INTEGER,
+  total_likes INTEGER,
+  total_works INTEGER,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL,
+  note TEXT,
+  raw_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS douyin_videos (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  douyin_video_id TEXT,
+  url TEXT,
+  title TEXT,
+  publish_time TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(case_id, douyin_video_id),
+  UNIQUE(case_id, url)
+);
+
+CREATE TABLE IF NOT EXISTS video_snapshots (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  video_id TEXT NOT NULL REFERENCES douyin_videos(id) ON DELETE CASCADE,
+  collected_at TEXT NOT NULL,
+  plays INTEGER,
+  likes INTEGER,
+  comments INTEGER,
+  shares INTEGER,
+  favorites INTEGER,
+  source TEXT NOT NULL,
+  raw_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collection_runs (
+  id TEXT PRIMARY KEY,
+  case_id TEXT REFERENCES cases(id) ON DELETE CASCADE,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  status TEXT NOT NULL,
+  source TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS viral_alerts (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  video_id TEXT NOT NULL REFERENCES douyin_videos(id) ON DELETE CASCADE,
+  snapshot_id TEXT REFERENCES video_snapshots(id) ON DELETE SET NULL,
+  level TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL,
+  interaction_note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(video_id, status)
+);
 `);
 
 export function now() {

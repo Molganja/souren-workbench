@@ -28,6 +28,8 @@ const AUTH_LOCAL_BYPASS = process.env.SOUREN_AUTH_LOCAL_BYPASS !== '0';
 const AUTH_COOKIE = 'souren_access';
 const AUTH_SECRET = process.env.SOUREN_AUTH_SECRET || `${ROOT_DIR}:${ACCESS_CODE || 'local'}`;
 const DEFAULT_IMAGE_MODEL = 'image-v2';
+const DOUYIN_COLLECTOR_URL = String(process.env.DOUYIN_COLLECTOR_URL || '').trim();
+const DOUYIN_COLLECTION_INTERVAL_MS = Number(process.env.DOUYIN_COLLECTION_INTERVAL_MS || 24 * 60 * 60 * 1000);
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -80,6 +82,10 @@ const STATUS_LABELS = {
   pending: '待核对',
   checking: '核对中',
   verified: '已核对',
+  active: '待互动',
+  handled: '已处理',
+  waiting_collector: '等待采集器',
+  submitted: '已提交采集',
   mismatch: '不匹配',
   not_found: '未找到',
   unknown: '未知',
@@ -459,6 +465,116 @@ function rowMetric(row) {
   };
 }
 
+function rowAccountSnapshot(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    collectedAt: row.collected_at,
+    fans: row.fans,
+    following: row.following,
+    totalLikes: row.total_likes,
+    totalWorks: row.total_works,
+    source: row.source,
+    status: row.status,
+    note: row.note,
+    rawJson: parseJson(row.raw_json, {}),
+    createdAt: row.created_at
+  };
+}
+
+function rowDouyinVideo(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    douyinVideoId: row.douyin_video_id,
+    url: row.url,
+    title: row.title,
+    publishTime: row.publish_time,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowVideoSnapshot(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    videoId: row.video_id,
+    collectedAt: row.collected_at,
+    plays: row.plays,
+    likes: row.likes,
+    comments: row.comments,
+    shares: row.shares,
+    favorites: row.favorites,
+    source: row.source,
+    rawJson: parseJson(row.raw_json, {}),
+    createdAt: row.created_at
+  };
+}
+
+function rowCollectionRun(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    status: row.status,
+    source: row.source,
+    note: row.note,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowViralAlert(row) {
+  if (!row) return null;
+  const snapshot = row.snapshot_collected_at ? {
+    id: row.snapshot_id,
+    caseId: row.case_id,
+    videoId: row.video_id,
+    collectedAt: row.snapshot_collected_at,
+    plays: row.snapshot_plays,
+    likes: row.snapshot_likes,
+    comments: row.snapshot_comments,
+    shares: row.snapshot_shares,
+    favorites: row.snapshot_favorites
+  } : null;
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    videoId: row.video_id,
+    snapshotId: row.snapshot_id,
+    level: row.level,
+    reason: row.reason,
+    status: row.status,
+    interactionNote: row.interaction_note,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    case: row.case_code ? {
+      id: row.case_id,
+      caseCode: row.case_code,
+      weixinNick: row.weixin_nick,
+      douyinId: row.douyin_id,
+      douyinUrl: row.douyin_url,
+      staff: row.staff,
+      project: row.project,
+      stage: row.stage
+    } : null,
+    video: row.video_title || row.video_url || row.douyin_video_id ? {
+      id: row.video_id,
+      douyinVideoId: row.douyin_video_id,
+      url: row.video_url,
+      title: row.video_title,
+      publishTime: row.video_publish_time
+    } : null,
+    snapshot
+  };
+}
+
 function assertInsideRoot(targetPath) {
   const resolved = path.resolve(targetPath);
   const ok = ALLOWED_OPEN_ROOTS.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
@@ -683,7 +799,7 @@ function createCandidate(slot, caze, variant, viral = null, seed = null, overrid
 }
 
 async function generateCandidatesForSlot(slot) {
-  if (!slot || slot.selectedCandidateId || ['已锁定', '素材阻塞', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
+  if (!slot || slot.selectedCandidateId || ['已锁定', '素材阻塞', '可交付', '已派发', '已完成', '已汇报', '已核对'].includes(slot.status)) {
     return [];
   }
   const caze = caseById(slot.caseId);
@@ -1192,10 +1308,428 @@ function materialGaps(project, assets) {
   });
 }
 
-function caseHealth(caze, caseSlots, caseAssets, metrics, today) {
+function numberOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function hoursSince(iso) {
+  if (!iso) return Infinity;
+  const time = new Date(iso).getTime();
+  if (!Number.isFinite(time)) return Infinity;
+  return Math.max(0, (Date.now() - time) / (60 * 60 * 1000));
+}
+
+function latestSnapshotForVideo(videoId) {
+  return rowVideoSnapshot(get(
+    'SELECT * FROM video_snapshots WHERE video_id = ? ORDER BY collected_at DESC, created_at DESC LIMIT 1',
+    [videoId]
+  ));
+}
+
+function previousSnapshotForVideo(videoId, excludeId) {
+  return rowVideoSnapshot(get(
+    'SELECT * FROM video_snapshots WHERE video_id = ? AND id != ? ORDER BY collected_at DESC, created_at DESC LIMIT 1',
+    [videoId, excludeId]
+  ));
+}
+
+function findDouyinVideo(caseId, payload = {}) {
+  const douyinVideoId = String(payload.videoId || payload.douyinVideoId || payload.id || '').trim();
+  const url = String(payload.url || payload.douyinUrl || '').trim();
+  if (douyinVideoId) {
+    const found = rowDouyinVideo(get('SELECT * FROM douyin_videos WHERE case_id = ? AND douyin_video_id = ?', [caseId, douyinVideoId]));
+    if (found) return found;
+  }
+  if (url) {
+    const found = rowDouyinVideo(get('SELECT * FROM douyin_videos WHERE case_id = ? AND url = ?', [caseId, url]));
+    if (found) return found;
+  }
+  return null;
+}
+
+function upsertDouyinVideo(caseId, payload = {}) {
+  const douyinVideoId = String(payload.videoId || payload.douyinVideoId || payload.id || '').trim();
+  const url = String(payload.url || payload.douyinUrl || '').trim();
+  if (!douyinVideoId && !url) return null;
+  const title = String(payload.title || payload.caption || '').trim();
+  const publishTime = String(payload.publishTime || payload.publish_time || '').trim();
+  const existing = findDouyinVideo(caseId, { douyinVideoId, url });
+  if (existing) {
+    run(
+      'UPDATE douyin_videos SET douyin_video_id = COALESCE(?, douyin_video_id), url = COALESCE(?, url), title = COALESCE(?, title), publish_time = COALESCE(?, publish_time), updated_at = ? WHERE id = ?',
+      [douyinVideoId || null, url || null, title || null, publishTime || null, now(), existing.id]
+    );
+    return rowDouyinVideo(get('SELECT * FROM douyin_videos WHERE id = ?', [existing.id]));
+  }
+  const id = uid('video');
+  run(
+    `INSERT INTO douyin_videos
+    (id, case_id, douyin_video_id, url, title, publish_time, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, caseId, douyinVideoId || null, url || null, title || null, publishTime || null, now(), now()]
+  );
+  return rowDouyinVideo(get('SELECT * FROM douyin_videos WHERE id = ?', [id]));
+}
+
+function insertVideoSnapshot(caseId, videoId, payload = {}, collectedAt, source) {
+  const snapshot = {
+    plays: numberOrNull(payload.plays ?? payload.playCount),
+    likes: numberOrNull(payload.likes ?? payload.likeCount),
+    comments: numberOrNull(payload.comments ?? payload.commentCount),
+    shares: numberOrNull(payload.shares ?? payload.shareCount),
+    favorites: numberOrNull(payload.favorites ?? payload.collectCount)
+  };
+  const hasAnyMetric = Object.values(snapshot).some((value) => value !== null);
+  if (!hasAnyMetric) return null;
+  const id = uid('vsnap');
+  run(
+    `INSERT INTO video_snapshots
+    (id, case_id, video_id, collected_at, plays, likes, comments, shares, favorites, source, raw_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      caseId,
+      videoId,
+      collectedAt,
+      snapshot.plays,
+      snapshot.likes,
+      snapshot.comments,
+      snapshot.shares,
+      snapshot.favorites,
+      source,
+      JSON.stringify(payload || {}),
+      now()
+    ]
+  );
+  return rowVideoSnapshot(get('SELECT * FROM video_snapshots WHERE id = ?', [id]));
+}
+
+function viralSignal(snapshot, previous) {
+  if (!snapshot) return null;
+  const plays = snapshot.plays || 0;
+  const likes = snapshot.likes || 0;
+  const comments = snapshot.comments || 0;
+  const shares = snapshot.shares || 0;
+  const playDelta = previous?.plays != null ? plays - previous.plays : plays;
+  if (plays >= 10000 || likes >= 800 || comments >= 80 || shares >= 80 || playDelta >= 7000) {
+    return { level: 'high', label: '强爆款信号' };
+  }
+  if (plays >= 5000 || likes >= 300 || comments >= 30 || shares >= 30 || playDelta >= 3000) {
+    return { level: 'medium', label: '爆款苗头' };
+  }
+  return null;
+}
+
+function upsertViralAlert(caze, video, snapshot, previous) {
+  const signal = viralSignal(snapshot, previous);
+  if (!signal || !caze || !video) return null;
+  const reason = [
+    `${signal.label}：播放 ${snapshot.plays ?? 0}`,
+    `点赞 ${snapshot.likes ?? 0}`,
+    `评论 ${snapshot.comments ?? 0}`,
+    previous?.plays != null ? `较上次播放 ${signedNumber((snapshot.plays || 0) - (previous.plays || 0))}` : '首次采集即达标'
+  ].join('｜');
+  const interactionNote = '安排助理号/阑尾号去评论区互动：顶高质量评论，回复咨询问题，追问用户痛点，把流量承接到咨询。';
+  const existing = rowViralAlert(get('SELECT * FROM viral_alerts WHERE video_id = ? AND status = ?', [video.id, 'active']));
+  if (existing) {
+    run(
+      'UPDATE viral_alerts SET snapshot_id = ?, level = ?, reason = ?, interaction_note = ?, updated_at = ? WHERE id = ?',
+      [snapshot.id, signal.level, reason, interactionNote, now(), existing.id]
+    );
+    return rowViralAlert(get('SELECT * FROM viral_alerts WHERE id = ?', [existing.id]));
+  }
+  const id = uid('alert');
+  run(
+    `INSERT INTO viral_alerts
+    (id, case_id, video_id, snapshot_id, level, reason, status, interaction_note, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+    [id, caze.id, video.id, snapshot.id, signal.level, reason, interactionNote, now(), now()]
+  );
+  return rowViralAlert(get('SELECT * FROM viral_alerts WHERE id = ?', [id]));
+}
+
+function joinedViralAlerts(where = 'va.status = ?', params = ['active'], limit = 50) {
+  return all(
+    `SELECT
+      va.id, va.case_id, va.video_id, va.snapshot_id, va.level, va.reason, va.status, va.interaction_note, va.created_at, va.updated_at,
+      c.case_code, c.weixin_nick, c.douyin_id, c.douyin_url, c.staff, c.project, c.stage,
+      dv.douyin_video_id, dv.url AS video_url, dv.title AS video_title, dv.publish_time AS video_publish_time,
+      vs.collected_at AS snapshot_collected_at, vs.plays AS snapshot_plays, vs.likes AS snapshot_likes,
+      vs.comments AS snapshot_comments, vs.shares AS snapshot_shares, vs.favorites AS snapshot_favorites
+    FROM viral_alerts va
+    JOIN cases c ON c.id = va.case_id
+    JOIN douyin_videos dv ON dv.id = va.video_id
+    LEFT JOIN video_snapshots vs ON vs.id = va.snapshot_id
+    WHERE ${where}
+    ORDER BY CASE va.level WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, va.updated_at DESC
+    LIMIT ?`,
+    [...params, limit]
+  ).map(rowViralAlert);
+}
+
+function latestSnapshotsByVideo(videoSnapshots) {
+  const map = new Map();
+  videoSnapshots.forEach((snapshot) => {
+    const previous = map.get(snapshot.videoId);
+    if (!previous || snapshot.collectedAt > previous.collectedAt) map.set(snapshot.videoId, snapshot);
+  });
+  return map;
+}
+
+function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase)) {
+  const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
+  const accountSnapshots = all('SELECT * FROM account_snapshots ORDER BY collected_at DESC, created_at DESC').map(rowAccountSnapshot);
+  const videos = all('SELECT * FROM douyin_videos ORDER BY updated_at DESC').map(rowDouyinVideo);
+  const videoSnapshots = all('SELECT * FROM video_snapshots ORDER BY collected_at DESC, created_at DESC').map(rowVideoSnapshot);
+  const collectionRuns = all('SELECT * FROM collection_runs ORDER BY started_at DESC, created_at DESC').map(rowCollectionRun);
+  const viralAlerts = joinedViralAlerts('va.status = ?', ['active'], 30);
+  const latestVideoSnapshots = latestSnapshotsByVideo(videoSnapshots);
+  const accountByCase = {};
+  const videosByCase = {};
+  const snapshotsByCase = {};
+  const runsByCase = {};
+  const alertsByCase = {};
+
+  accountSnapshots.forEach((item) => {
+    accountByCase[item.caseId] = accountByCase[item.caseId] || [];
+    accountByCase[item.caseId].push(item);
+  });
+  videos.forEach((item) => {
+    videosByCase[item.caseId] = videosByCase[item.caseId] || [];
+    videosByCase[item.caseId].push(item);
+  });
+  videoSnapshots.forEach((item) => {
+    snapshotsByCase[item.caseId] = snapshotsByCase[item.caseId] || [];
+    snapshotsByCase[item.caseId].push(item);
+  });
+  collectionRuns.forEach((item) => {
+    if (!item.caseId) return;
+    runsByCase[item.caseId] = runsByCase[item.caseId] || [];
+    runsByCase[item.caseId].push(item);
+  });
+  viralAlerts.forEach((item) => {
+    alertsByCase[item.caseId] = alertsByCase[item.caseId] || [];
+    alertsByCase[item.caseId].push(item);
+  });
+
+  const videoLeaders = videos
+    .map((video) => ({
+      ...video,
+      case: byCase[video.caseId] || null,
+      latestSnapshot: latestVideoSnapshots.get(video.id) || null
+    }))
+    .filter((item) => item.latestSnapshot)
+    .sort((a, b) => (b.latestSnapshot.plays || 0) - (a.latestSnapshot.plays || 0))
+    .slice(0, 20);
+
+  const accounts = cases.map((caze) => {
+    const snapshots = accountByCase[caze.id] || [];
+    const caseVideos = videosByCase[caze.id] || [];
+    const caseRuns = runsByCase[caze.id] || [];
+    const latestSnapshot = snapshots[0] || null;
+    const initialSnapshot = snapshots[snapshots.length - 1] || null;
+    const topVideo = caseVideos
+      .map((video) => ({ ...video, latestSnapshot: latestVideoSnapshots.get(video.id) || null }))
+      .filter((video) => video.latestSnapshot)
+      .sort((a, b) => (b.latestSnapshot.plays || 0) - (a.latestSnapshot.plays || 0))[0] || null;
+    return {
+      case: caze,
+      initialSnapshot,
+      latestSnapshot,
+      fanDelta: latestSnapshot?.fans != null && initialSnapshot?.fans != null ? latestSnapshot.fans - initialSnapshot.fans : null,
+      lastCollectedAt: latestSnapshot?.collectedAt || null,
+      dueCollection: Boolean(caze.douyinUrl) && (!latestSnapshot || hoursSince(latestSnapshot.collectedAt) >= 24),
+      videos: caseVideos.length,
+      snapshots: (snapshotsByCase[caze.id] || []).length,
+      topVideo,
+      lastRun: caseRuns[0] || null,
+      activeViralAlerts: alertsByCase[caze.id] || []
+    };
+  });
+
+  return {
+    totals: {
+      monitoredAccounts: cases.filter((item) => item.douyinUrl).length,
+      accountSnapshots: accountSnapshots.length,
+      videos: videos.length,
+      videoSnapshots: videoSnapshots.length,
+      viralAlerts: viralAlerts.length,
+      dueCollection: accounts.filter((item) => item.dueCollection).length,
+      waitingCollector: collectionRuns.filter((item) => item.status === 'waiting_collector').length
+    },
+    accounts,
+    viralAlerts,
+    videoLeaders,
+    recentAccountSnapshots: accountSnapshots.slice(0, 20).map((item) => ({ ...item, case: byCase[item.caseId] || null })),
+    recentVideoSnapshots: videoSnapshots.slice(0, 20).map((item) => {
+      const video = videos.find((row) => row.id === item.videoId) || null;
+      return { ...item, case: byCase[item.caseId] || null, video };
+    }),
+    recentRuns: collectionRuns.slice(0, 20).map((item) => ({ ...item, case: item.caseId ? byCase[item.caseId] || null : null }))
+  };
+}
+
+function signedNumber(value) {
+  if (value == null) return '—';
+  return value >= 0 ? `+${value}` : String(value);
+}
+
+function monitorForCase(monitor, caseId) {
+  return monitor.accounts.find((item) => item.case.id === caseId) || {};
+}
+
+async function submitCollectionRunToCollector(runId, caze) {
+  if (!DOUYIN_COLLECTOR_URL) return;
+  try {
+    const response = await fetch(DOUYIN_COLLECTOR_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        runId,
+        caseId: caze.id,
+        caseCode: caze.caseCode,
+        douyinId: caze.douyinId,
+        douyinUrl: caze.douyinUrl
+      })
+    });
+    if (!response.ok) throw new Error(`采集器返回 ${response.status}`);
+    run(
+      'UPDATE collection_runs SET status = ?, finished_at = ?, note = ?, updated_at = ? WHERE id = ?',
+      ['submitted', now(), '已提交给抖音采集器，等待采集器写回账号和作品数据', now(), runId]
+    );
+  } catch (error) {
+    run(
+      'UPDATE collection_runs SET status = ?, finished_at = ?, note = ?, updated_at = ? WHERE id = ?',
+      ['error', now(), `采集器提交失败：${error.message}`, now(), runId]
+    );
+  }
+}
+
+async function enqueueDouyinCollection(source = 'manual') {
+  const cases = all("SELECT * FROM cases WHERE douyin_url IS NOT NULL AND TRIM(douyin_url) != '' ORDER BY created_at ASC").map(rowCase);
+  const runs = [];
+  for (const caze of cases) {
+    const id = uid('collect');
+    const status = DOUYIN_COLLECTOR_URL ? 'waiting' : 'waiting_collector';
+    const note = DOUYIN_COLLECTOR_URL
+      ? '已登记采集任务，正在提交给抖音采集器'
+      : '已按 24 小时周期登记采集任务，等待采集器接入后写回账号和作品数据';
+    run(
+      `INSERT INTO collection_runs
+      (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, caze.id, now(), DOUYIN_COLLECTOR_URL ? null : now(), status, source, note, now(), now()]
+    );
+    runs.push(rowCollectionRun(get('SELECT * FROM collection_runs WHERE id = ?', [id])));
+    if (DOUYIN_COLLECTOR_URL) {
+      await submitCollectionRunToCollector(id, caze);
+    }
+  }
+  return {
+    collectorReady: Boolean(DOUYIN_COLLECTOR_URL),
+    createdCount: runs.length,
+    runs: runs.map((item) => rowCollectionRun(get('SELECT * FROM collection_runs WHERE id = ?', [item.id]))),
+    monitor: monitorData()
+  };
+}
+
+function caseFromMonitorPayload(body = {}) {
+  if (body.caseId) return caseById(body.caseId);
+  const douyinUrl = String(body.douyinUrl || body.account?.douyinUrl || '').trim();
+  const douyinId = String(body.douyinId || body.account?.douyinId || '').trim();
+  if (douyinUrl) {
+    const found = rowCase(get('SELECT * FROM cases WHERE douyin_url = ?', [douyinUrl]));
+    if (found) return found;
+  }
+  if (douyinId) return rowCase(get('SELECT * FROM cases WHERE douyin_id = ?', [douyinId]));
+  return null;
+}
+
+function ingestDouyinData(body = {}) {
+  const caze = caseFromMonitorPayload(body);
+  if (!caze) {
+    const err = new Error('未找到匹配账号，请传 caseId、douyinUrl 或 douyinId');
+    err.status = 404;
+    throw err;
+  }
+  const collectedAt = String(body.collectedAt || body.collected_at || now());
+  const source = String(body.source || 'collector');
+  const account = body.account || {};
+  const videos = Array.isArray(body.videos) ? body.videos : [];
+  const accountHasData = ['fans', 'following', 'totalLikes', 'total_likes', 'totalWorks', 'total_works'].some((key) => account[key] !== undefined && account[key] !== '');
+  let accountSnapshot = null;
+  const videoRows = [];
+  const videoSnapshots = [];
+  const viralAlerts = [];
+
+  run('BEGIN IMMEDIATE');
+  try {
+    if (accountHasData) {
+      const id = uid('asnap');
+      run(
+        `INSERT INTO account_snapshots
+        (id, case_id, collected_at, fans, following, total_likes, total_works, source, status, note, raw_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          caze.id,
+          collectedAt,
+          numberOrNull(account.fans),
+          numberOrNull(account.following),
+          numberOrNull(account.totalLikes ?? account.total_likes),
+          numberOrNull(account.totalWorks ?? account.total_works),
+          source,
+          'collected',
+          body.note || '',
+          JSON.stringify(account),
+          now()
+        ]
+      );
+      accountSnapshot = rowAccountSnapshot(get('SELECT * FROM account_snapshots WHERE id = ?', [id]));
+    }
+
+    videos.forEach((item) => {
+      const video = upsertDouyinVideo(caze.id, item);
+      if (!video) return;
+      const snapshot = insertVideoSnapshot(caze.id, video.id, item, collectedAt, source);
+      const previous = snapshot ? previousSnapshotForVideo(video.id, snapshot.id) : null;
+      const alert = snapshot ? upsertViralAlert(caze, video, snapshot, previous) : null;
+      videoRows.push(video);
+      if (snapshot) videoSnapshots.push(snapshot);
+      if (alert) viralAlerts.push(alert);
+    });
+
+    run(
+      `INSERT INTO collection_runs
+      (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [uid('collect'), caze.id, collectedAt, now(), 'completed', source, body.note || '采集器已写回账号和作品数据', now(), now()]
+    );
+    run('COMMIT');
+  } catch (error) {
+    try {
+      run('ROLLBACK');
+    } catch {
+      // Ignore rollback failures and report the ingest error.
+    }
+    throw error;
+  }
+
+  return {
+    case: caseById(caze.id),
+    accountSnapshot,
+    videos: videoRows,
+    videoSnapshots,
+    viralAlerts: viralAlerts.map((item) => joinedViralAlerts('va.id = ?', [item.id], 1)[0] || item),
+    monitor: monitorData()
+  };
+}
+
+function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   const reasons = [];
   const actions = [];
-  const pendingVerify = caseSlots.filter((s) => s.status === '已汇报').length;
   const futureSlots = caseSlots.filter((s) => s.date >= today).length;
   const recentGrass = caseSlots.filter((s) => s.contentKind === '素人种草' && s.date >= addDays(today, -7)).length;
   const recentViral = caseSlots.filter((s) => s.contentKind === '爆款提权' && s.date >= addDays(today, -7)).length;
@@ -1204,9 +1738,13 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today) {
   const latest = metrics[0];
   const prev = metrics[1];
 
-  if (pendingVerify >= 2) {
-    reasons.push('待核对堆积');
-    actions.push('先处理核对队列，回填播放/点赞/评论后再判断下一轮内容');
+  if (monitor.activeViralAlerts?.length) {
+    reasons.push('出现爆款作品');
+    actions.push('安排助理号/阑尾号互动，优先顶评论、回复咨询问题并承接转化');
+  }
+  if (caze.douyinUrl && monitor.dueCollection) {
+    reasons.push(monitor.latestSnapshot ? '账号数据超过24小时未更新' : '账号数据待采集');
+    actions.push('系统会按 24 小时周期采集账号数据；必要时在首页点“立即登记采集”');
   }
   if (futureSlots === 0) {
     reasons.push('缺少排期');
@@ -1271,7 +1809,12 @@ function exportData() {
     imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
     clipTasks: all('SELECT * FROM clip_tasks').map(rowClipTask),
     verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify),
-    metrics: all('SELECT * FROM metrics').map(rowMetric)
+    metrics: all('SELECT * FROM metrics').map(rowMetric),
+    accountSnapshots: all('SELECT * FROM account_snapshots').map(rowAccountSnapshot),
+    douyinVideos: all('SELECT * FROM douyin_videos').map(rowDouyinVideo),
+    videoSnapshots: all('SELECT * FROM video_snapshots').map(rowVideoSnapshot),
+    collectionRuns: all('SELECT * FROM collection_runs').map(rowCollectionRun),
+    viralAlerts: all('SELECT * FROM viral_alerts').map(rowViralAlert)
   };
 }
 
@@ -1332,6 +1875,32 @@ function validateImportData(data) {
     if (slotId) requireKnownId(slotIds, slotId, `核对任务 ${item.id || ''} 引用了不存在的排期`);
   });
   (data.metrics || []).forEach((item) => requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `数据记录 ${item.id || ''} 引用了不存在的案例`));
+  (data.accountSnapshots || []).forEach((item) => requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `账号快照 ${item.id || ''} 引用了不存在的案例`));
+  const videoIds = new Set();
+  (data.douyinVideos || []).forEach((item, index) => {
+    if (!item?.id) throw new Error(`第 ${index + 1} 个作品缺少 ID`);
+    if (videoIds.has(item.id)) throw new Error(`作品 ID 重复：${item.id}`);
+    videoIds.add(item.id);
+    requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `作品 ${item.id || ''} 引用了不存在的案例`);
+  });
+  const videoSnapshotIds = new Set();
+  (data.videoSnapshots || []).forEach((item, index) => {
+    if (!item?.id) throw new Error(`第 ${index + 1} 个作品快照缺少 ID`);
+    if (videoSnapshotIds.has(item.id)) throw new Error(`作品快照 ID 重复：${item.id}`);
+    videoSnapshotIds.add(item.id);
+    requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `作品快照 ${item.id || ''} 引用了不存在的案例`);
+    requireKnownId(videoIds, refId(item, 'videoId', 'video_id'), `作品快照 ${item.id || ''} 引用了不存在的作品`);
+  });
+  (data.collectionRuns || []).forEach((item) => {
+    const caseId = refId(item, 'caseId', 'case_id');
+    if (caseId) requireKnownId(caseIds, caseId, `采集任务 ${item.id || ''} 引用了不存在的案例`);
+  });
+  (data.viralAlerts || []).forEach((item) => {
+    requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `爆款提醒 ${item.id || ''} 引用了不存在的案例`);
+    requireKnownId(videoIds, refId(item, 'videoId', 'video_id'), `爆款提醒 ${item.id || ''} 引用了不存在的作品`);
+    const snapshotId = refId(item, 'snapshotId', 'snapshot_id');
+    if (snapshotId) requireKnownId(videoSnapshotIds, snapshotId, `爆款提醒 ${item.id || ''} 引用了不存在的作品快照`);
+  });
 }
 
 function groupCount(items, keyFn) {
@@ -1349,10 +1918,9 @@ function reviewSummary() {
   const assets = all('SELECT * FROM assets ORDER BY created_at DESC').map(rowAsset);
   const imageTasks = all('SELECT * FROM image_tasks ORDER BY created_at DESC').map(rowImageTask);
   const clipTasks = all('SELECT * FROM clip_tasks ORDER BY created_at DESC').map(rowClipTask);
-  const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
   const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
+  const monitor = monitorData(cases);
   const today = new Date().toISOString().slice(0, 10);
-  const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const metricsByCase = cases.reduce((acc, caze) => {
     acc[caze.id] = metrics.filter((item) => item.caseId === caze.id);
     return acc;
@@ -1361,7 +1929,8 @@ function reviewSummary() {
     const caseSlots = slots.filter((item) => item.caseId === caze.id);
     const caseAssets = assets.filter((item) => item.caseId === caze.id);
     const caseMetrics = metricsByCase[caze.id] || [];
-    const health = caseHealth(caze, caseSlots, caseAssets, caseMetrics, today);
+    const caseMonitor = monitorForCase(monitor, caze.id);
+    const health = caseHealth(caze, caseSlots, caseAssets, caseMetrics, today, caseMonitor);
     const latest = caseMetrics[0] || null;
     const prev = caseMetrics[1] || null;
     return {
@@ -1369,11 +1938,17 @@ function reviewSummary() {
       healthStatus: health.status,
       reasons: health.reasons,
       slots: caseSlots.length,
-      readySlots: caseSlots.filter((item) => ['可交付', '已派发', '已汇报', '已核对'].includes(item.status)).length,
-      pendingVerify: caseSlots.filter((item) => item.status === '已汇报').length,
+      readySlots: caseSlots.filter((item) => ['可交付', '已派发', '已完成'].includes(item.status)).length,
+      completedSlots: caseSlots.filter((item) => item.status === '已完成').length,
       materialGaps: health.gaps.length,
       actions: health.actions,
       latestMetric: latest,
+      initialSnapshot: caseMonitor.initialSnapshot || null,
+      latestSnapshot: caseMonitor.latestSnapshot || null,
+      fanDelta: caseMonitor.fanDelta ?? null,
+      topVideo: caseMonitor.topVideo || null,
+      dueCollection: Boolean(caseMonitor.dueCollection),
+      activeViralAlerts: caseMonitor.activeViralAlerts || [],
       delta: latest && prev ? {
         fans: (latest.fans || 0) - (prev.fans || 0),
         plays: (latest.plays || 0) - (prev.plays || 0),
@@ -1383,12 +1958,12 @@ function reviewSummary() {
     };
   });
   const topAccounts = caseRows
-    .filter((item) => item.latestMetric)
-    .sort((a, b) => (b.latestMetric.plays || 0) - (a.latestMetric.plays || 0))
+    .filter((item) => item.latestSnapshot || item.topVideo)
+    .sort((a, b) => (b.topVideo?.latestSnapshot?.plays || b.latestSnapshot?.fans || 0) - (a.topVideo?.latestSnapshot?.plays || a.latestSnapshot?.fans || 0))
     .slice(0, 12);
   const needsAttention = caseRows
-    .filter((item) => item.reasons.length > 0 || item.pendingVerify > 0 || item.materialGaps > 0)
-    .sort((a, b) => (b.pendingVerify + b.materialGaps + b.reasons.length) - (a.pendingVerify + a.materialGaps + a.reasons.length))
+    .filter((item) => item.reasons.length > 0 || item.materialGaps > 0 || item.activeViralAlerts.length > 0 || item.dueCollection)
+    .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.materialGaps + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.materialGaps + a.reasons.length))
     .slice(0, 20);
 
   return {
@@ -1400,9 +1975,14 @@ function reviewSummary() {
       assets: assets.length,
       usableAssets: assets.filter((item) => item.reviewStatus === '可用').length,
       deliveryReady: slots.filter((item) => item.status === '可交付').length,
-      sent: slots.filter((item) => ['已派发', '已汇报', '已核对'].includes(item.status)).length,
-      verified: verifyTasks.filter((item) => item.status === 'verified').length,
+      sent: slots.filter((item) => ['已派发', '已完成'].includes(item.status)).length,
+      completed: slots.filter((item) => item.status === '已完成').length,
       metrics: metrics.length,
+      accountSnapshots: monitor.totals.accountSnapshots,
+      videos: monitor.totals.videos,
+      videoSnapshots: monitor.totals.videoSnapshots,
+      viralAlerts: monitor.totals.viralAlerts,
+      dueCollection: monitor.totals.dueCollection,
       imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
       clipPending: clipTasks.filter((item) => OPEN_CLIP_STATUSES.includes(item.status)).length
     },
@@ -1411,7 +1991,7 @@ function reviewSummary() {
       kind,
       total: slots.filter((item) => item.contentKind === kind).length,
       pending: slots.filter((item) => item.contentKind === kind && ['待生成', '候选待选'].includes(item.status)).length,
-      ready: slots.filter((item) => item.contentKind === kind && ['可交付', '已派发', '已汇报', '已核对'].includes(item.status)).length
+      ready: slots.filter((item) => item.contentKind === kind && ['可交付', '已派发', '已完成'].includes(item.status)).length
     })),
     stageStats: STAGES.map((stage) => ({
       stage,
@@ -1421,10 +2001,13 @@ function reviewSummary() {
     healthStats: groupCount(caseRows, (item) => item.healthStatus),
     topAccounts,
     needsAttention,
-    recentMetrics: metrics.slice(0, 20).map((item) => ({
-      ...item,
-      case: byCase[item.caseId] || null
-    }))
+    monitor,
+    recentCollections: [
+      ...monitor.recentVideoSnapshots.map((item) => ({ ...item, type: '作品数据' })),
+      ...monitor.recentAccountSnapshots.map((item) => ({ ...item, type: '账号快照' }))
+    ]
+      .sort((a, b) => String(b.collectedAt).localeCompare(String(a.collectedAt)))
+      .slice(0, 20)
   };
 }
 
@@ -1432,17 +2015,14 @@ function scheduleSummary() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, time_window ASC, created_at ASC').map(rowSlot);
   const candidates = all('SELECT * FROM candidate_drafts ORDER BY created_at ASC').map(rowCandidate);
-  const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
-  const verifyBySlot = Object.fromEntries(verifyTasks.map((item) => [item.planItemId, item]));
   const withMeta = slots.map((slot) => {
     const slotCandidates = candidates.filter((item) => item.slotId === slot.id);
     return {
       ...slot,
       case: byCase[slot.caseId] || null,
       candidateCount: slotCandidates.length,
-      selectedCandidate: slotCandidates.find((item) => item.selected) || null,
-      verifyTask: verifyBySlot[slot.id] || null
+      selectedCandidate: slotCandidates.find((item) => item.selected) || null
     };
   });
   const byDate = withMeta.reduce((acc, slot) => {
@@ -1460,7 +2040,8 @@ function scheduleSummary() {
       pendingChoose: withMeta.filter((item) => item.status === '候选待选').length,
       locked: withMeta.filter((item) => item.status === '已锁定').length,
       readyDelivery: withMeta.filter((item) => item.status === '可交付').length,
-      pendingVerify: withMeta.filter((item) => item.status === '已汇报').length
+      sentWaitDone: withMeta.filter((item) => item.status === '已派发').length,
+      completed: withMeta.filter((item) => item.status === '已完成').length
     }
   };
 }
@@ -1470,19 +2051,17 @@ function dashboard() {
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
   const candidates = all('SELECT * FROM candidate_drafts ORDER BY created_at ASC').map(rowCandidate);
   const assets = all('SELECT * FROM assets ORDER BY created_at DESC').map(rowAsset);
-  const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
-  const verifyTasks = all('SELECT * FROM verify_tasks ORDER BY created_at DESC').map(rowVerify);
   const viralTemplates = all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral);
   const imageTasks = all('SELECT * FROM image_tasks ORDER BY created_at DESC').map(rowImageTask);
   const clipTasks = all('SELECT * FROM clip_tasks ORDER BY created_at DESC').map(rowClipTask);
+  const monitor = monitorData(cases);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
-  const verifyBySlot = Object.fromEntries(verifyTasks.map((item) => [item.planItemId, item]));
   const caseHealthRows = cases.map((caze) => {
     const caseSlots = slots.filter((s) => s.caseId === caze.id);
     const caseAssets = assets.filter((a) => a.caseId === caze.id);
-    const caseMetrics = metrics.filter((m) => m.caseId === caze.id);
-    const health = caseHealth(caze, caseSlots, caseAssets, caseMetrics, today);
+    const caseMonitor = monitorForCase(monitor, caze.id);
+    const health = caseHealth(caze, caseSlots, caseAssets, [], today, caseMonitor);
     const openGaps = health.gaps.filter((gap) => gap.status !== '已满足');
     return {
       ...caze,
@@ -1490,6 +2069,10 @@ function dashboard() {
       reasons: health.reasons,
       actions: health.actions,
       materialGaps: openGaps,
+      dueCollection: Boolean(caseMonitor.dueCollection),
+      activeViralAlerts: caseMonitor.activeViralAlerts || [],
+      latestSnapshot: caseMonitor.latestSnapshot || null,
+      topVideo: caseMonitor.topVideo || null,
       requiredGapCount: openGaps.filter((gap) => gap.status === '必补').length,
       optionalGapCount: openGaps.filter((gap) => gap.status === '可补').length
     };
@@ -1500,12 +2083,13 @@ function dashboard() {
       ...slot,
       case: byCase[slot.caseId],
       candidateCount: slotCandidates.length,
-      selectedCandidate: slotCandidates.find((item) => item.selected) || null,
-      verifyTask: verifyBySlot[slot.id] || null
+      selectedCandidate: slotCandidates.find((item) => item.selected) || null
     };
   };
   return {
     today,
+    monitor,
+    viralAlerts: monitor.viralAlerts,
     counts: {
       cases: cases.length,
       pendingGenerate: slots.filter((s) => s.status === '待生成').length,
@@ -1513,7 +2097,10 @@ function dashboard() {
       locked: slots.filter((s) => s.status === '已锁定').length,
       readyDelivery: slots.filter((s) => s.status === '可交付').length,
       sentWaitReport: slots.filter((s) => s.status === '已派发').length,
-      pendingVerify: slots.filter((s) => s.status === '已汇报').length,
+      completed: slots.filter((s) => s.status === '已完成').length,
+      viralAlerts: monitor.totals.viralAlerts,
+      monitoredAccounts: monitor.totals.monitoredAccounts,
+      dueCollection: monitor.totals.dueCollection,
       pendingViral: viralTemplates.filter(isPendingViralTemplate).length,
       imageTasks: imageTasks.filter((item) => OPEN_IMAGE_STATUSES.includes(item.status)).length,
       imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
@@ -1526,7 +2113,6 @@ function dashboard() {
     pendingGenerate: slots.filter((s) => s.status === '待生成').slice(0, 30).map(withCase),
     pendingChoose: slots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
     readyDelivery: slots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
-    pendingVerify: slots.filter((s) => s.status === '已汇报').slice(0, 30).map(withCase),
     imageTasks: imageTasks
       .filter((item) => OPEN_IMAGE_STATUSES.includes(item.status))
       .slice(0, 20)
@@ -1537,8 +2123,8 @@ function dashboard() {
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
     abnormalCases: caseHealthRows
-      .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0)
-      .sort((a, b) => (b.requiredGapCount + b.materialGaps.length + b.reasons.length) - (a.requiredGapCount + a.materialGaps.length + a.reasons.length))
+      .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0 || caze.activeViralAlerts.length > 0 || caze.dueCollection)
+      .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.requiredGapCount + b.materialGaps.length + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.requiredGapCount + a.materialGaps.length + a.reasons.length))
   };
 }
 
@@ -1548,9 +2134,8 @@ const OPERATOR_FLOW = [
   ['已锁定', '系统生成微信交付内容'],
   ['素材阻塞', '补素材或创建图片/剪辑任务'],
   ['可交付', '复制文案和素材发微信'],
-  ['已派发', '等待兼职回传作品链接'],
-  ['已汇报', '打开抖音核对并回填数据'],
-  ['已核对', '进入账号复盘']
+  ['已派发', '确认已发布后标记完成'],
+  ['已完成', '等待系统采集账号数据']
 ];
 
 function systemReadiness() {
@@ -1569,11 +2154,11 @@ function systemReadiness() {
     },
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
-    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已汇报、已核对' },
+    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '对接人 + 抖音链接即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
-    { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '默认人工回填；系统负责打开链接、给清单、记录播放/点赞/评论/粉丝' },
-    { key: 'douyin-capture-mode', label: '抖音数据采集方式', status: 'ready', detail: '人工回填和浏览器协同为默认可用链路；自动采集只作为后续可选插件验收' },
+    { key: 'douyin-monitor', label: '抖音账号数据监控', status: DOUYIN_COLLECTOR_URL ? 'ready' : 'waiting', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，按 24 小时周期登记账号采集任务' : '采集任务可登记，等待采集器接入后自动写回账号和作品数据' },
+    { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
     { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
   ];
@@ -1607,6 +2192,43 @@ app.get('/api/dashboard', (_req, res) => {
 
 app.get('/api/readiness', (_req, res) => {
   res.json(systemReadiness());
+});
+
+app.get('/api/douyin-monitor', (_req, res) => {
+  res.json(monitorData());
+});
+
+app.post('/api/douyin-monitor/run', async (req, res) => {
+  try {
+    res.json(await enqueueDouyinCollection(req.body?.source || 'manual'));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.post('/api/douyin-monitor/ingest', (req, res) => {
+  try {
+    res.json(ingestDouyinData(req.body || {}));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/viral-alerts/:id', (req, res) => {
+  const alert = rowViralAlert(get('SELECT * FROM viral_alerts WHERE id = ?', [req.params.id]));
+  if (!alert) return res.status(404).json({ error: 'viral alert not found' });
+  const body = req.body || {};
+  run(
+    'UPDATE viral_alerts SET status = ?, interaction_note = ?, updated_at = ? WHERE id = ?',
+    [
+      body.status || alert.status,
+      body.interactionNote ?? body.interaction_note ?? alert.interactionNote,
+      now(),
+      alert.id
+    ]
+  );
+  const joined = joinedViralAlerts('va.id = ?', [alert.id], 1)[0];
+  res.json(joined || rowViralAlert(get('SELECT * FROM viral_alerts WHERE id = ?', [alert.id])));
 });
 
 app.post('/api/dashboard/generate-today', async (_req, res) => {
@@ -1753,9 +2375,17 @@ app.get('/api/cases/:id', (req, res) => {
   const assets = all('SELECT * FROM assets WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowAsset);
   const imageTasks = all('SELECT * FROM image_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowImageTask);
   const clipTasks = all('SELECT * FROM clip_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowClipTask);
-  const verifyTasks = all('SELECT * FROM verify_tasks WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowVerify);
   const metrics = all('SELECT * FROM metrics WHERE case_id = ? ORDER BY date DESC, created_at DESC', [caze.id]).map(rowMetric);
-  const health = caseHealth(caze, slots, assets, metrics, new Date().toISOString().slice(0, 10));
+  const monitor = monitorData([caze]);
+  const accountMonitor = monitorForCase(monitor, caze.id);
+  const douyinVideos = all('SELECT * FROM douyin_videos WHERE case_id = ? ORDER BY updated_at DESC', [caze.id]).map(rowDouyinVideo);
+  const latestVideoSnapshots = latestSnapshotsByVideo(all('SELECT * FROM video_snapshots WHERE case_id = ? ORDER BY collected_at DESC, created_at DESC', [caze.id]).map(rowVideoSnapshot));
+  const videos = douyinVideos.map((video) => ({
+    ...video,
+    latestSnapshot: latestVideoSnapshots.get(video.id) || null,
+    activeAlert: accountMonitor.activeViralAlerts?.find((alert) => alert.videoId === video.id) || null
+  }));
+  const health = caseHealth(caze, slots, assets, metrics, new Date().toISOString().slice(0, 10), accountMonitor);
   res.json({
     case: { ...caze, healthStatus: health.status },
     slots,
@@ -1763,8 +2393,10 @@ app.get('/api/cases/:id', (req, res) => {
     assets,
     imageTasks,
     clipTasks,
-    verifyTasks,
     metrics,
+    monitor: accountMonitor,
+    videos,
+    viralAlerts: accountMonitor.activeViralAlerts || [],
     materialGaps: health.gaps,
     healthReasons: health.reasons,
     healthActions: health.actions
@@ -1842,7 +2474,7 @@ app.post('/api/cases/:id/slots', (req, res) => {
 app.post('/api/slots/:id/generate-candidates', async (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
-  if (slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
+  if (slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已完成', '已汇报', '已核对'].includes(slot.status)) {
     return res.status(409).json({ error: '该槽位已锁定，不能重新生成候选' });
   }
   res.json(await generateCandidatesForSlot(slot));
@@ -1909,12 +2541,11 @@ function createDeliveryForSlot(slot) {
     '1. 复制并发送 01-发给兼职文案.txt',
     '2. 复制并发送 02-抖音发布文案.txt',
     '3. 按 05-素材顺序清单.txt 的顺序，把图片或视频拖进微信发送',
-    '4. 发完后在系统里标记「已派发」',
+    '4. 发完后在系统里标记「已派发」；确认发布完成后标记「已完成」',
     '',
-    '回传要求：',
-    '1. 兼职发布后回传作品链接，链接没有就先回传截图',
-    '2. 收到回传后在系统点「兼职已汇报」',
-    '3. 再打开抖音核对发布时间、内容和数据'
+    '完成口径：',
+    '1. 兼职或剪辑人员确认已按要求发布/交付后，系统标记「已完成」',
+    '2. 账号主页数据由系统按 24 小时周期采集，不需要工作人员逐条回填'
   ].join('\n'));
   fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);
@@ -1989,20 +2620,20 @@ function createDeliveryForSlot(slot) {
     '1. 先发 01-发给兼职文案.txt',
     '2. 再发 02-抖音发布文案.txt',
     '3. 按 05-素材顺序清单.txt 的顺序发送图片或视频',
-    '4. 发完后让兼职回传作品链接或截图',
+    '4. 发完并确认发布/交付完成后，在系统标记「已完成」',
     '',
     '素材顺序：',
     assetLines
   ].join('\n'));
   if (videoDelivery) {
     fs.writeFileSync(path.join(deliveryDir, '07-成片回收说明.txt'), [
-      '兼职或剪辑回传时请放回：',
+      '如需要剪辑成片，请输出到：',
       path.join(deliveryDir, 'final.mp4'),
       '',
       '可选文件：',
       path.join(deliveryDir, 'cover.jpg'),
       '',
-      '回传后在系统中标记「兼职已汇报」，再进入抖音核对。'
+      '剪辑或发布确认完成后，在系统中标记「已完成」。账号数据等待系统自动采集。'
     ].join('\n'));
   }
   run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['可交付', deliveryDir, now(), slot.id]);
@@ -2435,6 +3066,11 @@ app.post('/api/import', (req, res) => {
   try {
     validateImportData(data);
     run('BEGIN IMMEDIATE');
+  run('DELETE FROM viral_alerts');
+  run('DELETE FROM video_snapshots');
+  run('DELETE FROM douyin_videos');
+  run('DELETE FROM account_snapshots');
+  run('DELETE FROM collection_runs');
   run('DELETE FROM metrics');
   run('DELETE FROM verify_tasks');
   run('DELETE FROM clip_tasks');
@@ -2659,6 +3295,107 @@ app.post('/api/import', (req, res) => {
     );
   });
 
+  (data.accountSnapshots || []).forEach((item) => {
+    run(
+      `INSERT INTO account_snapshots
+      (id, case_id, collected_at, fans, following, total_likes, total_works, source, status, note, raw_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.collectedAt || item.collected_at || importedAt,
+        item.fans ?? null,
+        item.following ?? null,
+        item.totalLikes ?? item.total_likes ?? null,
+        item.totalWorks ?? item.total_works ?? null,
+        item.source || 'import',
+        item.status || 'collected',
+        item.note || '',
+        JSON.stringify(item.rawJson || item.raw_json || {}),
+        item.createdAt || item.created_at || importedAt
+      ]
+    );
+  });
+
+  (data.douyinVideos || []).forEach((item) => {
+    run(
+      `INSERT INTO douyin_videos
+      (id, case_id, douyin_video_id, url, title, publish_time, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.douyinVideoId || item.douyin_video_id || null,
+        item.url || null,
+        item.title || null,
+        item.publishTime || item.publish_time || null,
+        item.createdAt || item.created_at || importedAt,
+        item.updatedAt || item.updated_at || importedAt
+      ]
+    );
+  });
+
+  (data.videoSnapshots || []).forEach((item) => {
+    run(
+      `INSERT INTO video_snapshots
+      (id, case_id, video_id, collected_at, plays, likes, comments, shares, favorites, source, raw_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.videoId || item.video_id,
+        item.collectedAt || item.collected_at || importedAt,
+        item.plays ?? null,
+        item.likes ?? null,
+        item.comments ?? null,
+        item.shares ?? null,
+        item.favorites ?? null,
+        item.source || 'import',
+        JSON.stringify(item.rawJson || item.raw_json || {}),
+        item.createdAt || item.created_at || importedAt
+      ]
+    );
+  });
+
+  (data.collectionRuns || []).forEach((item) => {
+    run(
+      `INSERT INTO collection_runs
+      (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id || null,
+        item.startedAt || item.started_at || importedAt,
+        item.finishedAt || item.finished_at || null,
+        item.status || 'completed',
+        item.source || 'import',
+        item.note || '',
+        item.createdAt || item.created_at || importedAt,
+        item.updatedAt || item.updated_at || importedAt
+      ]
+    );
+  });
+
+  (data.viralAlerts || []).forEach((item) => {
+    run(
+      `INSERT INTO viral_alerts
+      (id, case_id, video_id, snapshot_id, level, reason, status, interaction_note, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.caseId || item.case_id,
+        item.videoId || item.video_id,
+        item.snapshotId || item.snapshot_id || null,
+        item.level || 'medium',
+        item.reason || '',
+        item.status || 'active',
+        item.interactionNote || item.interaction_note || '',
+        item.createdAt || item.created_at || importedAt,
+        item.updatedAt || item.updated_at || importedAt
+      ]
+    );
+  });
+
     run('COMMIT');
     res.json({ imported: true, cases: data.cases.length });
   } catch (err) {
@@ -2723,3 +3460,12 @@ app.listen(PORT, LISTEN_HOST, () => {
   }
   console.log(`Material root: ${MATERIAL_ROOT}`);
 });
+
+if (DOUYIN_COLLECTION_INTERVAL_MS > 0) {
+  const timer = setInterval(() => {
+    enqueueDouyinCollection('scheduled').catch((error) => {
+      console.error(`Douyin monitor schedule failed: ${error.message}`);
+    });
+  }, DOUYIN_COLLECTION_INTERVAL_MS);
+  timer.unref?.();
+}

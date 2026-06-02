@@ -383,7 +383,7 @@ async function main() {
     assert(fs.existsSync(wxChecklistPath), 'delivery package missing WeChat checklist');
     const wxChecklist = fs.readFileSync(wxChecklistPath, 'utf8');
     assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('对接人：咨询D'), 'WeChat checklist missing recipient routing');
-    assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('回传要求'), 'WeChat checklist missing send or report instructions');
+    assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('完成口径'), 'WeChat checklist missing send or completion instructions');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');
     assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');
@@ -433,39 +433,49 @@ async function main() {
     assert(batchDelivered.deliveryCount >= 1, 'dashboard batch delivery did not create delivery packages');
 
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
-    await api(`/slots/${slot.id}/status`, {
-      method: 'PATCH',
+    await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
+    const completedDashboard = await api('/dashboard');
+    assert(completedDashboard.todaySlots.some((item) => item.id === slot.id && item.status === '已完成'), 'dashboard today chain dropped completed slot');
+    const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
+    assert(monitorQueued.createdCount >= 2 && monitorQueued.collectorReady === false, 'monitor run did not register collector tasks');
+    assert(monitorQueued.monitor.totals.dueCollection >= 1, 'monitor run missing due collection summary');
+    const ingested = await api('/douyin-monitor/ingest', {
+      method: 'POST',
       body: JSON.stringify({
-        status: '已汇报',
-        douyinUrl: 'https://www.douyin.com/video/smoke-published',
-        resultNote: '兼职回传作品链接：https://www.douyin.com/video/smoke-published'
+        caseId: caze.id,
+        collectedAt: '2026-06-01T12:00:00.000Z',
+        source: 'smoke-collector',
+        account: { fans: 100, following: 20, totalLikes: 500, totalWorks: 2 },
+        videos: [
+          {
+            videoId: 'smoke-video-1',
+            url: 'https://www.douyin.com/video/smoke-published',
+            title: '烟测爆款作品',
+            publishTime: '2026-06-01',
+            plays: 8000,
+            likes: 520,
+            comments: 66,
+            shares: 12,
+            favorites: 9
+          }
+        ]
       })
     });
-    const detailBeforeVerify = await api(`/cases/${caze.id}`);
-    assert(detailBeforeVerify.verifyTasks.length === 1, 'verify task missing');
-    assert(detailBeforeVerify.verifyTasks[0].expectedAssets.length >= 1, 'verify task expected assets missing');
-    assert(detailBeforeVerify.verifyTasks[0].douyinUrl === 'https://www.douyin.com/video/smoke-published', 'verify task did not store reported douyin url');
-    const verifyChecklist = await api(`/verify-tasks/${detailBeforeVerify.verifyTasks[0].id}/checklist`);
-    assert(verifyChecklist.text.includes('抖音发布核对清单') && verifyChecklist.text.includes('https://www.douyin.com/video/smoke-published'), 'verify checklist missing link');
-    assert(verifyChecklist.text.includes('预期素材') && verifyChecklist.text.includes('回填到系统'), 'verify checklist missing assets or follow-up');
-    const verifySchedule = await api('/schedule');
-    const verifyScheduleSlot = verifySchedule.slots.find((item) => item.id === slot.id);
-    assert(verifyScheduleSlot?.verifyTask?.douyinUrl === 'https://www.douyin.com/video/smoke-published', 'schedule missing reported douyin url');
-    const verifyDashboard = await api('/dashboard');
-    const verifyDashboardSlot = verifyDashboard.pendingVerify.find((item) => item.id === slot.id);
-    assert(verifyDashboardSlot?.verifyTask?.douyinUrl === 'https://www.douyin.com/video/smoke-published', 'dashboard missing reported douyin url');
-    const verifyDashboardTodaySlot = verifyDashboard.todaySlots.find((item) => item.id === slot.id);
-    assert(verifyDashboardTodaySlot?.status === '已汇报', 'dashboard today chain dropped reported slot');
-    await api(`/verify-tasks/${detailBeforeVerify.verifyTasks[0].id}`, {
+    assert(ingested.accountSnapshot?.fans === 100, 'monitor ingest missing account snapshot');
+    assert(ingested.videoSnapshots.length === 1, 'monitor ingest missing video snapshot');
+    assert(ingested.viralAlerts.length >= 1, 'monitor ingest did not create viral alert');
+    const monitorDashboard = await api('/dashboard');
+    assert(monitorDashboard.counts.viralAlerts >= 1, 'dashboard viral alert count missing');
+    assert(monitorDashboard.viralAlerts.some((item) => item.case?.id === caze.id && item.video?.url === 'https://www.douyin.com/video/smoke-published'), 'dashboard viral alert list missing ingested video');
+    const detailAfterIngest = await api(`/cases/${caze.id}`);
+    assert(detailAfterIngest.monitor.latestSnapshot.fans === 100, 'case monitor latest snapshot missing');
+    assert(detailAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 8000), 'case video metrics missing');
+    await api(`/viral-alerts/${ingested.viralAlerts[0].id}`, {
       method: 'PATCH',
-      body: JSON.stringify({
-        status: 'verified',
-        resultNote: '验收核对',
-        metricsSnapshot: { fans: '100', plays: '2000', likes: '88', comments: '9' }
-      })
+      body: JSON.stringify({ status: 'handled', interactionNote: '烟测已安排互动' })
     });
-    const afterVerifyDashboard = await api('/dashboard');
-    assert(afterVerifyDashboard.todaySlots.some((item) => item.id === slot.id && item.status === '已核对'), 'dashboard today chain dropped verified slot');
+    const afterHandledDashboard = await api('/dashboard');
+    assert(!afterHandledDashboard.viralAlerts.some((item) => item.id === ingested.viralAlerts[0].id), 'handled viral alert still shown as active');
     const abnormalSlot = await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
     assert(abnormalSlot.status === '异常', 'manual abnormal status failed');
 
@@ -501,7 +511,10 @@ async function main() {
 
     const exported = await api('/export');
     assert(exported.cases.length === 3, 'export missing cases');
-    assert(exported.metrics.length === 1, 'export missing metrics');
+    assert(exported.accountSnapshots.length === 1, 'export missing account snapshots');
+    assert(exported.douyinVideos.length === 1, 'export missing douyin videos');
+    assert(exported.videoSnapshots.length === 1, 'export missing video snapshots');
+    assert(exported.viralAlerts.length === 1, 'export missing viral alerts');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
     const importResult = await api('/import', { method: 'POST', body: JSON.stringify(exported) });
@@ -523,7 +536,8 @@ async function main() {
     assert(afterBadImportCases.length === 3, 'bad import changed existing cases');
     const review = await api('/review');
     assert(review.totals.cases === 3, 'review case total invalid');
-    assert(review.totals.metrics === 1, 'review metrics total invalid');
+    assert(review.totals.accountSnapshots === 1, 'review account snapshot total invalid');
+    assert(review.totals.videoSnapshots === 1, 'review video snapshot total invalid');
     assert(review.contentKindStats.some((item) => item.kind === '爆款提权' && item.total >= 1), 'review content kind stats missing');
     assert(review.topAccounts.length === 1, 'review top account missing');
     const config = await api('/config');
@@ -543,7 +557,8 @@ async function main() {
     assert(!readiness.checks.some((item) => hiddenReadinessKeys.includes(item.key)), 'readiness endpoint exposed removed checks');
 
     const finalDetail = await api(`/cases/${caze.id}`);
-    assert(finalDetail.metrics.length === 1, 'case metrics missing');
+    assert(finalDetail.monitor.latestSnapshot.fans === 100, 'case monitor snapshot missing');
+    assert(finalDetail.videos.length === 1, 'case video data missing');
     assert(finalDetail.clipTasks.length === 1, 'case clip tasks missing');
 
     console.log('E2E smoke PASS');
