@@ -246,13 +246,18 @@ async function main() {
     const bulk = await api('/cases/bulk', {
       method: 'POST',
       body: JSON.stringify({
-        text: '批量小林,https://www.douyin.com/user/bulk-lin,吸脂\n批量小陈,https://www.douyin.com/user/bulk-chen,复诊',
+        text: [
+          '批量小林,https://www.douyin.com/user/bulk-lin,吸脂',
+          '批量小陈,https://www.douyin.com/user/bulk-chen,复诊',
+          '无效账号,不是抖音链接,吸脂,/Volumes/共享素材/无效账号'
+        ].join('\n'),
         generateSlots: true,
         days: 2
       })
     });
-    assert(bulk.createdCount === 2, 'bulk import did not create two cases');
+    assert(bulk.createdCount === 2, 'bulk import should only accept rows with a Douyin link in the second field');
     assert(bulk.cases[0].douyinUrl.includes('bulk-lin') && bulk.cases[1].project === '复诊', 'bulk simplified fields missing');
+    assert(bulk.cases.every((item) => item.stage === '起号期'), 'bulk import accepted external case stage');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
     const deletedCaseDir = bulk.cases[1].localCaseDir;
     assert(fs.existsSync(deletedCaseDir), 'case directory missing before delete');

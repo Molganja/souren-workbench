@@ -885,7 +885,7 @@ function createCaseFromBody(body = {}) {
   const id = uid('case');
   const created = now();
   const project = body.project || '吸脂';
-  const stage = body.stage || '起号期';
+  const stage = '起号期';
   const persona = randomPersona(body.persona || {});
   const date = created.slice(0, 10).replaceAll('-', '');
   const seq = all('SELECT id FROM cases').length + 1;
@@ -1451,36 +1451,17 @@ function parseBulkCaseText(text) {
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => {
       const parts = line.split(/,|\t/).map((item) => item.trim());
-      if (parts.length <= 5 && /^https?:\/\//i.test(parts[1] || '')) {
-        const [weixinNick, douyinUrl, project, sourceMaterialDir] = parts;
-        return {
-          weixinNick,
-          douyinId: '',
-          douyinUrl,
-          sourceMaterialDir: sourceMaterialDir || '',
-          project: project || '吸脂',
-          stage: '起号期',
-          persona: randomPersona()
-        };
-      }
-      const [weixinNick, douyinId, douyinUrl, project, stage, city, age, occupation, tone, motivation] = parts;
+      const [weixinNick, douyinUrl, project, sourceMaterialDir] = parts;
       return {
         weixinNick,
-        douyinId,
-        douyinUrl,
-        sourceMaterialDir: '',
+        douyinId: '',
+        douyinUrl: /^https?:\/\//i.test(douyinUrl || '') ? douyinUrl : '',
+        sourceMaterialDir: sourceMaterialDir || '',
         project: project || '吸脂',
-        stage: STAGES.includes(stage) ? stage : '起号期',
-        persona: {
-          city: city || '',
-          age: Number(age) || '',
-          occupation: occupation || '',
-          tone: tone || '',
-          motivation: motivation || ''
-        }
+        persona: randomPersona()
       };
     })
-    .filter((item) => item.weixinNick);
+    .filter((item) => item.weixinNick && item.douyinUrl);
 }
 
 function inferAssetKind(file) {
@@ -3011,13 +2992,12 @@ app.patch('/api/cases/:id', (req, res) => {
   if (!caze) return res.status(404).json({ error: 'case not found' });
   const body = req.body || {};
   run(
-    `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, stage=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
+    `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
     [
       body.weixinNick ?? caze.weixinNick,
       body.douyinId ?? caze.douyinId,
       body.douyinUrl ?? caze.douyinUrl,
       body.project ?? caze.project,
-      body.stage ?? caze.stage,
       JSON.stringify(body.persona ?? caze.persona),
       body.sourceMaterialDir ?? body.source_material_dir ?? caze.sourceMaterialDir,
       body.healthStatus ?? caze.healthStatus,

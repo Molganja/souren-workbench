@@ -2530,7 +2530,6 @@ function CaseForm({ initial, onClose, onSubmit }) {
     douyinUrl: initial?.douyinUrl || '',
     project: initial?.project || '吸脂',
     sourceMaterialDir: initial?.sourceMaterialDir || '',
-    stage: initial?.stage || '起号期',
     persona: {
       city: initial?.persona?.city || defaults?.persona.city || '',
       age: initial?.persona?.age || defaults?.persona.age || '',
