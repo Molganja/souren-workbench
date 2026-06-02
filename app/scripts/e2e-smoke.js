@@ -641,11 +641,10 @@ async function main() {
     const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
     const repeatedClip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收重复剪辑任务' }) });
     assert(repeatedClip.id === clip.id && repeatedClip.alreadyExisting === true, 'duplicate clip task was created for the same slot');
-    assert(fs.existsSync(path.join(clip.outputDir, '剪辑任务单.txt')), 'clip brief file missing');
-    const clipBrief = fs.readFileSync(path.join(clip.outputDir, '剪辑任务单.txt'), 'utf8');
     assert(clip.brief.includes('固定剪辑配方'), 'clip task response missing fixed edit recipe');
-    assert(clipBrief.includes('固定剪辑配方') && clipBrief.includes('不临时改结构'), 'clip brief file missing fixed edit recipe');
-    assert(clipBrief.includes('不需要上传成片') && !clipBrief.includes('final.mp4 放回'), 'clip brief still asks for final video upload');
+    assert(clip.brief.includes('固定剪辑配方') && clip.brief.includes('不临时改结构'), 'clip brief missing fixed edit recipe');
+    assert(clip.brief.includes('不需要上传成片') && !clip.brief.includes('final.mp4 放回'), 'clip brief still asks for final video upload');
+    assert(!('outputDir' in clip), 'clip task still exposes a local output directory');
     const clipDashboard = await api('/dashboard');
     assert(clipDashboard.counts.clipTasks >= 1, 'dashboard clip task count missing');
     assert(clipDashboard.clipTasks.some((item) => item.id === clip.id && item.case?.id === caze.id), 'dashboard clip task list missing case task');

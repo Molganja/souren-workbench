@@ -625,6 +625,7 @@ function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, canOpenLo
                 {activeItem.case?.id ? <button className="linkButton" onClick={() => onOpenCase(activeItem.case.id)}>{activeItem.title}</button> : <strong>{activeItem.title}</strong>}
               </div>
               <p>{activeItem.detail}</p>
+              {activeItem.case?.id && <PriorityFocusMeta caze={activeItem.case} />}
               <small>{activeItem.note}</small>
             </div>
             <PriorityActionButtons
@@ -653,6 +654,16 @@ function summarizeQueuedKinds(items = []) {
     return acc;
   }, {});
   return Object.entries(counts).map(([kind, count]) => `${kind} ${count}`).join(' / ');
+}
+
+function PriorityFocusMeta({ caze }) {
+  return (
+    <div className="focusMeta">
+      <span>微信：{caze.weixinNick || '未命名兼职'}</span>
+      <span>抖音：{caze.douyinId || caze.douyinUrl || '未填'}</span>
+      <span>项目：{caze.project || '未填'}</span>
+    </div>
+  );
 }
 
 function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
@@ -745,7 +756,6 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, canOpenLoc
     return (
       <div className="rowActions">
         <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>查看任务</button>
-        {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.clipTask.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}
         <button onClick={() => onAct(() => request(`/clip-tasks/${item.clipTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) }), '剪辑任务已标记：已完成')}>标记完成</button>
       </div>
     );
@@ -1397,7 +1407,6 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
                   key={task.id}
                   task={task}
                   onAct={onAct}
-                  canOpenLocalPaths={canOpenLocalPaths}
                   activeQueueItem={activeQueueItem}
                 />
               ))}
@@ -1499,16 +1508,14 @@ async function generateImageTask(task, onAct) {
   );
 }
 
-function ClipTaskRow({ task, onAct, canOpenLocalPaths, activeQueueItem }) {
+function ClipTaskRow({ task, onAct, activeQueueItem }) {
   const isActiveQueueClip = activeQueueMatchesClip(activeQueueItem, task);
   return (
     <div className="assetRow">
       <strong>{task.title}</strong>
       <span>{displayStatus(task.status)}</span>
       {task.brief && <pre className="taskBrief">{task.brief.split('\n').slice(0, 14).join('\n')}</pre>}
-      <small>{task.outputDir}</small>
       <div className="inlineActions">
-        {isActiveQueueClip && canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}
         {isActiveQueueClip && CLIP_ACTIONS.map(([status, label]) => (
           <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
         ))}

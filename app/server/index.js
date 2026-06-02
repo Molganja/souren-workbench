@@ -471,7 +471,6 @@ function rowClipTask(row) {
     planSlotId: row.plan_slot_id,
     title: row.title,
     brief: row.brief,
-    outputDir: row.output_dir,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -4084,8 +4083,7 @@ app.post('/api/clip-tasks', (req, res) => {
   if (existing) return res.json({ ...existing, alreadyExisting: true });
   const selected = slot?.selectedCandidateId ? rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId])) : null;
   const title = body.title || selected?.title || `${caze.weixinNick}剪辑任务`;
-  const outputDir = path.join(caze.localCaseDir, '02-生成补充', '剪辑任务', safeSegment(title));
-  fs.mkdirSync(outputDir, { recursive: true });
+  const outputDir = '';
   const assets = all('SELECT * FROM assets WHERE case_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 8', [caze.id, '视频']).map(rowAsset);
   const clipContentKind = slot?.contentKind || body.contentKind || '日常养号';
   const editRecipe = fixedEditRecipe(slot || { contentKind: clipContentKind }, caze, selected || { title });
@@ -4109,7 +4107,6 @@ app.post('/api/clip-tasks', (req, res) => {
     '交付要求：剪完或安排发布后，在系统标记「已完成」；不需要上传成片或把文件放回目录。'
   ].join('\n');
   const brief = body.brief ? `${String(body.brief).trim()}\n\n${editRecipe}` : generatedBrief;
-  fs.writeFileSync(path.join(outputDir, '剪辑任务单.txt'), brief);
   const id = uid('clip');
   run(
     `INSERT INTO clip_tasks

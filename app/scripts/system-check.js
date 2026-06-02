@@ -61,6 +61,9 @@ else fail('首页缺少操作队列或账号概览');
 if (mainSource.includes('activePriority') && mainSource.includes('queueSummary') && mainSource.includes('后面还有')) ok('今日队列只开放队首任务操作');
 else fail('今日队列缺少队首防呆状态');
 
+if (mainSource.includes('focusMeta') && mainSource.includes('微信：') && mainSource.includes('抖音：') && mainSource.includes('项目：')) ok('队首任务直接显示当前收件账号');
+else fail('队首任务缺少收件账号信息');
+
 if (mainSource.includes('activeCaseId') && mainSource.includes('排到今日队列队首后打开') && mainSource.includes('isActiveQueueCase')) ok('首页账号概览和异常账号不能打开非队首账号');
 else fail('首页仍可能从概览或异常账号绕过队首打开账号');
 
@@ -91,6 +94,9 @@ else fail('缺少固定剪辑配方');
 
 if (!mainSource.includes('成片保存到') && !mainSource.includes('封面保存到') && !serverSource.includes('07-成片回收说明') && !serverSource.includes('final.mp4 放回') && serverSource.includes('不需要上传成片')) ok('视频剪辑完成后只标记完成，不要求上传成片');
 else fail('视频剪辑仍要求上传成片或保存到本地目录');
+
+if (!mainSource.includes('打开剪辑目录') && !mainSource.includes('task.outputDir') && !mainSource.includes('clipTask.outputDir') && !serverSource.includes('剪辑任务单.txt') && serverSource.includes("const outputDir = '';")) ok('剪辑任务只在网页内展示，不生成本地任务单或打开目录');
+else fail('剪辑任务仍暴露本地目录或任务单');
 
 if (!mainSource.includes('等回传') && !serverSource.includes('回传要求') && !serverSource.includes('sentWaitReport') && mainSource.includes('待完成') && serverSource.includes('sentWaitDone')) ok('已派发任务统一为待完成确认口径');
 else fail('已派发任务仍保留回传口径或旧计数字段');
