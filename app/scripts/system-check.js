@@ -50,9 +50,11 @@ const packageSource = fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8'
 const envExampleSource = fs.readFileSync(path.join(APP_DIR, '.env.example'), 'utf8');
 const smokeSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'e2e-smoke.js'), 'utf8');
 const collectorSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'douyin-chrome-collector.js'), 'utf8');
+const rootReadmeSource = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
+const appReadmeSource = fs.readFileSync(path.join(APP_DIR, 'README.md'), 'utf8');
 const readmeSource = [
-  fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8'),
-  fs.readFileSync(path.join(APP_DIR, 'README.md'), 'utf8')
+  rootReadmeSource,
+  appReadmeSource
 ].join('\n');
 const sopSource = fs.readFileSync(path.join(ROOT_DIR, '日常运营SOP.md'), 'utf8');
 const duplicateDashboardLabels = ['新手今日顺序', '今日链路复盘', '今天全部任务', '可微信交付', '待选择候选', '待生成候选稿', '今天先处理'];
@@ -242,8 +244,13 @@ if (
   && mainSource.includes("setView('dashboard')")
   && serverSource.includes('点“补资料”直接填写缺失项')
   && mainSource.includes('点补资料直接补齐缺失登记项')
+  && rootReadmeSource.includes('点「补资料」直接打开编辑弹窗')
+  && sopSource.includes('系统会直接打开编辑弹窗')
+  && appReadmeSource.includes('点「补资料」直接打开编辑弹窗')
   && smokeSource.includes('intake issue queue still tells staff to use the old edit flow')
   && !serverSource.includes('打开案例，点“编辑案例”')
+  && !rootReadmeSource.includes('排到队首后打开案例补齐资料')
+  && !sopSource.includes('打开案例，点「编辑案例」')
 ) ok('队首补资料直接打开编辑弹窗，保存后回到首页队列');
 else fail('补登记仍需要先打开案例再手动找编辑入口，或保存后不能回到首页队列');
 
