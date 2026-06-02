@@ -1,14 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 
 const TEST_PORT = 5184;
 const TEST_AI_PORT = 5185;
+const TEST_LLM_APP_PORT = 5186;
+const TEST_LLM_PORT = 5187;
 const BASE = `http://127.0.0.1:${TEST_PORT}/api`;
 const APP_DIR = path.resolve(import.meta.dirname, '..');
 const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
 const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
 const AI_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-ai');
+const LLM_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-llm');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -74,6 +78,76 @@ async function localAiSuccessSmoke() {
   }
 }
 
+async function llmCandidateSmoke() {
+  fs.rmSync(path.join(LLM_ROOT_DIR, 'data'), { recursive: true, force: true });
+  fs.rmSync(path.join(LLM_ROOT_DIR, '素材库'), { recursive: true, force: true });
+  fs.mkdirSync(LLM_ROOT_DIR, { recursive: true });
+  let receivedPrompt = '';
+  const llmServer = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk.toString(); });
+    req.on('end', () => {
+      receivedPrompt = body;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              candidates: [
+                { variant: '稳妥版', title: '模型稳妥标题', publishText: '模型生成的稳妥版正文，带有真实生活记录感。', format: '图文', operatorInstruction: '模型稳妥执行说明' },
+                { variant: '互动版', title: '模型互动标题', publishText: '模型生成的互动版正文，结尾带评论区互动。', format: '图文', operatorInstruction: '模型互动执行说明' },
+                { variant: '爆款结构版', title: '模型爆款标题', publishText: '模型生成的爆款结构版正文，包含结构拆解和自然表达。', format: '口播', operatorInstruction: '模型爆款执行说明' }
+              ]
+            })
+          }
+        }]
+      }));
+    });
+  });
+  await new Promise((resolve) => llmServer.listen(TEST_LLM_PORT, '127.0.0.1', resolve));
+  const llmBase = `http://127.0.0.1:${TEST_LLM_APP_PORT}/api`;
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: {
+      ...process.env,
+      PORT: String(TEST_LLM_APP_PORT),
+      SOUREN_ROOT_DIR: LLM_ROOT_DIR,
+      SOUREN_LOCAL_AI_DISABLED: '1',
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
+      LLM_API_KEY: 'fake-key',
+      LLM_BASE_URL: `http://127.0.0.1:${TEST_LLM_PORT}/v1`,
+      LLM_MODEL: 'fake-copy-model',
+      DASHSCOPE_API_KEY: ''
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  try {
+    await waitForServer(server, llmBase);
+    const config = await api('/config', {}, llmBase);
+    assert(config.llmKeyReady === true && config.llm.model === 'fake-copy-model', 'LLM config did not show ready');
+    const caze = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ weixinNick: '模型测试兼职', staff: '咨询模型', persona: { city: '成都', occupation: '上班族' } })
+    }, llmBase);
+    const slot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-01', contentKind: '日常养号', stage: '起号期', goal: '模型生成候选验收' })
+    }, llmBase);
+    const drafts = await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }, llmBase);
+    assert(drafts.length === 3, 'LLM candidate count invalid');
+    assert(drafts.every((item) => item.sourceTemplateId === 'llm'), 'LLM candidates missing source marker');
+    assert(drafts.some((item) => item.title === '模型稳妥标题' && item.publishText.includes('模型生成')), 'LLM candidate text not saved');
+    assert(receivedPrompt.includes('模型生成候选验收') && receivedPrompt.includes('模型测试兼职'), 'LLM prompt missing slot or case context');
+  } finally {
+    server.kill('SIGTERM');
+    llmServer.close();
+    await sleep(300);
+    fs.rmSync(LLM_ROOT_DIR, { recursive: true, force: true });
+  }
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -85,7 +159,15 @@ async function main() {
 
   const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
     cwd: APP_DIR,
-    env: { ...process.env, PORT: String(TEST_PORT), SOUREN_ROOT_DIR: ROOT_DIR, SOUREN_LOCAL_AI_DISABLED: '1', SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1' },
+    env: {
+      ...process.env,
+      PORT: String(TEST_PORT),
+      SOUREN_ROOT_DIR: ROOT_DIR,
+      SOUREN_LOCAL_AI_DISABLED: '1',
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
+      LLM_API_KEY: '',
+      DASHSCOPE_API_KEY: ''
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   server.stdout.on('data', (chunk) => process.stdout.write(chunk));
@@ -318,6 +400,7 @@ async function main() {
     const dashboardWithConsult = await api('/dashboard');
     assert(dashboardWithConsult.aiConsults.some((item) => item.path === aiConsult.consultPath), 'dashboard missing AI consult history');
     await localAiSuccessSmoke();
+    await llmCandidateSmoke();
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -463,6 +546,7 @@ async function main() {
     await sleep(300);
     fs.rmSync(ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(AI_ROOT_DIR, { recursive: true, force: true });
+    fs.rmSync(LLM_ROOT_DIR, { recursive: true, force: true });
   }
 }
 

@@ -1533,6 +1533,10 @@ function SettingsView({ config, onAct, onCopy }) {
             <strong>本地AI命令</strong>
             <span>{config.localAi?.ready ? config.localAi.command : config.localAi?.message}</span>
           </div>
+          <div className="templateRow">
+            <strong>文案模型</strong>
+            <span>{config.llm?.ready ? `${config.llm.model}｜${config.llm.baseUrl}` : '未接入，候选稿使用本地模板生成'}</span>
+          </div>
         </div>
       </section>
       <section className="twoCol">

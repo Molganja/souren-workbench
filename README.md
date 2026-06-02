@@ -65,9 +65,14 @@ http://127.0.0.1:5174
 PORT=5174
 IMAGE_API_KEY=
 LLM_API_KEY=
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=deepseek-v4-flash
+DASHSCOPE_API_KEY=
 LOCAL_CLAUDE_COMMAND=
 SOUREN_LOCAL_AI_DISABLED=0
 ```
+
+文案模型支持 OpenAI 兼容接口。优先使用 `LLM_API_KEY`，也可以填写 `DASHSCOPE_API_KEY`；密钥为空时，候选稿会自动使用本地模板生成。
 
 本地 AI 顾问默认会自动查找 `claude`、`clude`、`claude-code`。如果你的命令不在 PATH 里，可以把 `LOCAL_CLAUDE_COMMAND` 写成完整命令；如果临时不想调用本地 AI，把 `SOUREN_LOCAL_AI_DISABLED=1`。
 

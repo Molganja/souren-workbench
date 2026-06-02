@@ -24,6 +24,7 @@ const REPO_DIR = path.resolve(process.cwd(), '..');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const OPERATOR_PACKET_DIR = path.join(DATA_DIR, 'operator-packets');
 const AI_CONSULT_DIR = path.join(DATA_DIR, 'ai-consults');
+const DEFAULT_LLM_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -61,6 +62,14 @@ const STATUS_LABELS = {
 
 function displayStatus(status) {
   return STATUS_LABELS[status] || status || '未知';
+}
+
+function llmSettings() {
+  const apiKey = process.env.LLM_API_KEY || process.env.DASHSCOPE_API_KEY || '';
+  const baseUrl = (process.env.LLM_BASE_URL || process.env.DASHSCOPE_BASE_URL || DEFAULT_LLM_BASE_URL).replace(/\/+$/, '');
+  const model = process.env.LLM_MODEL || process.env.DASHSCOPE_MODEL || 'deepseek-v4-flash';
+  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 45000);
+  return { ready: Boolean(apiKey), apiKey, baseUrl, model, timeoutMs };
 }
 
 const STAGE_RATIOS = {
@@ -505,17 +514,22 @@ function isVideoDelivery(format) {
   return ['视频', '口播'].includes(format);
 }
 
-function createCandidate(slot, caze, variant, viral = null, seed = null) {
-  const id = uid('draft');
-  const title = seed ? fillVars(seed.titleTemplate, caze) : titleFor(slot.contentKind, slot.stage, caze.persona, viral);
-  const publishText = draftText(slot.contentKind, variant, caze, slot, viral, seed);
-  const operatorInstruction = [
+function operatorInstructionFor(slot, caze) {
+  return [
     `今天发：${slot.contentKind}`,
     `账号：${caze.weixinNick} / ${caze.douyinId || '未填抖音号'}`,
     `对接人：${caze.staff || '未填'}`,
     `时间窗：${slot.date} ${slot.timeWindow || ''}`,
     '发布前确认图片/视频顺序，发完让兼职回传作品链接或截图。'
   ].join('\n');
+}
+
+function createCandidate(slot, caze, variant, viral = null, seed = null, override = {}) {
+  const id = uid('draft');
+  const title = override.title || (seed ? fillVars(seed.titleTemplate, caze) : titleFor(slot.contentKind, slot.stage, caze.persona, viral));
+  const publishText = override.publishText || draftText(slot.contentKind, variant, caze, slot, viral, seed);
+  const operatorInstruction = override.operatorInstruction || operatorInstructionFor(slot, caze);
+  const format = override.format || formatForKind(slot.contentKind, seed);
   run(
     `INSERT INTO candidate_drafts
     (id, slot_id, variant, title, publish_text, operator_instruction, format, source_template_id, compliance_hits, selected, created_at)
@@ -527,16 +541,103 @@ function createCandidate(slot, caze, variant, viral = null, seed = null) {
       title,
       publishText,
       operatorInstruction,
-      formatForKind(slot.contentKind, seed),
-      viral?.id || seed?.id || null,
-      JSON.stringify([]),
+      format,
+      override.sourceTemplateId || viral?.id || seed?.id || null,
+      JSON.stringify(override.complianceHits || []),
       now()
     ]
   );
   if (seed) run('UPDATE content_seeds SET usage_count = usage_count + 1, updated_at = ? WHERE id = ?', [now(), seed.id]);
 }
 
-function generateCandidatesForSlot(slot) {
+function llmCandidatePrompt(slot, caze, viral, seed) {
+  const p = caze.persona || {};
+  return [
+    '你是素人种草运营文案引擎，只输出 JSON，不要输出解释。',
+    '为同一个排期槽位生成 3 条候选稿，分别是稳妥版、互动版、爆款结构版。',
+    '要求：中文、自然、生活化、像普通兼职账号会发的内容；不要写成广告话术；每条都有标题、发布正文、发布形式。',
+    '',
+    `账号：${caze.weixinNick}`,
+    `抖音号：${caze.douyinId || '未填'}`,
+    `对接人：${caze.staff || '未填'}`,
+    `项目：${caze.project}`,
+    `生命周期：${slot.stage}`,
+    `内容类型：${slot.contentKind}`,
+    `目标：${slot.goal}`,
+    `人设：城市${p.city || '未填'}，年龄${p.age || '未填'}，职业${p.occupation || '未填'}，语气${p.tone || '自然'}，动机${p.motivation || '真实记录'}`,
+    viral ? `爆款参考标题：${viral.title}\n爆款结构：${viral.hotStructure}\n爆款原文：${viral.rawText}` : '',
+    seed ? `内容种子标题模板：${seed.titleTemplate}\n内容种子正文模板：${seed.contentTemplate}` : '',
+    '',
+    '返回 JSON 格式：',
+    '{"candidates":[{"variant":"稳妥版","title":"...","publishText":"...","format":"图文","operatorInstruction":"..."},{"variant":"互动版","title":"...","publishText":"...","format":"图文","operatorInstruction":"..."},{"variant":"爆款结构版","title":"...","publishText":"...","format":"口播","operatorInstruction":"..."}]}'
+  ].filter(Boolean).join('\n');
+}
+
+function parseJsonObject(text) {
+  const raw = String(text || '').trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1));
+    throw new Error('模型没有返回 JSON');
+  }
+}
+
+function normalizeLlmCandidates(payload, slot, caze) {
+  const variants = ['稳妥版', '互动版', '爆款结构版'];
+  const rows = Array.isArray(payload?.candidates) ? payload.candidates : [];
+  if (rows.length < 3) throw new Error('模型候选少于 3 条');
+  return variants.map((variant, index) => {
+    const item = rows.find((row) => row?.variant === variant) || rows[index];
+    const title = String(item?.title || '').trim();
+    const publishText = String(item?.publishText || item?.publish_text || '').trim();
+    if (!title || publishText.length < 12) throw new Error(`模型候选不完整：${variant}`);
+    const format = ['图文', '口播', '视频'].includes(item?.format) ? item.format : formatForKind(slot.contentKind, null);
+    return {
+      variant,
+      title: title.slice(0, 80),
+      publishText,
+      format,
+      operatorInstruction: String(item?.operatorInstruction || item?.operator_instruction || operatorInstructionFor(slot, caze)).trim()
+    };
+  });
+}
+
+async function generateLlmCandidateData(slot, caze, viral, seed) {
+  const settings = llmSettings();
+  if (!settings.ready) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), settings.timeoutMs);
+  try {
+    const res = await fetch(`${settings.baseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${settings.apiKey}`
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        temperature: 0.75,
+        messages: [
+          { role: 'system', content: '你只返回严格 JSON，不要 Markdown，不要解释。' },
+          { role: 'user', content: llmCandidatePrompt(slot, caze, viral, seed) }
+        ],
+        response_format: { type: 'json_object' }
+      })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error?.message || `模型接口失败：${res.status}`);
+    const content = body?.choices?.[0]?.message?.content;
+    return normalizeLlmCandidates(parseJsonObject(content), slot, caze);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateCandidatesForSlot(slot) {
   if (!slot || slot.selectedCandidateId || ['已锁定', '素材阻塞', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
     return [];
   }
@@ -544,7 +645,24 @@ function generateCandidatesForSlot(slot) {
   const viral = slot.contentKind === '爆款提权' ? latestReadyViral() : null;
   const seed = slot.contentKind === '爆款提权' ? null : pickContentSeed(slot, caze);
   run('DELETE FROM candidate_drafts WHERE slot_id = ? AND selected = 0', [slot.id]);
-  ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral, seed));
+  let llmCandidates = null;
+  let fallbackReason = '';
+  try {
+    llmCandidates = await generateLlmCandidateData(slot, caze, viral, seed);
+  } catch (error) {
+    fallbackReason = error.message || '模型生成失败';
+  }
+  if (llmCandidates) {
+    llmCandidates.forEach((draft) => createCandidate(slot, caze, draft.variant, viral, seed, {
+      ...draft,
+      sourceTemplateId: 'llm',
+      complianceHits: [{ type: '文案模型', message: '由系统内置文案模型生成' }]
+    }));
+  } else {
+    ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral, seed, {
+      complianceHits: fallbackReason ? [{ type: '模板兜底', message: fallbackReason }] : []
+    }));
+  }
   run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['候选待选', now(), slot.id]);
   return all('SELECT * FROM candidate_drafts WHERE slot_id = ? ORDER BY created_at ASC', [slot.id]).map(rowCandidate);
 }
@@ -1451,6 +1569,7 @@ function localAiStatus() {
 function systemReadiness() {
   const dbPath = path.join(DATA_DIR, 'souren.sqlite');
   const imageReady = Boolean(process.env.IMAGE_API_KEY);
+  const llm = llmSettings();
   const ai = localAiStatus();
   const github = gitSyncStatus();
   const checks = [
@@ -1462,6 +1581,7 @@ function systemReadiness() {
     { key: 'delivery-package', label: '微信交付包', status: 'ready', detail: '写入收件人、对接人、发布文案、素材顺序和回传要求' },
     { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '记录作品链接、核对清单、播放/点赞/评论/粉丝' },
     { key: 'viral-qingdou', label: '爆款链接与青豆任务', status: 'ready', detail: '链接先入库，复制青豆提取任务后回填结构' },
+    { key: 'llm-copy', label: '文案模型生成', status: llm.ready ? 'ready' : 'waiting', detail: llm.ready ? `已接入 ${llm.model}` : '文案模型密钥为空，候选稿会使用本地模板生成' },
     { key: 'image-key', label: '图片生成密钥', status: imageReady ? 'ready' : 'waiting', detail: imageReady ? '图片生成密钥已配置' : '图片生成密钥为空，图片任务会显示“待填图片密钥”' },
     { key: 'local-ai', label: '本地 clude/Claude 顾问', status: ai.ready ? 'ready' : 'waiting', detail: ai.ready ? ai.command : ai.message },
     { key: 'github-sync', label: 'GitHub main 同步', status: github.status, detail: github.detail },
@@ -1561,11 +1681,14 @@ async function writeAiConsult() {
 }
 
 app.get('/api/health', (_req, res) => {
+  const llm = llmSettings();
   res.json({
     ok: true,
     rootDir: ROOT_DIR,
     materialRoot: MATERIAL_ROOT,
     imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
+    llmKeyReady: llm.ready,
+    llm: { ready: llm.ready, baseUrl: llm.baseUrl, model: llm.model },
     localAi: localAiStatus(),
     readiness: systemReadiness().summary
   });
@@ -1591,7 +1714,7 @@ app.post('/api/dashboard/ai-consult', async (_req, res) => {
   res.json(await writeAiConsult());
 });
 
-app.post('/api/dashboard/generate-today', (_req, res) => {
+app.post('/api/dashboard/generate-today', async (_req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const slots = all(
     'SELECT * FROM plan_slots WHERE date <= ? AND status = ? ORDER BY date ASC, created_at ASC',
@@ -1599,13 +1722,13 @@ app.post('/api/dashboard/generate-today', (_req, res) => {
   ).map(rowSlot);
   let candidateCount = 0;
   const generated = [];
-  slots.forEach((slot) => {
-    const drafts = generateCandidatesForSlot(slot);
+  for (const slot of slots) {
+    const drafts = await generateCandidatesForSlot(slot);
     if (drafts.length) {
       generated.push(slotById(slot.id));
       candidateCount += drafts.length;
     }
-  });
+  }
   res.json({ slotCount: generated.length, candidateCount, slots: generated });
 });
 
@@ -1623,7 +1746,7 @@ app.post('/api/dashboard/deliver-today', (req, res) => {
   res.json({ deliveryCount: delivered.length, deliveries: delivered });
 });
 
-app.post('/api/dashboard/prepare-today', (_req, res) => {
+app.post('/api/dashboard/prepare-today', async (_req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const dueSlots = all(
     'SELECT * FROM plan_slots WHERE date <= ? AND status IN (?, ?, ?) ORDER BY date ASC, created_at ASC',
@@ -1633,10 +1756,10 @@ app.post('/api/dashboard/prepare-today', (_req, res) => {
   let selectedCount = 0;
   let deliveryCount = 0;
   const deliveries = [];
-  dueSlots.forEach((slot) => {
+  for (const slot of dueSlots) {
     let current = slotById(slot.id);
     if (current.status === '待生成') {
-      const drafts = generateCandidatesForSlot(current);
+      const drafts = await generateCandidatesForSlot(current);
       if (drafts.length) generatedCount += 1;
       current = slotById(slot.id);
     }
@@ -1652,7 +1775,7 @@ app.post('/api/dashboard/prepare-today', (_req, res) => {
         deliveryCount += 1;
       }
     }
-  });
+  }
   res.json({ generatedCount, selectedCount, deliveryCount, deliveries });
 });
 
@@ -1749,13 +1872,15 @@ app.get('/api/cases/:id', (req, res) => {
 });
 
 app.get('/api/config', (_req, res) => {
+  const llm = llmSettings();
   res.json({
     stages: STAGES,
     contentKinds: CONTENT_KINDS,
     stageRatios: STAGE_RATIOS,
     materialTemplates: MATERIAL_TEMPLATES,
     imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
-    llmKeyReady: Boolean(process.env.LLM_API_KEY),
+    llmKeyReady: llm.ready,
+    llm: { ready: llm.ready, baseUrl: llm.baseUrl, model: llm.model },
     localAi: localAiStatus(),
     readiness: systemReadiness(),
     materialRoot: MATERIAL_ROOT,
@@ -1819,13 +1944,13 @@ app.post('/api/cases/:id/slots', (req, res) => {
   res.json(createSlotForCase(caze, body));
 });
 
-app.post('/api/slots/:id/generate-candidates', (req, res) => {
+app.post('/api/slots/:id/generate-candidates', async (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   if (slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
     return res.status(409).json({ error: '该槽位已锁定，不能重新生成候选' });
   }
-  res.json(generateCandidatesForSlot(slot));
+  res.json(await generateCandidatesForSlot(slot));
 });
 
 app.post('/api/candidates/:id/select', (req, res) => {

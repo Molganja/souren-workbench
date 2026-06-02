@@ -63,11 +63,16 @@ case.json
 PORT=5174
 IMAGE_API_KEY=
 LLM_API_KEY=
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=deepseek-v4-flash
+DASHSCOPE_API_KEY=
 LOCAL_CLAUDE_COMMAND=
 SOUREN_LOCAL_AI_DISABLED=0
 ```
 
 当前 v1 会创建图片任务和提示词。`IMAGE_API_KEY` 为空时，任务显示为“待填图片密钥”，不会影响其他流程。
+
+候选稿生成支持 OpenAI 兼容文案模型。填 `LLM_API_KEY` 或 `DASHSCOPE_API_KEY` 后，系统会优先用模型生成 3 条候选；模型未接入、超时或输出不合格时，自动回到本地模板生成。
 
 本地 AI 顾问默认自动查找 `claude`、`clude`、`claude-code`。如果命令不在 PATH 里，可以填写 `LOCAL_CLAUDE_COMMAND`，例如：
 
