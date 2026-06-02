@@ -3632,6 +3632,7 @@ function dashboard() {
     pendingGenerate: dueSlots.filter((s) => s.status === '待生成').slice(0, 30).map(withCase),
     pendingChoose: dueSlots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
     readyDelivery: dueSlots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
+    sentWaitDone: dueSlots.filter((s) => s.status === '已派发').slice(0, 60).map(withCase),
     imageTasks: openImageTasks
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
@@ -3686,9 +3687,6 @@ function dashboardQueueHead(data = {}) {
     });
   (data.clipTasks || []).forEach((task) => {
     items.push({ id: `clip-${task.id}`, priority: 42, kind: '剪辑任务', clipTask: task });
-  });
-  (data.todaySlots || []).filter((slot) => slot.status === '已派发').forEach((slot) => {
-    items.push({ id: `sent-${slot.id}`, priority: 35, kind: '待完成', slot });
   });
   return items.sort((a, b) => b.priority - a.priority)[0] || null;
 }
@@ -4202,7 +4200,10 @@ app.patch('/api/slots/:id/status', (req, res) => {
     return res.status(409).json({ error: '这个排期已经进入交付链路，不能直接改成这个状态' });
   }
   try {
-    if (['异常', '已派发', '已完成'].includes(status)) requireQueueHeadForSlot(req, slot, '改状态');
+    const completingAlreadySent = status === '已完成' && slot.status === '已派发';
+    if (['异常', '已派发'].includes(status) || (status === '已完成' && !completingAlreadySent)) {
+      requireQueueHeadForSlot(req, slot, '改状态');
+    }
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message });
   }

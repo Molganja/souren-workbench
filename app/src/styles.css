@@ -1423,6 +1423,37 @@ textarea {
   font-weight: 700;
 }
 
+.waitingPanel {
+  background: #fbfcfe;
+}
+
+.waitingList {
+  display: grid;
+  gap: 10px;
+}
+
+.waitingRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.waitingRow > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.waitingRow span,
+.waitingRow small {
+  color: var(--muted);
+}
+
 .inlineSectionHead {
   margin: 14px 0 10px;
 }
@@ -1463,7 +1494,7 @@ textarea {
   .topActions {
     margin-left: 0;
   }
-  .hero, .caseHeader, .taskRow, .priorityRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow {
+  .hero, .caseHeader, .taskRow, .priorityRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow, .waitingRow {
     grid-template-columns: 1fr;
   }
   .handoffSteps {

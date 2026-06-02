@@ -1122,6 +1122,9 @@ async function main() {
     const sentDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(sentDeliveryView.freelancerGuideAlreadySent === true, 'sent delivery should mark freelancer guide covered');
     assert(sentDeliveryView.shouldSendFreelancerGuide === false && !sentDeliveryView.texts.freelancerGuide, 'sent delivery should not keep freelancer guide copyable');
+    const sentDashboard = await api('/dashboard');
+    assert(sentDashboard.sentWaitDone.some((item) => item.id === slot.id), 'sent slot should move to non-blocking wait confirmation list');
+    assert(!sentDashboard.readyDelivery.some((item) => item.id === slot.id), 'sent slot should leave delivery queue');
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
     const repeatGuideSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',

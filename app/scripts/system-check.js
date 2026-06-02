@@ -161,7 +161,7 @@ else fail('仍保留旧回收目录');
 if (!mainSource.includes('打开剪辑目录') && !mainSource.includes('task.outputDir') && !mainSource.includes('clipTask.outputDir') && !serverSource.includes('剪辑任务单.txt') && serverSource.includes("const outputDir = '';")) ok('剪辑任务只在网页内展示，不生成本地任务单或打开目录');
 else fail('剪辑任务仍暴露本地目录或任务单');
 
-if (!mainSource.includes('等回传') && !serverSource.includes('回传要求') && !serverSource.includes('sentWaitReport') && mainSource.includes('待完成') && serverSource.includes('sentWaitDone')) ok('已派发任务统一为待完成确认口径');
+if (!mainSource.includes('等回传') && !serverSource.includes('回传要求') && !serverSource.includes('sentWaitReport') && mainSource.includes('等待兼职确认') && serverSource.includes('sentWaitDone')) ok('已派发任务统一为等待确认口径');
 else fail('已派发任务仍保留回传口径或旧计数字段');
 
 if (serverSource.includes('autoPauseLostContactCases') && serverSource.includes('失联暂停') && serverSource.includes('不进入采集队列') && !mainSource.includes('确认暂停') && smokeSource.includes('lost account should not ask staff to confirm pause')) ok('失联账号自动暂停排期和采集，不再占用首页队列');
@@ -228,8 +228,11 @@ else fail('交付动作仍可能不按顺序完成');
 if (!mainSource.includes('completeKey="rules"') && !serverSource.includes("steps.push({ key: 'rules'")) ok('发布要求不再作为额外复制步骤');
 else fail('发布要求仍被当成必须复制步骤');
 
-if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes("requireQueueHeadForSlot(req, slot, '改状态')") && serverSource.includes('这条不是今日操作队列队首') && serverSource.includes("['异常', '已派发', '已完成'].includes(status)") && serverSource.includes('交付动作还没完成') && mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端派发状态接口也要求队首和交付步骤完成清单');
+if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes("requireQueueHeadForSlot(req, slot, '改状态')") && serverSource.includes('这条不是今日操作队列队首') && serverSource.includes("['异常', '已派发'].includes(status)") && serverSource.includes("status === '已完成' && !completingAlreadySent") && serverSource.includes('交付动作还没完成') && mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端派发状态接口也要求队首和交付步骤完成清单');
 else fail('后端状态接口仍可能绕过交付步骤门禁');
+
+if (serverSource.includes('sentWaitDone: dueSlots.filter') && !serverSource.includes('items.push({ id: `sent-${slot.id}`') && mainSource.includes('WaitingConfirmSection') && mainSource.includes('不阻塞今日队列') && mainSource.includes('completionAllowed') && smokeSource.includes('sent slot should move to non-blocking wait confirmation list')) ok('已派发任务进入等待确认区，不再阻塞今日操作队列');
+else fail('已派发任务仍可能留在今日操作队列，导致当天没有明确完工状态');
 
 const oldDeliveryConfirmLabel = '核' + '对发给兼职文案';
 if (mainSource.includes("copyAllowed = view.slot.status === '可交付'") && mainSource.includes('交付内容只读，避免重复发给同一个兼职') && mainSource.includes('确认发给兼职文案') && !mainSource.includes(oldDeliveryConfirmLabel)) ok('已派发交付内容只读，避免重复发送');

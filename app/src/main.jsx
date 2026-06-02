@@ -325,8 +325,9 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask, canOpenLoc
   const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
   const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
   const priorityActions = buildPriorityActions(data, strategyActions);
+  const waitingConfirm = buildWaitingConfirmActions(data);
   const accountGroups = groupQueueByAccount(priorityActions);
-  const dashboardStats = buildDashboardStats(data, priorityActions);
+  const dashboardStats = buildDashboardStats(data, priorityActions, waitingConfirm);
   const activeCaseId = priorityActions[0]?.case?.id || null;
   return (
     <div className="stack">
@@ -348,6 +349,11 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask, canOpenLoc
         onDelivery={onDelivery}
         onClipTask={onClipTask}
         canOpenLocalPaths={canOpenLocalPaths}
+      />
+
+      <WaitingConfirmSection
+        items={waitingConfirm}
+        onDelivery={onDelivery}
       />
 
       <section className="panel">
@@ -414,12 +420,13 @@ function monitorActionSlotLabel(kind) {
   return '';
 }
 
-function buildDashboardStats(data = {}, priorityActions = []) {
+function buildDashboardStats(data = {}, priorityActions = [], waitingConfirm = []) {
   const counts = data.counts || {};
   const blocked = (counts.blocked || 0) + (counts.materialSync || 0) + (counts.requiredMaterialGaps || 0);
   return [
     { label: '今日待办', value: priorityActions.length },
     { label: '可交付', value: counts.readyDelivery || 0 },
+    { label: '等确认', value: waitingConfirm.length },
     { label: '出爆款', value: counts.viralAlerts || 0 },
     { label: '阻塞/缺口', value: blocked }
   ];
@@ -588,21 +595,23 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       clipTask: task
     });
   });
-  (data.todaySlots || []).filter((slot) => slot.status === '已派发').forEach((slot) => {
-    items.push({
+  return items.sort((a, b) => b.priority - a.priority);
+}
+
+function buildWaitingConfirmActions(data = {}) {
+  return (data.sentWaitDone || [])
+    .filter((slot) => slot.status === '已派发')
+    .map((slot) => ({
       id: `sent-${slot.id}`,
-      priority: 35,
-      kind: '待完成',
+      kind: '等待确认',
       status: slot.status,
       statusClass: 'report',
-      title: `${slot.case?.weixinNick || '未命名兼职'} 已派发`,
+      title: `${slot.case?.weixinNick || '未命名兼职'} 已发出`,
       detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
-      note: '兼职或剪辑确认完成后，在系统标记完成。',
+      note: '收到兼职发布完成或剪辑已处理的回复后，再打开交付记录标记完成。',
       case: slot.case,
       slot
-    });
-  });
-  return items.sort((a, b) => b.priority - a.priority);
+    }));
 }
 
 function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTask, canOpenLocalPaths }) {
@@ -647,6 +656,30 @@ function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTas
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+function WaitingConfirmSection({ items = [], onDelivery }) {
+  if (items.length === 0) return null;
+  return (
+    <section className="panel waitingPanel">
+      <div className="sectionHead">
+        <h2>等待兼职确认</h2>
+        <span>{items.length} 条，不阻塞今日队列</span>
+      </div>
+      <div className="waitingList">
+        {items.map((item) => (
+          <div className="waitingRow" key={item.id}>
+            <div>
+              <strong>{item.title}</strong>
+              <span>{item.detail}</span>
+              <small>{item.note}</small>
+            </div>
+            {item.slot?.deliveryDir && <button onClick={() => onDelivery({ ...item.slot, case: item.case, completionAllowed: true })}>确认完成</button>}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -1786,7 +1819,8 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const imageFiles = mediaFiles.filter((item) => item.kind === '图片');
   const videoFiles = mediaFiles.filter((item) => item.kind === '视频');
   const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, view.slot);
-  const steps = deliverySteps(view, mediaFiles.length, isActiveQueueSlot);
+  const completionAllowed = view.slot.status === '已派发' && Boolean(slot.completionAllowed || isActiveQueueSlot);
+  const steps = deliverySteps(view, mediaFiles.length, isActiveQueueSlot, completionAllowed);
   const copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot;
   const showFreelancerGuide = Boolean(view.shouldSendFreelancerGuide && texts.freelancerGuide);
   const requiredHandoffSteps = deliveryRequiredSteps(view, mediaFiles, showFreelancerGuide);
@@ -1814,7 +1848,9 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
 
       {!copyAllowed && (
         <div className="readonlyNotice">
-          {isActiveQueueSlot ? `这条已经进入「${view.slot.status}」状态，交付内容只读，避免重复发给同一个兼职。` : '这条不是今日操作队列的当前任务，交付内容只读；请回到首页按队首顺序处理。'}
+          {completionAllowed
+            ? '这条已经发给兼职，文案和素材只读；收到完成回复后只做完成确认。'
+            : (isActiveQueueSlot ? `这条已经进入「${view.slot.status}」状态，交付内容只读，避免重复发给同一个兼职。` : '这条不是今日操作队列的当前任务，交付内容只读；请回到首页按队首顺序处理。')}
         </div>
       )}
 
@@ -1920,7 +1956,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
             onClose();
           }, '已标记派发')}>已用微信发送</button>
         )}
-        {isActiveQueueSlot && view.slot.status === '已派发' && (
+        {completionAllowed && (
           <button className="primary" onClick={() => onAct(async () => {
             await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
             onClose();
@@ -1949,7 +1985,7 @@ function deliveryRequiredSteps(view, mediaFiles = [], showFreelancerGuide = fals
   return steps;
 }
 
-function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
+function deliverySteps(view, mediaCount, isActiveQueueSlot = true, completionAllowed = false) {
   const readonlyDelivery = view.slot.status !== '可交付' || !isActiveQueueSlot;
   const steps = [
     {
@@ -1992,8 +2028,8 @@ function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
     }
   );
   steps.push({
-    label: !isActiveQueueSlot ? '排到队首后再处理' : (view.slot.status === '已派发' ? '确认完成后收尾' : '发完微信后标记已派发'),
-    detail: !isActiveQueueSlot ? '先回到今日操作队列，处理当前第一条，避免漏发、错发或重发。' : (view.slot.status === '已派发' ? '兼职确认发布或剪辑交付后，点“标记完成”。' : '按钮只用于当前这个交付内容，点完会从队列里消失。')
+    label: completionAllowed ? '收到回复后标记完成' : (!isActiveQueueSlot ? '排到队首后再处理' : (view.slot.status === '已派发' ? '确认完成后收尾' : '发完微信后标记已派发')),
+    detail: completionAllowed ? '这一步只做完成确认，不重新复制文案或下载素材。' : (!isActiveQueueSlot ? '先回到今日操作队列，处理当前第一条，避免漏发、错发或重发。' : (view.slot.status === '已派发' ? '兼职确认发布或剪辑交付后，点“标记完成”。' : '按钮只用于当前这个交付内容，点完会从队列里消失。'))
   });
   return steps.map((item, index) => ({
     ...item,
