@@ -378,29 +378,34 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask }) {
         </details>
       </section>
 
-      {data.abnormalCases.length > 0 && <section className="panel">
-        <div className="sectionHead">
-          <h2>异常账号</h2>
-          <span>{data.abnormalCases.length} 个</span>
-        </div>
-        <div className="caseGrid">
-          {data.abnormalCases.map((item) => {
-            const isActiveQueueCase = item.id === activeCaseId;
-            const content = (
-              <>
-                <strong>{item.weixinNick}</strong>
-                <span>{item.caseCode} · {item.project}</span>
-                <em>{item.reasons.join(' / ')}</em>
-                {item.materialGaps?.length > 0 && <small>缺口：{item.materialGaps.slice(0, 3).map((gap) => `${gap.status}-${gap.label}`).join(' / ')}</small>}
-                {item.actions?.[0] && <small>{item.actions[0]}</small>}
-                {!isActiveQueueCase && <small className="lockedNote">排到今日队列队首后打开</small>}
-              </>
-            );
-            return isActiveQueueCase
-              ? <button key={item.id} className="caseTile" onClick={() => onOpenCase(item.id)}>{content}</button>
-              : <div key={item.id} className="caseTile caseTileBox">{content}</div>;
-          })}
-        </div>
+      {data.abnormalCases.length > 0 && <section className="panel accountOverviewPanel">
+        <details className="accountOverviewDetails abnormalDetails">
+          <summary>
+            <div>
+              <h2>异常账号</h2>
+              <p>只做提醒，不抢当前队首；排到队首后再处理。</p>
+            </div>
+            <span>{data.abnormalCases.length} 个</span>
+          </summary>
+          <div className="caseGrid">
+            {data.abnormalCases.map((item) => {
+              const isActiveQueueCase = item.id === activeCaseId;
+              const content = (
+                <>
+                  <strong>{item.weixinNick}</strong>
+                  <span>{item.caseCode} · {item.project}</span>
+                  <em>{item.reasons.join(' / ')}</em>
+                  {item.materialGaps?.length > 0 && <small>缺口：{item.materialGaps.slice(0, 3).map((gap) => `${gap.status}-${gap.label}`).join(' / ')}</small>}
+                  {item.actions?.[0] && <small>{item.actions[0]}</small>}
+                  {!isActiveQueueCase && <small className="lockedNote">排到今日队列队首后打开</small>}
+                </>
+              );
+              return isActiveQueueCase
+                ? <button key={item.id} className="caseTile" onClick={() => onOpenCase(item.id)}>{content}</button>
+                : <div key={item.id} className="caseTile caseTileBox">{content}</div>;
+            })}
+          </div>
+        </details>
       </section>}
 
     </div>

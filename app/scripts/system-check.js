@@ -127,6 +127,15 @@ if (
 ) ok('首页只默认展开队首动作，后续账号改为折叠预览');
 else fail('首页仍可能默认铺开后续账号，分散当前队首处理');
 
+if (
+  mainSource.includes('className="accountOverviewDetails abnormalDetails"') &&
+  mainSource.includes('只做提醒，不抢当前队首') &&
+  styleSource.includes('.accountOverviewDetails .caseGrid') &&
+  styleSource.includes('.accountOverviewDetails:not([open]) > .caseGrid') &&
+  !mainSource.includes('<div className="sectionHead">\n          <h2>异常账号</h2>')
+) ok('异常账号默认折叠成提醒，不在首页铺开抢当前任务');
+else fail('异常账号仍可能默认铺开，分散工作人员处理当前队首');
+
 if (mainSource.includes('>运行状态</button>') && !mainSource.includes('>系统配置</button>')) ok('前台导航不再显示系统配置入口');
 else fail('前台导航仍暴露系统配置旧口径');
 

@@ -462,8 +462,15 @@ button:disabled:hover,
 }
 
 .accountOverviewDetails .accountGrid,
+.accountOverviewDetails .caseGrid,
 .accountOverviewDetails .empty {
   margin-top: 14px;
+}
+
+.accountOverviewDetails:not([open]) > .accountGrid,
+.accountOverviewDetails:not([open]) > .caseGrid,
+.accountOverviewDetails:not([open]) > .empty {
+  display: none;
 }
 
 .accountCard {
