@@ -738,7 +738,6 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, canOpenLoc
   if (item.monitorAction) {
     return (
       <div className="rowActions">
-        {item.case?.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
         {item.monitorAction.kind === '失联处理' && item.case?.id && <button onClick={() => onAct(
           () => request(`/cases/${item.case.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) }),
           '已暂停这个账号的自动排期和采集'

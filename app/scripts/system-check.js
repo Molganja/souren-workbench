@@ -117,6 +117,9 @@ else fail('爆款批量生成仍可能制造无效任务或占用今日队列');
 if (serverSource.includes('nextOpenStrategyDate') && serverSource.includes('existingStrategySlot') && serverSource.includes('账号已暂停或休眠，先不生成新的排期') && serverSource.includes('当天已有排期，先不额外加任务')) ok('账号策略动作按投放频率找空档，不给暂停或休眠账号造任务');
 else fail('账号策略动作仍可能给暂停、休眠或已有排期账号制造新任务');
 
+if (!mainSource.includes('item.case?.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>')) ok('账号策略动作不要求工作人员打开抖音主页');
+else fail('账号策略动作仍暴露手动打开主页入口');
+
 if (serverSource.includes('兼职须知') && serverSource.includes('固定发布说明') && mainSource.includes('兼职须知（首次发送）')) ok('交付内容内置固定发布说明和兼职须知');
 else fail('缺少固定发布说明或兼职须知');
 
