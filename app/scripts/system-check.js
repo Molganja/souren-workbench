@@ -9,7 +9,8 @@ const required = [
   path.join(APP_DIR, 'server', 'db.js'),
   path.join(APP_DIR, 'electron', 'main.cjs'),
   path.join(APP_DIR, 'src', 'main.jsx'),
-  path.join(APP_DIR, 'src', 'styles.css')
+  path.join(APP_DIR, 'src', 'styles.css'),
+  path.join(APP_DIR, 'scripts', 'douyin-chrome-collector.js')
 ];
 
 function ok(message) {
@@ -45,7 +46,9 @@ const mainSource = fs.readFileSync(path.join(APP_DIR, 'src', 'main.jsx'), 'utf8'
 const styleSource = fs.readFileSync(path.join(APP_DIR, 'src', 'styles.css'), 'utf8');
 const dbSource = fs.readFileSync(path.join(APP_DIR, 'server', 'db.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(APP_DIR, 'server', 'index.js'), 'utf8');
+const packageSource = fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8');
 const smokeSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'e2e-smoke.js'), 'utf8');
+const collectorSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'douyin-chrome-collector.js'), 'utf8');
 const readmeSource = [
   fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8'),
   fs.readFileSync(path.join(APP_DIR, 'README.md'), 'utf8')
@@ -190,6 +193,18 @@ else fail('Chrome采集清单缺少活跃度优先排序');
 
 if (serverSource.includes('async function enqueueDouyinCollection') && serverSource.includes('return registerChromeCollectionQueue({ limit: 200, source })') && serverSource.includes('const toRegister = queue.targets.filter((target) => !target.collectionQueued)') && smokeSource.includes('monitor run duplicated already waiting Chrome collection tasks')) ok('定时/手动采集登记复用活跃度队列，不会重复排队已等待 Chrome 的账号');
 else fail('定时/手动采集登记仍可能绕过队列去重复创建 Chrome 采集单');
+
+if (
+  packageSource.includes('collect:douyin')
+  && packageSource.includes('collect:douyin:self-test')
+  && collectorSource.includes('readChromePage')
+  && collectorSource.includes('Google Chrome')
+  && collectorSource.includes('/douyin-monitor/chrome-queue')
+  && collectorSource.includes('/douyin-monitor/ingest')
+  && collectorSource.includes('页面没有解析到粉丝、作品或互动数据，未写回')
+  && collectorSource.includes('OK Douyin Chrome collector self-test')
+) ok('主机侧 Chrome 抖音采集执行器已接入，并带自测和不伪造数据保护');
+else fail('缺少可运行的主机侧 Chrome 抖音采集执行器，或执行器可能伪造采集数据');
 
 if (
   mainSource.includes('<h3>采集状态</h3>')

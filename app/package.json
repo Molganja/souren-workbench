@@ -21,6 +21,8 @@
     "check": "npm run build",
     "doctor": "node --no-warnings scripts/system-check.js",
     "test:e2e": "node --no-warnings scripts/e2e-smoke.js",
+    "collect:douyin": "node --no-warnings scripts/douyin-chrome-collector.js",
+    "collect:douyin:self-test": "node --no-warnings scripts/douyin-chrome-collector.js --self-test",
     "verify": "node --no-warnings scripts/verify-release.js",
     "verify:github": "node --no-warnings scripts/verify-release.js --strict-github"
   },
