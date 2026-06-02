@@ -3726,7 +3726,24 @@ function scheduleSummary() {
 
 function dashboardPriorityActions(data = {}) {
   const items = [];
-  (data.viralAlerts || []).forEach((alert) => {
+  const intakeBlockedCaseIds = new Set((data.intakeIssues || [])
+    .map((row) => row.caseId || row.case?.id)
+    .filter(Boolean));
+  const caseIsIntakeBlocked = (item = {}) => {
+    const caseId = item.caseId
+      || item.case?.id
+      || item.slot?.caseId
+      || item.slot?.case?.id
+      || item.alert?.caseId
+      || item.alert?.case?.id
+      || item.clipTask?.caseId
+      || item.clipTask?.case?.id
+      || item.materialSync?.caseId
+      || item.monitorAction?.caseId
+      || item.monitorAction?.case?.id;
+    return Boolean(caseId && intakeBlockedCaseIds.has(caseId));
+  };
+  (data.viralAlerts || []).filter((alert) => !caseIsIntakeBlocked({ alert, case: alert.case })).forEach((alert) => {
     items.push({
       id: `alert-${alert.id}`,
       priority: alert.level === 'high' ? 120 : 110,
@@ -3740,7 +3757,7 @@ function dashboardPriorityActions(data = {}) {
       alert
     });
   });
-  (data.readyDelivery || []).forEach((slot) => {
+  (data.readyDelivery || []).filter((slot) => !caseIsIntakeBlocked({ slot, case: slot.case })).forEach((slot) => {
     items.push({
       id: `delivery-${slot.id}`,
       priority: 100,
@@ -3754,7 +3771,7 @@ function dashboardPriorityActions(data = {}) {
       slot
     });
   });
-  (data.todaySlots || []).filter((slot) => slot.status === '已锁定').forEach((slot) => {
+  (data.todaySlots || []).filter((slot) => slot.status === '已锁定' && !caseIsIntakeBlocked({ slot, case: slot.case })).forEach((slot) => {
     items.push({
       id: `locked-${slot.id}`,
       priority: 88,
@@ -3782,7 +3799,7 @@ function dashboardPriorityActions(data = {}) {
       intakeIssue: row
     });
   });
-  (data.pendingChoose || []).forEach((slot) => {
+  (data.pendingChoose || []).filter((slot) => !caseIsIntakeBlocked({ slot, case: slot.case })).forEach((slot) => {
     items.push({
       id: `choose-${slot.id}`,
       priority: 82,
@@ -3796,7 +3813,7 @@ function dashboardPriorityActions(data = {}) {
       slot
     });
   });
-  (data.todaySlots || []).filter((slot) => ['素材阻塞', '异常'].includes(slot.status)).forEach((slot) => {
+  (data.todaySlots || []).filter((slot) => ['素材阻塞', '异常'].includes(slot.status) && !caseIsIntakeBlocked({ slot, case: slot.case })).forEach((slot) => {
     items.push({
       id: `blocked-${slot.id}`,
       priority: slot.status === '异常' ? 79 : 78,
@@ -3810,7 +3827,7 @@ function dashboardPriorityActions(data = {}) {
       slot
     });
   });
-  (data.materialSync || []).forEach((row) => {
+  (data.materialSync || []).filter((row) => !caseIsIntakeBlocked({ materialSync: row, case: row.case })).forEach((row) => {
     items.push({
       id: `sync-${row.caseId}`,
       priority: row.status === '目录不可用' ? 78 : 76,
@@ -3824,7 +3841,7 @@ function dashboardPriorityActions(data = {}) {
       materialSync: row
     });
   });
-  (data.pendingGenerate || []).forEach((slot) => {
+  (data.pendingGenerate || []).filter((slot) => !caseIsIntakeBlocked({ slot, case: slot.case })).forEach((slot) => {
     items.push({
       id: `generate-${slot.id}`,
       priority: 65,
@@ -3840,6 +3857,7 @@ function dashboardPriorityActions(data = {}) {
   });
   (data.monitorActions || [])
     .filter((item) => item.kind !== '账号采集' && item.kind !== '爆款互动')
+    .filter((item) => !caseIsIntakeBlocked({ monitorAction: item, case: item.case }))
     .forEach((item) => {
       items.push({
         id: `strategy-${item.id}`,
@@ -3854,7 +3872,7 @@ function dashboardPriorityActions(data = {}) {
         monitorAction: item
       });
     });
-  (data.clipTasks || []).forEach((task) => {
+  (data.clipTasks || []).filter((task) => !caseIsIntakeBlocked({ clipTask: task, case: task.case })).forEach((task) => {
     items.push({
       id: `clip-${task.id}`,
       priority: 42,
@@ -3893,10 +3911,20 @@ function dashboard() {
   const today = localDate();
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const operatorStatuses = new Set(ACTIVE_OPERATOR_STATUSES);
-  const dueSlots = slots.filter((s) => s.date <= today && operatorStatuses.has(s.status) && !pausedCaseIds.has(s.caseId));
+  const allDueSlots = slots.filter((s) => s.date <= today && operatorStatuses.has(s.status) && !pausedCaseIds.has(s.caseId));
+  const intakeIssueRows = cases
+    .filter((caze) => !pausedCaseIds.has(caze.id))
+    .map(caseIntakeIssue)
+    .filter(Boolean);
+  const intakeBlockedCaseIds = new Set(intakeIssueRows.map((item) => item.caseId || item.case?.id).filter(Boolean));
+  const caseHasCompleteIntake = (caseId) => !intakeBlockedCaseIds.has(caseId);
+  const dueSlots = allDueSlots.filter((s) => caseHasCompleteIntake(s.caseId));
   const dueCaseIds = new Set(dueSlots.map((slot) => slot.caseId));
+  const actionableMonitorActions = monitorActions.filter((item) => caseHasCompleteIntake(item.case?.id || item.caseId));
+  const actionableViralAlerts = (monitor.viralAlerts || []).filter((item) => caseHasCompleteIntake(item.case?.id || item.caseId));
   const materialSyncRows = cases
     .filter((caze) => !pausedCaseIds.has(caze.id))
+    .filter((caze) => caseHasCompleteIntake(caze.id))
     .map((caze) => {
       const caseAssets = assets.filter((asset) => asset.caseId === caze.id);
       return {
@@ -3906,10 +3934,6 @@ function dashboard() {
     })
     .filter((item) => ['待同步', '目录不可用'].includes(item.status))
     .sort((a, b) => b.unsyncedCount - a.unsyncedCount);
-  const intakeIssueRows = cases
-    .filter((caze) => !pausedCaseIds.has(caze.id))
-    .map(caseIntakeIssue)
-    .filter(Boolean);
   const caseHealthRows = cases.map((caze) => {
     const caseSlots = slots.filter((s) => s.caseId === caze.id);
     const caseAssets = assets.filter((a) => a.caseId === caze.id);
@@ -3941,16 +3965,18 @@ function dashboard() {
   };
   const openImageTasks = imageTasks
     .filter((item) => OPEN_IMAGE_STATUSES.includes(item.status))
-    .filter((item) => !pausedCaseIds.has(item.caseId));
+    .filter((item) => !pausedCaseIds.has(item.caseId))
+    .filter((item) => caseHasCompleteIntake(item.caseId));
   const openClipTasks = clipTasks
     .filter((item) => OPEN_CLIP_STATUSES.includes(item.status))
-    .filter((item) => !pausedCaseIds.has(item.caseId));
+    .filter((item) => !pausedCaseIds.has(item.caseId))
+    .filter((item) => caseHasCompleteIntake(item.caseId));
   const result = {
     today,
     maintenance: { rollingSchedule },
     monitor,
-    monitorActions,
-    viralAlerts: monitor.viralAlerts,
+    monitorActions: actionableMonitorActions,
+    viralAlerts: actionableViralAlerts,
     counts: {
       cases: cases.length,
       pendingGenerate: dueSlots.filter((s) => s.status === '待生成').length,
@@ -3959,8 +3985,8 @@ function dashboard() {
       readyDelivery: dueSlots.filter((s) => s.status === '可交付').length,
       sentWaitDone: dueSlots.filter((s) => s.status === '已派发').length,
       completed: dueSlots.filter((s) => s.status === '已完成').length,
-      viralAlerts: monitor.totals.viralAlerts,
-      monitorActions: monitorActions.length,
+      viralAlerts: actionableViralAlerts.length,
+      monitorActions: actionableMonitorActions.length,
       monitoredAccounts: monitor.totals.monitoredAccounts,
       dueCollection: monitor.totals.dueCollection,
       pendingViral: viralTemplates.filter(isPendingViralTemplate).length,
@@ -3988,6 +4014,7 @@ function dashboard() {
     materialSync: materialSyncRows,
     abnormalCases: caseHealthRows
       .filter((caze) => !pausedCaseIds.has(caze.id))
+      .filter((caze) => caseHasCompleteIntake(caze.id))
       .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0 || caze.activeViralAlerts.length > 0)
       .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.requiredGapCount + b.materialGaps.length + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.requiredGapCount + a.materialGaps.length + a.reasons.length))
   };

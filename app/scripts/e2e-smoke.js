@@ -514,6 +514,16 @@ async function main() {
         sourceMaterialDir: legacyDir
       })
     });
+    const legacyReadySlot = await api(`/cases/${legacyCase.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({
+        date: localDate(),
+        contentKind: '素人种草',
+        stage: '起号期',
+        goal: '缺资料账号不应先交付',
+        status: '可交付'
+      })
+    });
     const legacyDb = new DatabaseSync(path.join(ROOT_DIR, 'data', 'souren.sqlite'));
     legacyDb.exec('PRAGMA foreign_keys = ON;');
     legacyDb.prepare('UPDATE cases SET douyin_url = ?, project = ?, source_material_dir = ?, updated_at = ? WHERE id = ?').run('', '', '', new Date().toISOString(), legacyCase.id);
@@ -522,6 +532,10 @@ async function main() {
     const intakeIssue = intakeDashboard.intakeIssues.find((item) => item.caseId === legacyCase.id);
     assert(intakeIssue?.issues.includes('缺少抖音链接') && intakeIssue.issues.includes('缺少项目') && intakeIssue.issues.includes('缺少共享原始素材路径'), 'legacy missing account did not enter intake issue queue');
     assert(intakeDashboard.counts.intakeIssues >= 1, 'dashboard missing intake issue count');
+    const legacyQueueActions = intakeDashboard.priorityActions.filter((item) => item.case?.id === legacyCase.id);
+    assert(legacyQueueActions.length === 1 && legacyQueueActions[0].kind === '补登记', 'intake issue should gate other queue actions for same account');
+    assert(!intakeDashboard.readyDelivery.some((item) => item.id === legacyReadySlot.id), 'intake issue ready delivery leaked into dashboard delivery queue');
+    assert(!intakeDashboard.todaySlots.some((item) => item.id === legacyReadySlot.id), 'intake issue active slot leaked into dashboard today slots');
     let invalidSourcePatchRejected = false;
     try {
       await api(`/cases/${legacyCase.id}`, {
@@ -586,6 +600,7 @@ async function main() {
     assert(fixedLegacyDetail.monitor.pendingCollectionRun?.status === 'waiting_chrome', 'restored case missing pending Chrome collection run');
     const fixedIntakeDashboard = await api('/dashboard');
     assert(!fixedIntakeDashboard.intakeIssues.some((item) => item.caseId === legacyCase.id), 'fixed legacy account still appears in intake issue queue');
+    assert(fixedIntakeDashboard.readyDelivery.some((item) => item.id === legacyReadySlot.id), 'fixed intake account did not release its ready delivery slot');
     await api(`/cases/${legacyCase.id}`, { method: 'DELETE' });
 
     const queueGenerated = await api('/dashboard/generate-today', { method: 'POST' });

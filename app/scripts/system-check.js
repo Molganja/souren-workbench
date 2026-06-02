@@ -224,6 +224,16 @@ else fail('排期规划页仍可能绕过今日队列执行任务或文档未说
 if (serverSource.includes('function caseIntakeIssue') && serverSource.includes('intakeIssues: intakeIssueRows') && serverSource.includes("kind: '补登记'") && serverSource.includes('缺少抖音链接') && serverSource.includes('缺少项目') && serverSource.includes('缺少共享原始素材路径') && serverSource.includes('补齐微信、抖音主页、项目和共享原始素材路径') && mainSource.includes('item.intakeIssue') && smokeSource.includes('legacy missing account did not enter intake issue queue') && smokeSource.includes("intakeIssue.issues.includes('缺少项目')")) ok('旧账号缺抖音、项目或共享素材路径会进入补登记队列');
 else fail('缺登记资料的旧账号仍可能躲在异常列表之外，不进入首页队列');
 
+if (
+  serverSource.includes('intakeBlockedCaseIds')
+  && serverSource.includes('caseHasCompleteIntake')
+  && serverSource.includes('const dueSlots = allDueSlots.filter((s) => caseHasCompleteIntake(s.caseId))')
+  && serverSource.includes('caseIsIntakeBlocked')
+  && smokeSource.includes('intake issue should gate other queue actions for same account')
+  && smokeSource.includes('intake issue ready delivery leaked into dashboard delivery queue')
+) ok('补登记是账号级前置门禁，资料缺失账号不会同时交付、生成或剪辑');
+else fail('资料缺失账号仍可能带着交付、生成或剪辑动作进入首页队列');
+
 if (serverSource.includes('dashboardQueueHead') && serverSource.includes('当前队首不是准备类任务') && !serverSource.includes('for (const slot of dueSlots)')) ok('后台准备接口也只处理当前队首');
 else fail('后台准备接口仍可能批量推进今日队列');
 
