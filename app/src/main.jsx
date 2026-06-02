@@ -656,11 +656,18 @@ function summarizeQueuedKinds(items = []) {
   return Object.entries(counts).map(([kind, count]) => `${kind} ${count}`).join(' / ');
 }
 
+function douyinDisplay(caze = {}) {
+  const douyinId = String(caze.douyinId || '').trim();
+  const douyinUrl = String(caze.douyinUrl || '').trim();
+  if (douyinId && douyinUrl) return `${douyinId} / ${douyinUrl}`;
+  return douyinId || douyinUrl || '未填抖音链接';
+}
+
 function PriorityFocusMeta({ caze }) {
   return (
     <div className="focusMeta">
       <span>微信：{caze.weixinNick || '未命名兼职'}</span>
-      <span>抖音：{caze.douyinId || caze.douyinUrl || '未填'}</span>
+      <span>抖音：{douyinDisplay(caze)}</span>
       <span>项目：{caze.project || '未填'}</span>
     </div>
   );
@@ -996,7 +1003,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths, 
   const filtered = data.slots.filter((slot) => {
     const caze = slot.case || {};
     const q = query.trim().toLowerCase();
-    const haystack = `${caze.weixinNick || ''} ${caze.caseCode || ''} ${caze.douyinId || ''} ${slot.goal}`.toLowerCase();
+    const haystack = `${caze.weixinNick || ''} ${caze.caseCode || ''} ${caze.douyinId || ''} ${caze.douyinUrl || ''} ${slot.goal}`.toLowerCase();
     return slot.date >= data.today
       && slot.date <= endDate
       && (status === '全部状态' || slot.status === status)
@@ -1028,7 +1035,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths, 
       </section>
       <section className="panel">
         <div className="filters scheduleFilters">
-          <input placeholder="搜索账号 / 抖音号 / 案例编号 / 目标" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input placeholder="搜索微信 / 抖音链接 / 案例编号 / 目标" value={query} onChange={(e) => setQuery(e.target.value)} />
           <select value={range} onChange={(e) => setRange(e.target.value)}>
             <option value="7">未来 7 天</option>
             <option value="14">未来 14 天</option>
@@ -1112,7 +1119,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
   const [libraryLoading, setLibraryLoading] = useState(false);
   const filtered = cases.filter((item) => {
     const q = query.trim().toLowerCase();
-    const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.project} ${personaText(item.persona)}`.toLowerCase();
+    const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.douyinUrl} ${item.project} ${personaText(item.persona)}`.toLowerCase();
     const matchQuery = !q || haystack.includes(q);
     const matchHealth = healthFilter === '全部状态' || item.healthStatus === healthFilter;
     return matchQuery && matchHealth;
@@ -1150,7 +1157,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
           />
         )}
         <div className="filters">
-          <input placeholder="搜索微信昵称 / 抖音号 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input placeholder="搜索微信昵称 / 抖音链接 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
           <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
             {healthOptions.map((item) => <option key={item}>{item}</option>)}
           </select>
@@ -1163,7 +1170,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
                 <button className="caseTileMain" onClick={() => onOpenCase(item.id)}>
                   <strong>{item.weixinNick}</strong>
                   <span>{item.caseCode} · {item.project}</span>
-                  <em>{item.douyinId || '未填抖音号'} · {item.healthStatus}</em>
+                  <em>{douyinDisplay(item)} · {item.healthStatus}</em>
                 </button>
                 <button className="dangerButton" onClick={() => deleteCase(item, onAct)}>删除</button>
               </div>
@@ -1653,7 +1660,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       <div className="deliveryHeader">
         <div>
           <strong>当前只发给：{view.case?.weixinNick || '未命名兼职'}</strong>
-          <span>{view.slot.date} {view.slot.timeWindow || '全天'}｜{view.slot.contentKind}｜账号：{view.case?.douyinId || '未填抖音号'}</span>
+          <span>{view.slot.date} {view.slot.timeWindow || '全天'}｜{view.slot.contentKind}｜抖音：{douyinDisplay(view.case)}</span>
         </div>
         <span className={`status ${statusClass(view.slot.status)}`}>{view.slot.status}</span>
       </div>
@@ -2133,11 +2140,6 @@ function CaseForm({ initial, onClose, onSubmit }) {
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
         <label className="wide">项目<input value={form.project} onChange={(e) => update('project', e.target.value)} placeholder="例如：吸脂 / 复诊 / 其他项目" /></label>
         <label className="wide">共享原始素材路径<input value={form.sourceMaterialDir} onChange={(e) => update('sourceMaterialDir', e.target.value)} placeholder="工作人员在共享盘/服务器里放素材的目录路径" /></label>
-        {!isCreate && (
-          <>
-            <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
-          </>
-        )}
         {!isCreate && (
           <>
             <label>城市<input value={form.persona.city} onChange={(e) => updatePersona('city', e.target.value)} /></label>

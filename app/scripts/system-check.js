@@ -69,6 +69,9 @@ else fail('今日队列缺少队首防呆状态');
 if (mainSource.includes('focusMeta') && mainSource.includes('微信：') && mainSource.includes('抖音：') && mainSource.includes('项目：')) ok('队首任务直接显示当前收件账号');
 else fail('队首任务缺少收件账号信息');
 
+if (mainSource.includes('douyinDisplay') && !mainSource.includes('未填抖音号') && !mainSource.includes('抖音号<input')) ok('前台用抖音主页/作品链接作为主账号路由，不暴露旧抖音号手填口径');
+else fail('前台仍把必填抖音链接显示成旧抖音号口径');
+
 if (mainSource.includes('activeCaseId') && mainSource.includes('排到今日队列队首后打开') && mainSource.includes('isActiveQueueCase')) ok('首页账号概览和异常账号不能打开非队首账号');
 else fail('首页仍可能从概览或异常账号绕过队首打开账号');
 

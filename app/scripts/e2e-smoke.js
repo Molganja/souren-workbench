@@ -712,13 +712,13 @@ async function main() {
     assert(fs.existsSync(path.join(delivery.deliveryDir, '00-兼职须知.txt')), 'delivery package missing freelancer guide');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-兼职须知.txt')), 'case folder missing freelancer guide');
     const wxChecklist = fs.readFileSync(wxChecklistPath, 'utf8');
-    assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('抖音号：smoke_dy'), 'WeChat checklist missing recipient routing');
+    assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('抖音：smoke_dy / https://www.douyin.com/'), 'WeChat checklist missing recipient routing');
     assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('兼职须知') && wxChecklist.includes('完成口径'), 'WeChat checklist missing send or completion instructions');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');
     assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');
     const deliveryView = await api(`/slots/${slot.id}/delivery-view`);
-    assert(deliveryView.texts.operatorInstruction.includes('账号：验收兼职改名'), 'delivery view missing operator instruction');
+    assert(deliveryView.texts.operatorInstruction.includes('微信收件人：验收兼职改名'), 'delivery view missing operator instruction');
     assert(deliveryView.texts.operatorInstruction.includes('固定发布说明'), 'delivery view missing fixed publish instructions');
     assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');

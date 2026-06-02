@@ -817,9 +817,17 @@ function isVideoDelivery(format) {
   return ['视频', '口播'].includes(format);
 }
 
+function douyinAccountText(caze = {}) {
+  const douyinId = String(caze.douyinId || '').trim();
+  const douyinUrl = String(caze.douyinUrl || '').trim();
+  if (douyinId && douyinUrl) return `${douyinId} / ${douyinUrl}`;
+  return douyinId || douyinUrl || '未填抖音链接';
+}
+
 function freelancerGuideForCase(caze = {}) {
   return [
-    `账号：${caze.weixinNick || '未命名兼职'} / ${caze.douyinId || '未填抖音号'}`,
+    `微信：${caze.weixinNick || '未命名兼职'}`,
+    `抖音：${douyinAccountText(caze)}`,
     '',
     '兼职须知：',
     '1. 每次会收到两段文字：第一段是发给你的说明，第二段是抖音发布文案。',
@@ -851,7 +859,8 @@ function fixedPublishRulesText() {
 function operatorInstructionFor(slot, caze) {
   return [
     `今天发：${slot.contentKind}`,
-    `账号：${caze.weixinNick} / ${caze.douyinId || '未填抖音号'}`,
+    `微信收件人：${caze.weixinNick}`,
+    `抖音：${douyinAccountText(caze)}`,
     `时间窗：${slot.date} ${slot.timeWindow || ''}`,
     '',
     fixedPublishRulesText(),
@@ -3846,7 +3855,7 @@ function createDeliveryForSlot(slot) {
   fs.writeFileSync(path.join(deliveryDir, '00-兼职须知.txt'), freelancerGuide);
   fs.writeFileSync(path.join(deliveryDir, '00-微信发送清单.txt'), [
     `发给：${caze.weixinNick || '未命名兼职'}`,
-    `抖音号：${caze.douyinId || '未填'}`,
+    `抖音：${douyinAccountText(caze)}`,
     `案例：${caze.caseCode}`,
     `内容：${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.stage}`,
     `标题：${candidate.title}`,
@@ -3876,7 +3885,7 @@ function createDeliveryForSlot(slot) {
     ].join('\n'));
     fs.writeFileSync(path.join(deliveryDir, '04-剪辑要求.txt'), [
       `案例：${caze.caseCode} / ${caze.weixinNick}`,
-      `账号：${caze.douyinId || '未填抖音号'}`,
+      `抖音：${douyinAccountText(caze)}`,
       `内容类型：${slot.contentKind}`,
       `建议比例：9:16`,
       `建议时长：20-35秒`,
@@ -3928,7 +3937,7 @@ function createDeliveryForSlot(slot) {
     `日期：${slot.date}`,
     `时间窗：${slot.timeWindow || ''}`,
     `发给：${caze.weixinNick || '未命名兼职'}`,
-    `账号：${caze.douyinId || '未填抖音号'}`,
+    `抖音：${douyinAccountText(caze)}`,
     `标题：${candidate.title}`,
     '',
     '发送给兼职顺序：',
@@ -4148,7 +4157,7 @@ app.post('/api/clip-tasks', (req, res) => {
   const generatedBrief = [
     `剪辑任务：${title}`,
     `案例：${caze.caseCode} / ${caze.weixinNick}`,
-    `账号：${caze.douyinId || '未填'}`,
+    `抖音：${douyinAccountText(caze)}`,
     `阶段：${slot?.stage || caze.stage}`,
     `内容类型：${clipContentKind}`,
     `建议比例：9:16`,
