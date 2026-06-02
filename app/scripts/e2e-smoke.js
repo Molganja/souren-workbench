@@ -19,6 +19,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function addDays(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 async function api(pathname, options = {}, base = BASE) {
   const res = await fetch(`${base}${pathname}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
@@ -279,11 +285,12 @@ async function main() {
         douyinUrl: 'https://www.douyin.com/',
         project: '吸脂',
         sourceMaterialDir: sharedSourceDir,
-        stage: '起号期',
+        stage: '成果期',
         persona: { city: '成都', occupation: '上班族' }
       })
     });
     assert(caze.weixinNick.includes('成都') && caze.persona.age && caze.persona.tone && caze.persona.motivation, 'case random defaults missing');
+    assert(caze.stage === '起号期' && caze.slotsCreated >= 14, 'case create should ignore external stage and generate schedule by default');
     assert(caze.sourceMaterialDir === sharedSourceDir, 'case source material dir missing');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
     const syncedMaterials = await api(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' });
@@ -349,6 +356,8 @@ async function main() {
     assert(minimalDetail.slots.length === 3 && minimalDetail.slots.every((item) => item.status === '待生成'), 'minimal case slots missing');
     const dueOnlyDashboard = await api('/dashboard');
     assert(dueOnlyDashboard.pendingGenerate.every((item) => item.date <= dueOnlyDashboard.today), 'dashboard leaked future pending generation slots');
+    const minimalAfterRolling = await api(`/cases/${minimalCase.id}`);
+    assert(minimalAfterRolling.slots.length >= 14, 'dashboard did not roll schedule forward for active case');
     const noAssetSlot = minimalDetail.slots[0];
     const noAssetDrafts = await api(`/slots/${noAssetSlot.id}/generate-candidates`, { method: 'POST' });
     await api(`/candidates/${noAssetDrafts[0].id}/select`, { method: 'POST' });
@@ -438,8 +447,10 @@ async function main() {
     const seededDrafts = await api(`/slots/${manualSlot.id}/generate-candidates`, { method: 'POST' });
     assert(seededDrafts.some((draft) => draft.sourceTemplateId === seed.id), 'seed was not used for daily content');
 
-    const slots = await api(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 2 }) });
-    assert(slots.created.length >= 1, 'generated slots missing');
+    const nearSlots = await api(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 2 }) });
+    assert(nearSlots.created.length === 0, 'near-term slot generation should be idempotent after rolling schedule');
+    const slots = await api(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 2, startDate: addDays(60) }) });
+    assert(slots.created.length >= 1, 'future generated slots missing');
     const schedule = await api('/schedule');
     assert(schedule.counts.total >= 1, 'schedule total missing');
     assert(schedule.days.some((day) => day.items.some((item) => item.case?.id === caze.id)), 'schedule case slot missing');
@@ -524,7 +535,7 @@ async function main() {
     const completedDashboard = await api('/dashboard');
     assert(completedDashboard.todaySlots.some((item) => item.id === slot.id && item.status === '已完成'), 'dashboard today chain dropped completed slot');
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
-    assert(monitorQueued.createdCount >= 2 && monitorQueued.collectorReady === false, 'monitor run did not register collector tasks');
+    assert(monitorQueued.createdCount >= 2, 'monitor run did not register Chrome collection tasks');
     assert(monitorQueued.monitor.totals.collectionQueued >= 2 && monitorQueued.monitor.totals.waitingChrome >= 2, 'monitor run did not mark queued Chrome collection');
     const chromeQueue = await api('/douyin-monitor/chrome-queue');
     assert(chromeQueue.count >= 2, 'chrome collection queue missing due accounts');
@@ -537,7 +548,7 @@ async function main() {
       body: JSON.stringify({
         caseId: caze.id,
         collectedAt: '2026-06-01T12:00:00.000Z',
-        source: 'smoke-collector',
+        source: 'smoke-chrome',
         account: { fans: 100, following: 20, totalLikes: 500, totalWorks: 2 },
         videos: [
           {

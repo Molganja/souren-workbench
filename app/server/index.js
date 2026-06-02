@@ -30,8 +30,8 @@ const AUTH_LOCAL_BYPASS = process.env.SOUREN_AUTH_LOCAL_BYPASS !== '0';
 const AUTH_COOKIE = 'souren_access';
 const AUTH_SECRET = process.env.SOUREN_AUTH_SECRET || `${ROOT_DIR}:${ACCESS_CODE || 'local'}`;
 const DEFAULT_IMAGE_MODEL = 'image-v2';
-const DOUYIN_COLLECTOR_URL = String(process.env.DOUYIN_COLLECTOR_URL || '').trim();
 const DOUYIN_COLLECTION_INTERVAL_MS = Number(process.env.DOUYIN_COLLECTION_INTERVAL_MS || 24 * 60 * 60 * 1000);
+const ROLLING_SCHEDULE_DAYS = Math.max(0, Number(process.env.SOUREN_ROLLING_SCHEDULE_DAYS || 14));
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -68,7 +68,7 @@ const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const ALLOWED_OPEN_ROOTS = [ROOT_DIR, SHARED_MATERIAL_ROOT, CASE_LIBRARY_ROOT];
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
-const OPEN_COLLECTION_STATUSES = ['waiting', 'waiting_collector', 'waiting_chrome', 'submitted'];
+const OPEN_COLLECTION_STATUSES = ['waiting_chrome'];
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
@@ -83,9 +83,7 @@ const STATUS_LABELS = {
   timeout: '超时',
   active: '待互动',
   handled: '已处理',
-  waiting_collector: '等待采集器',
   waiting_chrome: '等待Chrome采集',
-  submitted: '已提交采集',
   unknown: '未知',
   ready: '已就绪',
   waiting: '待接入',
@@ -879,6 +877,22 @@ function generateSlotsForCase(caze, input = {}) {
     }));
   }
   return created;
+}
+
+function maintainRollingSchedule(cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase), input = {}) {
+  const days = Math.max(0, Number(input.days ?? ROLLING_SCHEDULE_DAYS));
+  if (!days) return { days, createdCount: 0, touchedCases: 0, created: [] };
+  const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+  const created = [];
+  let touchedCases = 0;
+  cases.forEach((caze) => {
+    const rows = generateSlotsForCase(caze, { days, startDate });
+    if (rows.length) {
+      touchedCases += 1;
+      created.push(...rows);
+    }
+  });
+  return { days, startDate, createdCount: created.length, touchedCases, created };
 }
 
 function createCaseFromBody(body = {}) {
@@ -2020,7 +2034,6 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
       viralAlerts: viralAlerts.length,
       dueCollection: accounts.filter((item) => item.dueCollection).length,
       collectionQueued: accounts.filter((item) => item.collectionQueued).length,
-      waitingCollector: collectionRuns.filter((item) => item.status === 'waiting_collector').length,
       waitingChrome: collectionRuns.filter((item) => item.status === 'waiting_chrome').length
     },
     accounts,
@@ -2287,55 +2300,30 @@ function registerChromeCollectionQueue(options = {}) {
   };
 }
 
-async function submitCollectionRunToCollector(runId, caze) {
-  if (!DOUYIN_COLLECTOR_URL) return;
-  try {
-    const response = await fetch(DOUYIN_COLLECTOR_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        runId,
-        caseId: caze.id,
-        caseCode: caze.caseCode,
-        douyinId: caze.douyinId,
-        douyinUrl: caze.douyinUrl
-      })
-    });
-    if (!response.ok) throw new Error(`采集器返回 ${response.status}`);
-    run(
-      'UPDATE collection_runs SET status = ?, finished_at = ?, note = ?, updated_at = ? WHERE id = ?',
-      ['submitted', now(), '已提交给抖音采集器，等待采集器写入账号和作品数据', now(), runId]
-    );
-  } catch (error) {
-    run(
-      'UPDATE collection_runs SET status = ?, finished_at = ?, note = ?, updated_at = ? WHERE id = ?',
-      ['error', now(), `采集器提交失败：${error.message}`, now(), runId]
-    );
-  }
-}
-
 async function enqueueDouyinCollection(source = 'manual') {
   const targets = monitorData().accounts.filter((item) => item.dueCollection).map((item) => item.case);
   const runs = [];
   for (const caze of targets) {
     const id = uid('collect');
-    const status = DOUYIN_COLLECTOR_URL ? 'waiting_collector' : 'waiting_chrome';
-    const note = DOUYIN_COLLECTOR_URL
-      ? '已登记采集任务，正在提交给抖音采集器'
-      : '已按 24 小时周期登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 写入账号和作品数据';
     run(
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, caze.id, now(), null, status, source, note, now(), now()]
+      [
+        id,
+        caze.id,
+        now(),
+        null,
+        'waiting_chrome',
+        source,
+        '已按 24 小时周期登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 写入账号和作品数据',
+        now(),
+        now()
+      ]
     );
     runs.push(rowCollectionRun(get('SELECT * FROM collection_runs WHERE id = ?', [id])));
-    if (DOUYIN_COLLECTOR_URL) {
-      await submitCollectionRunToCollector(id, caze);
-    }
   }
   return {
-    collectorReady: Boolean(DOUYIN_COLLECTOR_URL),
     createdCount: runs.length,
     runs: runs.map((item) => rowCollectionRun(get('SELECT * FROM collection_runs WHERE id = ?', [item.id]))),
     monitor: monitorData()
@@ -2362,7 +2350,7 @@ function ingestDouyinData(body = {}) {
     throw err;
   }
   const collectedAt = String(body.collectedAt || body.collected_at || now());
-  const source = String(body.source || 'collector');
+  const source = String(body.source || 'chrome-agent');
   const account = body.account || {};
   const videos = Array.isArray(body.videos) ? body.videos : [];
   const accountHasData = ['fans', 'following', 'totalLikes', 'total_likes', 'totalWorks', 'total_works'].some((key) => account[key] !== undefined && account[key] !== '');
@@ -2659,6 +2647,7 @@ function scheduleSummary() {
 
 function dashboard() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
+  const rollingSchedule = maintainRollingSchedule(cases);
   const slots = all('SELECT * FROM plan_slots ORDER BY date ASC, created_at ASC').map(rowSlot);
   const candidates = all('SELECT * FROM candidate_drafts ORDER BY created_at ASC').map(rowCandidate);
   const assets = all('SELECT * FROM assets ORDER BY created_at DESC').map(rowAsset);
@@ -2714,6 +2703,7 @@ function dashboard() {
   };
   return {
     today,
+    maintenance: { rollingSchedule },
     monitor,
     monitorActions,
     viralAlerts: monitor.viralAlerts,
@@ -2790,7 +2780,7 @@ function systemReadiness() {
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
-    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并写入后台' },
+    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并写入后台' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
     { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
@@ -2970,7 +2960,7 @@ app.get('/api/cases', (_req, res) => {
 app.post('/api/cases', (req, res) => {
   const body = req.body || {};
   const created = createCaseFromBody(body);
-  const slots = body.generateSlots ? generateSlotsForCase(created, { days: body.days || 14, startDate: body.startDate }) : [];
+  const slots = body.generateSlots === false ? [] : generateSlotsForCase(created, { days: body.days || 14, startDate: body.startDate });
   res.json({ ...created, slotsCreated: slots.length });
 });
 
@@ -2979,7 +2969,7 @@ app.post('/api/cases/bulk', (req, res) => {
   const rows = Array.isArray(body.cases) ? body.cases : parseBulkCaseText(body.text);
   if (!rows.length) return res.status(400).json({ error: 'no valid case rows' });
   const created = rows.map((row) => createCaseFromBody(row));
-  if (body.generateSlots) {
+  if (body.generateSlots !== false) {
     created.forEach((caze) => {
       generateSlotsForCase(caze, { days: body.days || 7 });
     });

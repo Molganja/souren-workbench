@@ -26,9 +26,7 @@ const STATUS_LABELS = {
   timeout: '超时',
   active: '待互动',
   handled: '已处理',
-  waiting_collector: '等待采集器',
   waiting_chrome: '等待Chrome采集',
-  submitted: '已提交采集',
   unknown: '未知'
 };
 const REVIEW_ACTIONS = [

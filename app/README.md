@@ -93,7 +93,6 @@ IMAGE_API_KEY=
 IMAGE_API_URL=
 IMAGE_MODEL=image-v2
 IMAGE_SIZE=1024x1024
-DOUYIN_COLLECTOR_URL=
 ```
 
 当前 v1 会创建图片任务和提示词。`IMAGE_API_KEY` 或 `IMAGE_API_URL` 为空时，任务显示为“待接入图片接口”，不会影响其他流程；两者都填好后可在网页内生成图片、预览并下载。
