@@ -360,18 +360,17 @@ function App() {
 
 function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, canOpenLocalPaths }) {
   const accountGroups = groupTodayByAccount(data.todaySlots);
-  const flowGroups = buildTodayFlow(data.todaySlots);
   const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
   const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
-  const beginnerSteps = buildBeginnerSteps(data, operatorMonitorActions);
   const priorityActions = buildPriorityActions(data, strategyActions);
+  const dashboardStats = buildDashboardStats(data, priorityActions);
   return (
     <div className="stack">
       <section className="hero">
         <div>
           <p className="eyebrow">今日 {data.today}</p>
           <h1>运营中控台</h1>
-          <p>先看今天要发给谁、哪些内容要生成或交付、哪些爆款需要安排互动；首页只放工作人员需要处理的动作。</p>
+          <p>先处理下面这一条队列：生成、选择、交付、补素材、剪辑和爆款互动都在这里完成，账号清单只做概览。</p>
           <div className="heroActions">
             <button className="primary" onClick={() => onAct(
               () => request('/dashboard/prepare-today', { method: 'POST' }),
@@ -379,19 +378,8 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
             )}>一键准备今日交付</button>
           </div>
         </div>
-        <div className="stats">
-          <Metric label="今日任务" value={data.todaySlots.length} />
-          <Metric label="今日待生成" value={data.counts.pendingGenerate} />
-          <Metric label="今日待选" value={data.counts.pendingChoose} />
-          <Metric label="今日待交付" value={data.counts.readyDelivery} />
-          <Metric label="今日等回传" value={data.counts.sentWaitReport} />
-          <Metric label="爆款提醒" value={data.counts.viralAlerts || 0} />
-          <Metric label="策略动作" value={strategyActions.length} />
-          <Metric label="阻塞" value={data.counts.blocked || 0} />
-          <Metric label="待同步" value={data.counts.materialSync || 0} />
-          <Metric label="图片任务" value={data.counts.imageTasks || 0} />
-          <Metric label="剪辑任务" value={data.counts.clipTasks || 0} />
-          <Metric label="待爆款" value={data.counts.pendingViral || 0} />
+        <div className="stats dashboardStats">
+          {dashboardStats.map((item) => <Metric key={item.label} label={item.label} value={item.value} />)}
         </div>
       </section>
 
@@ -407,7 +395,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
 
       <section className="panel">
         <div className="sectionHead">
-          <h2>今日账号清单</h2>
+          <h2>今日账号概览</h2>
           <div className="headerActions">
             <span>{accountGroups.length} 个兼职/账号</span>
           </div>
@@ -419,67 +407,11 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
                 key={group.name}
                 group={group}
                 onOpenCase={onOpenCase}
-                onDelivery={onDelivery}
               />
             ))}
           </div>
         )}
       </section>
-
-      {(data.viralAlerts || []).length > 0 && <ViralAlertSection items={data.viralAlerts || []} onOpenCase={onOpenCase} onAct={onAct} />}
-      {strategyActions.length > 0 && <MonitorActionSection title="账号策略动作" empty="暂无需要工作人员处理的账号策略动作" items={strategyActions} onOpenCase={onOpenCase} onAct={onAct} />}
-
-      <section className="panel beginnerPanel">
-        <div className="sectionHead">
-          <h2>新手今日顺序</h2>
-          <span>{beginnerSteps.filter((item) => item.count > 0).length} 个动作</span>
-        </div>
-        <div className="beginnerGrid">
-          {beginnerSteps.map((step, index) => (
-            <div className={`beginnerStep ${step.count > 0 ? 'active' : ''}`} key={step.title}>
-              <strong>{index + 1}. {step.title}</strong>
-              <span>{step.count > 0 ? `${step.count} 条` : '暂无'}</span>
-              <small>{step.note}</small>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {data.readyDelivery.length > 0 && <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
-      {data.pendingChoose.length > 0 && <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
-      {data.pendingGenerate.length > 0 && <TaskSection title="待生成候选稿" items={data.pendingGenerate} empty="没有待生成内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
-      {(data.materialSync || []).length > 0 && <MaterialSyncSection items={data.materialSync || []} onOpenCase={onOpenCase} onAct={onAct} canOpenLocalPaths={canOpenLocalPaths} />}
-      {(data.pendingViralTemplates || []).length > 0 && <PendingViralSection items={data.pendingViralTemplates || []} onCopy={onCopy} onOpenViral={onOpenViral} />}
-      {(data.imageTasks || []).length > 0 && <ImageTaskSection items={data.imageTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />}
-      {(data.clipTasks || []).length > 0 && <ClipTaskSection items={data.clipTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} canOpenLocalPaths={canOpenLocalPaths} />}
-
-      <section className="panel">
-        <div className="sectionHead">
-          <h2>今日链路复盘</h2>
-          <span>{data.todaySlots.length} 条任务</span>
-        </div>
-        {data.todaySlots.length === 0 ? <div className="empty">今天没有链路数据</div> : (
-          <div className="flowGrid">
-            {flowGroups.map((group) => (
-              <div className="flowCard" key={group.status}>
-                <div className="rowTitle">
-                  <span className={`status ${statusClass(group.status)}`}>{group.status}</span>
-                  <strong>{group.items.length}</strong>
-                </div>
-                <small>{group.action}</small>
-                {group.items.slice(0, 3).map((slot) => (
-                  <button key={slot.id} className="flowItem" onClick={() => onOpenCase(slot.case?.id)}>
-                    <span>{slot.case?.weixinNick || '未命名兼职'}</span>
-                    <em>{slot.case?.weixinNick || '未命名兼职'} · {slot.contentKind}</em>
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {data.todaySlots.length > 0 && <TaskSection title="今天全部任务" items={data.todaySlots} empty="今天没有到期任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
 
       {data.abnormalCases.length > 0 && <section className="panel">
         <div className="sectionHead">
@@ -503,50 +435,6 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
   );
 }
 
-function ViralAlertSection({ items, onOpenCase, onAct }) {
-  return (
-    <section className="panel alertPanel">
-      <div className="sectionHead">
-        <h2>爆款提醒</h2>
-        <span>{items.length} 条</span>
-      </div>
-      {items.length === 0 ? <div className="empty">暂无爆款作品提醒</div> : (
-        <div className="taskList">
-          {items.map((alert) => (
-            <div className="taskRow" key={alert.id}>
-              <div className="dateBox">
-                <strong>{alert.level === 'high' ? '强信号' : '苗头'}</strong>
-                <span>{displayStatus(alert.status)}</span>
-              </div>
-              <div className="taskMain">
-                <div className="rowTitle">
-                  <button className="linkButton" onClick={() => alert.case?.id && onOpenCase(alert.case.id)}>{alert.case?.weixinNick || '未知账号'}</button>
-                  <span className={`status ${alert.level === 'high' ? 'bad' : 'report'}`}>出爆款</span>
-                </div>
-                <p>{alert.video?.title || alert.video?.url || '未命名作品'}</p>
-                <div className="deliveryMeta">
-                  <span>播放：{formatNumber(alert.snapshot?.plays)}</span>
-                  <span>点赞：{formatNumber(alert.snapshot?.likes)}</span>
-                  <span>评论：{formatNumber(alert.snapshot?.comments)}</span>
-                </div>
-                <small>{alert.reason}</small>
-                <small>{alert.interactionNote}</small>
-              </div>
-              <div className="rowActions">
-                {alert.video?.url && <a className="button" href={alert.video.url} target="_blank">打开作品</a>}
-                <button onClick={() => onAct(
-                  () => request(`/viral-alerts/${alert.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
-                  '爆款互动已标记'
-                )}>标记已安排互动</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function monitorActionClass(kind) {
   if (kind === '爆款互动') return 'bad';
   if (kind === '账号采集') return 'wait';
@@ -561,61 +449,20 @@ function monitorActionSlotLabel(kind) {
   return '';
 }
 
-function MonitorActionSection({ title = '账号策略动作', empty = '暂无需要工作人员处理的账号策略动作', items, onOpenCase, onAct }) {
-  return (
-    <section className="panel alertPanel">
-      <div className="sectionHead">
-        <h2>{title}</h2>
-        <span>{items.length} 条</span>
-      </div>
-      {items.length === 0 ? <div className="empty">{empty}</div> : (
-        <div className="taskList">
-          {items.map((item) => (
-            <div className="taskRow" key={item.id}>
-              <div className="dateBox">
-                <strong>{item.kind}</strong>
-                <span>{item.priority}</span>
-              </div>
-              <div className="taskMain">
-                <div className="rowTitle">
-                  <button className="linkButton" onClick={() => item.case?.id && onOpenCase(item.case.id)}>{item.case?.weixinNick || '未知账号'}</button>
-                  <span className={`status ${monitorActionClass(item.kind)}`}>{item.title}</span>
-                </div>
-                <p>{item.reason}</p>
-                <small>{item.action}</small>
-                {item.topVideo?.latestSnapshot && (
-                  <div className="deliveryMeta">
-                    <span>最高播放：{formatNumber(item.topVideo.latestSnapshot.plays)}</span>
-                    <span>点赞：{formatNumber(item.topVideo.latestSnapshot.likes)}</span>
-                    <span>评论：{formatNumber(item.topVideo.latestSnapshot.comments)}</span>
-                  </div>
-                )}
-              </div>
-              <div className="rowActions">
-                {item.case?.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
-                {item.video?.url && <a className="button" href={item.video.url} target="_blank">打开作品</a>}
-                {monitorActionSlotLabel(item.kind) && item.case?.id && <button onClick={() => onAct(
-                  () => request('/douyin-monitor/actions/slot', { method: 'POST', body: JSON.stringify({ caseId: item.case.id, kind: item.kind }) }),
-                  (result) => result.created
-                    ? `已生成：${result.slot.date} ${result.slot.contentKind}`
-                    : `已有对应排期：${result.slot.date} ${result.slot.contentKind}`
-                )}>{monitorActionSlotLabel(item.kind)}</button>}
-                {item.alertId && <button onClick={() => onAct(
-                  () => request(`/viral-alerts/${item.alertId}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
-                  '爆款互动已标记'
-                )}>标记已安排互动</button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+function buildDashboardStats(data = {}, priorityActions = []) {
+  const counts = data.counts || {};
+  const blocked = (counts.blocked || 0) + (counts.materialSync || 0) + (counts.requiredMaterialGaps || 0);
+  return [
+    { label: '今日待办', value: priorityActions.length },
+    { label: '可交付', value: counts.readyDelivery || 0 },
+    { label: '出爆款', value: counts.viralAlerts || 0 },
+    { label: '阻塞/缺口', value: blocked }
+  ];
 }
 
 function buildPriorityActions(data = {}, strategyActions = []) {
   const items = [];
-  (data.viralAlerts || []).slice(0, 6).forEach((alert) => {
+  (data.viralAlerts || []).forEach((alert) => {
     items.push({
       id: `alert-${alert.id}`,
       priority: alert.level === 'high' ? 120 : 110,
@@ -629,7 +476,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       alert
     });
   });
-  (data.readyDelivery || []).slice(0, 8).forEach((slot) => {
+  (data.readyDelivery || []).forEach((slot) => {
     items.push({
       id: `delivery-${slot.id}`,
       priority: 100,
@@ -642,7 +489,20 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       slot
     });
   });
-  (data.pendingChoose || []).slice(0, 8).forEach((slot) => {
+  (data.todaySlots || []).filter((slot) => slot.status === '已锁定').forEach((slot) => {
+    items.push({
+      id: `locked-${slot.id}`,
+      priority: 88,
+      kind: '生成交付',
+      status: slot.status,
+      title: `${slot.case?.weixinNick || '未命名兼职'} 已锁定文案`,
+      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
+      note: '生成网页交付内容后，就能复制文案和发送素材。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.pendingChoose || []).forEach((slot) => {
     items.push({
       id: `choose-${slot.id}`,
       priority: 82,
@@ -655,7 +515,21 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       slot
     });
   });
-  (data.materialSync || []).slice(0, 8).forEach((row) => {
+  (data.todaySlots || []).filter((slot) => ['素材阻塞', '异常'].includes(slot.status)).forEach((slot) => {
+    items.push({
+      id: `blocked-${slot.id}`,
+      priority: slot.status === '异常' ? 79 : 78,
+      kind: slot.status === '异常' ? '异常处理' : '补素材',
+      status: slot.status,
+      statusClass: 'bad',
+      title: `${slot.case?.weixinNick || '未命名兼职'} 不能交付`,
+      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
+      note: slot.status === '异常' ? '先打开案例查看异常原因，再决定重生成或人工处理。' : '先补素材或同步共享素材，再重新生成交付内容。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.materialSync || []).forEach((row) => {
     items.push({
       id: `sync-${row.caseId}`,
       priority: row.status === '目录不可用' ? 78 : 76,
@@ -669,7 +543,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       materialSync: row
     });
   });
-  (data.pendingGenerate || []).slice(0, 8).forEach((slot) => {
+  (data.pendingGenerate || []).forEach((slot) => {
     items.push({
       id: `generate-${slot.id}`,
       priority: 65,
@@ -682,7 +556,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       slot
     });
   });
-  strategyActions.slice(0, 8).forEach((item) => {
+  strategyActions.forEach((item) => {
     items.push({
       id: `strategy-${item.id}`,
       priority: item.priority || 55,
@@ -696,7 +570,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       monitorAction: item
     });
   });
-  (data.pendingViralTemplates || []).slice(0, 5).forEach((item) => {
+  (data.pendingViralTemplates || []).forEach((item) => {
     items.push({
       id: `viral-template-${item.id}`,
       priority: 48,
@@ -709,7 +583,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       viralTemplate: item
     });
   });
-  (data.clipTasks || []).slice(0, 5).forEach((task) => {
+  (data.clipTasks || []).forEach((task) => {
     items.push({
       id: `clip-${task.id}`,
       priority: 42,
@@ -723,17 +597,31 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       clipTask: task
     });
   });
-  return items.sort((a, b) => b.priority - a.priority).slice(0, 6);
+  (data.todaySlots || []).filter((slot) => slot.status === '已派发').forEach((slot) => {
+    items.push({
+      id: `sent-${slot.id}`,
+      priority: 35,
+      kind: '等确认',
+      status: slot.status,
+      statusClass: 'report',
+      title: `${slot.case?.weixinNick || '未命名兼职'} 已派发`,
+      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
+      note: '兼职或剪辑确认完成后，在系统标记完成。',
+      case: slot.case,
+      slot
+    });
+  });
+  return items.sort((a, b) => b.priority - a.priority);
 }
 
 function PriorityActionSection({ items, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, canOpenLocalPaths }) {
   return (
     <section className="panel priorityPanel">
       <div className="sectionHead">
-        <h2>今天先处理</h2>
+        <h2>今日操作队列</h2>
         <span>{items.length} 条</span>
       </div>
-      {items.length === 0 ? <div className="empty">今天没有必须优先处理的动作</div> : (
+      {items.length === 0 ? <div className="empty">今天没有必须处理的动作</div> : (
         <div className="priorityList">
           {items.map((item) => (
             <div className="priorityRow" key={item.id}>
@@ -785,10 +673,27 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onCopy, onOpenViral, o
       </div>
     );
   }
+  if (item.slot?.status === '已锁定') {
+    return (
+      <div className="rowActions">
+        <button onClick={() => onAct(() => generateDeliveryAndOpen(item.slot, onDelivery), deliveryResultMessage)}>生成交付</button>
+        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
+      </div>
+    );
+  }
   if (item.slot?.status === '候选待选') {
     return (
       <div className="rowActions">
         <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>去选择</button>
+      </div>
+    );
+  }
+  if (['素材阻塞', '异常'].includes(item.slot?.status)) {
+    return (
+      <div className="rowActions">
+        {item.slot.deliveryDir && <button onClick={() => onDelivery(item.slot)}>查看说明</button>}
+        {item.slot.status === '素材阻塞' && item.case && <button onClick={() => copyMaterialIntakeNote(item.case, onCopy)}>复制补素材说明</button>}
+        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
       </div>
     );
   }
@@ -797,6 +702,14 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onCopy, onOpenViral, o
       <div className="rowActions">
         <button onClick={() => onAct(() => request(`/slots/${item.slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>
         <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
+      </div>
+    );
+  }
+  if (item.slot?.status === '已派发') {
+    return (
+      <div className="rowActions">
+        {item.slot.deliveryDir && <button onClick={() => onDelivery(item.slot)}>查看交付</button>}
+        <button onClick={() => markCompleted(item.slot, onAct)}>标记完成</button>
       </div>
     );
   }
@@ -844,157 +757,6 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onCopy, onOpenViral, o
   return <div className="rowActions"><button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button></div>;
 }
 
-function MaterialSyncSection({ items, onOpenCase, onAct, canOpenLocalPaths }) {
-  return (
-    <section className="panel alertPanel">
-      <div className="sectionHead">
-        <h2>待同步共享素材</h2>
-        <span>{items.length} 个案例</span>
-      </div>
-      {items.length === 0 ? <div className="empty">共享目录没有待同步素材</div> : (
-        <div className="taskList">
-          {items.map((item) => (
-            <div className="taskRow" key={item.caseId}>
-              <div className="dateBox">
-                <strong>{item.status}</strong>
-                <span>{item.unsyncedCount || '—'}</span>
-              </div>
-              <div className="taskMain">
-                <div className="rowTitle">
-                  <button className="linkButton" onClick={() => item.case?.id && onOpenCase(item.case.id)}>{item.case?.weixinNick || '未知账号'}</button>
-                  <span className={`status ${item.status === '目录不可用' ? 'bad' : 'wait'}`}>{item.status === '目录不可用' ? '检查共享路径' : '共享目录有新素材'}</span>
-                </div>
-                <p>{item.sourceDir || '未填写共享目录'}</p>
-                <small>共享目录 {item.sourceFileCount || 0} 个素材，已同步 {item.syncedCount || 0} 个，待同步 {item.unsyncedCount || 0} 个。</small>
-                {item.sampleFiles?.length > 0 && <small>{item.sampleFiles.slice(0, 3).join(' / ')}</small>}
-              </div>
-              <div className="rowActions">
-                {item.status === '待同步' && item.case?.id && <button onClick={() => onAct(
-                  () => request(`/cases/${item.case.id}/sync-source-materials`, { method: 'POST' }),
-                  (result) => `已同步共享素材：复制 ${result.copied} 个，新增 ${result.inserted} 个`
-                )}>同步共享素材</button>}
-                <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
-                {canOpenLocalPaths && item.sourceDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.sourceDir }) }), '已打开共享目录')}>打开共享目录</button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function PendingViralSection({ items, onCopy, onOpenViral }) {
-  return (
-    <section className="panel">
-      <div className="sectionHead">
-        <h2>待爆款分析</h2>
-        <div className="headerActions">
-          <span>{items.length} 条</span>
-          <button onClick={onOpenViral}>去粘贴链接</button>
-        </div>
-      </div>
-      {items.length === 0 ? <div className="empty">没有待分析的爆款链接</div> : (
-        <div className="taskList">
-          {items.map((item) => (
-            <div className="taskRow" key={item.id}>
-              <div className="taskMain">
-                <div className="rowTitle">
-                  <strong>{pendingViralTitle(item)}</strong>
-                  <span className="status s-pending">待分析</span>
-                </div>
-                <p>等待分析：提取原视频内容、结构和适合账号后再批量生成。</p>
-                {item.sourceLink && <small>{item.sourceLink}</small>}
-              </div>
-              <div className="rowActions">
-                {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
-                <button onClick={() => copyViralAnalysisTask(item, onCopy)}>复制分析任务</button>
-                <button onClick={onOpenViral}>补分析结果</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ImageTaskSection({ items, onOpenCase, onAct, onCopy }) {
-  return (
-    <section className="panel">
-      <div className="sectionHead">
-        <h2>待图片处理</h2>
-        <span>{items.length} 条</span>
-      </div>
-      {items.length === 0 ? <div className="empty">没有待处理图片任务</div> : (
-        <div className="taskList">
-          {items.map((task) => (
-            <div className="taskRow" key={task.id}>
-              <div className="taskMain">
-                <div className="rowTitle">
-                  <button className="linkButton" onClick={() => task.case?.id && onOpenCase(task.case.id)}>{task.case?.weixinNick || '未知账号'}</button>
-                  <span className={`status ${statusClass(task.status)}`}>{displayStatus(task.status)}</span>
-                </div>
-                <p>{task.purpose}</p>
-                <small>{task.prompt}</small>
-                {task.sourceMaterials?.length > 0 && (
-                  <div className="deliveryMeta">
-                    {task.sourceMaterials.slice(0, 4).map((item, index) => (
-                      <span key={`${item.path || item}-${index}`}>{typeof item === 'string' ? item : `${item.role || item.usage}｜${item.usage || item.stage}`}</span>
-                    ))}
-                  </div>
-                )}
-                <GeneratedImageStrip files={task.generatedFiles || []} />
-              </div>
-              <div className="rowActions">
-                <button onClick={() => copyImagePrompt(task, onCopy)}>复制图片提示词</button>
-                <button onClick={() => generateImageTask(task, onAct)}>生成图片</button>
-                {REVIEW_ACTIONS.map(([status, label]) => (
-                  <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${displayStatus(status)}`)}>{label}</button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ClipTaskSection({ items, onOpenCase, onAct, onCopy, canOpenLocalPaths }) {
-  return (
-    <section className="panel">
-      <div className="sectionHead">
-        <h2>待剪辑处理</h2>
-        <span>{items.length} 条</span>
-      </div>
-      {items.length === 0 ? <div className="empty">没有待处理剪辑任务</div> : (
-        <div className="taskList">
-          {items.map((task) => (
-            <div className="taskRow" key={task.id}>
-              <div className="taskMain">
-                <div className="rowTitle">
-                  <button className="linkButton" onClick={() => task.case?.id && onOpenCase(task.case.id)}>{task.case?.weixinNick || '未知账号'}</button>
-                  <span className={`status ${statusClass(task.status)}`}>{displayStatus(task.status)}</span>
-                </div>
-                <p>{task.title}</p>
-                <small>{task.outputDir}</small>
-              </div>
-              <div className="rowActions">
-                <button onClick={() => onCopy(task.brief, '剪辑任务单已复制')}>复制任务单</button>
-                {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}
-                {CLIP_ACTIONS.map(([status, label]) => (
-                  <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 const CONTACT_STATUS_PRIORITY = {
   可交付: 100,
   已派发: 90,
@@ -1014,8 +776,9 @@ function sortAccountItems(items = []) {
   });
 }
 
-function AccountTaskCard({ group, onOpenCase, onDelivery }) {
+function AccountTaskCard({ group, onOpenCase }) {
   const items = sortAccountItems(group.items);
+  const first = items[0];
   return (
     <div className="accountCard accountDetailCard">
       <div className="accountCardHead">
@@ -1023,18 +786,10 @@ function AccountTaskCard({ group, onOpenCase, onDelivery }) {
           <strong>{group.name}</strong>
           <span>{group.items.length} 条任务 · {accountStatusSummary(group)}</span>
         </div>
+        {first?.case?.id && <button onClick={() => onOpenCase(first.case.id)}>打开账号</button>}
       </div>
-      <div className="accountTaskList">
-        {items.slice(0, 10).map((slot) => (
-          <div className="accountTaskItem" key={slot.id}>
-            <button className="linkButton" onClick={() => slot.case?.id && onOpenCase(slot.case.id)}>{slot.case?.weixinNick || '未命名兼职'}</button>
-            <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
-            <em>{slot.contentKind} · {nextActionText(slot)}</em>
-            {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付</button>}
-          </div>
-        ))}
-        {items.length > 10 && <small>还有 {items.length - 10} 条，可到「排期规划」按账号搜索查看。</small>}
-      </div>
+      {first && <small>下一步：{nextActionText(first)}；具体动作在上方「今日操作队列」处理。</small>}
+      {items.length > 1 && <small>还有 {items.length - 1} 条同日任务，可到「排期规划」按账号搜索查看。</small>}
     </div>
   );
 }
@@ -1046,13 +801,15 @@ function groupTodayByAccount(slots) {
     if (!groups.has(key)) {
       groups.set(key, {
         name: slot.case?.weixinNick || '未命名兼职',
+        case: slot.case || null,
         items: []
       });
     }
     groups.get(key).items.push(slot);
   });
-  return Array.from(groups.values()).map(({ name, items }) => ({
+  return Array.from(groups.values()).map(({ name, case: caze, items }) => ({
     name,
+    case: caze,
     items: sortAccountItems(items),
     pendingGenerate: items.filter((slot) => slot.status === '待生成').length,
     pendingChoose: items.filter((slot) => slot.status === '候选待选').length,
@@ -1061,7 +818,11 @@ function groupTodayByAccount(slots) {
     readyDelivery: items.filter((slot) => slot.status === '可交付').length,
     sentWaitReport: items.filter((slot) => slot.status === '已派发').length,
     completed: items.filter((slot) => slot.status === '已完成').length
-  })).sort((a, b) => b.items.length - a.items.length);
+  })).sort((a, b) => {
+    const aPriority = Math.max(...a.items.map((slot) => CONTACT_STATUS_PRIORITY[slot.status] || 0));
+    const bPriority = Math.max(...b.items.map((slot) => CONTACT_STATUS_PRIORITY[slot.status] || 0));
+    return bPriority - aPriority || b.items.length - a.items.length;
+  });
 }
 
 function accountStatusSummary(group) {
@@ -1077,68 +838,6 @@ function accountStatusSummary(group) {
     .filter(([, count]) => count > 0)
     .map(([label, count]) => `${label} ${count}`)
     .join(' · ') || '暂无待办';
-}
-
-const TODAY_FLOW = [
-  ['待生成', '系统生成 3 条候选稿'],
-  ['候选待选', '运营选择一条锁定'],
-  ['已锁定', '系统生成微信交付内容'],
-  ['素材阻塞', '补素材或创建图片/剪辑任务'],
-  ['可交付', '复制文案和素材发微信'],
-  ['已派发', '确认发布/交付后标记完成'],
-  ['已完成', '任务已闭环']
-];
-
-function buildTodayFlow(slots) {
-  return TODAY_FLOW
-    .map(([status, action]) => ({
-      status,
-      action,
-      items: slots.filter((slot) => slot.status === status)
-    }))
-    .filter((group) => group.items.length > 0);
-}
-
-function buildBeginnerSteps(data, operatorMonitorActions = []) {
-  const counts = data.counts || {};
-  const strategyCount = operatorMonitorActions.filter((item) => item.kind !== '爆款互动').length;
-  return [
-    {
-      title: '先看爆款',
-      count: counts.viralAlerts || 0,
-      note: '有爆款作品时，先安排助理号/阑尾号去评论区互动。'
-    },
-    {
-      title: '生成今天内容',
-      count: counts.pendingGenerate || 0,
-      note: '先让系统给待生成槽位出 3 条候选稿。'
-    },
-    {
-      title: '挑一条锁定',
-      count: counts.pendingChoose || 0,
-      note: '从候选里选最适合这个账号人设的一条。'
-    },
-    {
-      title: '处理素材缺口',
-      count: (counts.materialSync || 0) + (counts.blocked || 0) + (counts.requiredMaterialGaps || 0),
-      note: '先同步共享素材，再处理缺口或创建图片/剪辑任务。'
-    },
-    {
-      title: '微信交付',
-      count: counts.readyDelivery || 0,
-      note: '查看交付内容，复制文案，下载图片或视频发给兼职。'
-    },
-    {
-      title: '剪辑任务',
-      count: counts.clipTasks || 0,
-      note: '复制任务单，剪完或安排发布后标记完成。'
-    },
-    {
-      title: '账号策略',
-      count: strategyCount,
-      note: '只看需要工作人员处理的偏冷补内容和增长承接。'
-    }
-  ];
 }
 
 function nextActionText(slot) {
@@ -1393,57 +1092,6 @@ function Metric({ label, value }) {
     <div className="metric">
       <span>{label}</span>
       <strong>{value}</strong>
-    </div>
-  );
-}
-
-function TaskSection({ title, items, empty, onOpenCase, onAct, onCopy, onDelivery, canOpenLocalPaths }) {
-  return (
-    <section className="panel">
-      <div className="sectionHead">
-        <h2>{title}</h2>
-        <span>{items.length} 条</span>
-      </div>
-      {items.length === 0 ? <div className="empty">{empty}</div> : (
-        <div className="taskList">
-          {items.map((slot) => (
-            <TaskRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function TaskRow({ slot, onOpenCase, onAct, onCopy, onDelivery, canOpenLocalPaths }) {
-  const caze = slot.case || {};
-  return (
-    <div className="taskRow">
-      <div className="dateBox">
-        <strong>{slot.date.slice(5)}</strong>
-        <span>{slot.timeWindow || '全天'}</span>
-      </div>
-      <div className="taskMain">
-        <div className="rowTitle">
-          <button className="linkButton" onClick={() => onOpenCase(caze.id)}>{caze.weixinNick || '未命名'}</button>
-          <span className={`kind k-${slot.contentKind}`}>{slot.contentKind}</span>
-          <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
-        </div>
-        <p>{slot.goal}</p>
-        <div className="deliveryMeta">
-          <span>发给：{caze.weixinNick || '未命名兼职'}</span>
-        </div>
-        <small>{caseAccountLine(caze)} · {slot.stage}</small>
-      </div>
-      <div className="rowActions">
-        {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>}
-        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
-        {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
-        {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
-        {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
-        {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
-        {slot.status === '已派发' && <button onClick={() => markCompleted(slot, onAct)}>标记完成</button>}
-      </div>
     </div>
   );
 }

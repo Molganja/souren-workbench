@@ -41,6 +41,15 @@ required.forEach((file) => {
   else fail(`缺少 ${path.relative(ROOT_DIR, file)}`);
 });
 
+const mainSource = fs.readFileSync(path.join(APP_DIR, 'src', 'main.jsx'), 'utf8');
+const duplicateDashboardLabels = ['新手今日顺序', '今日链路复盘', '今天全部任务', '可微信交付', '待选择候选', '待生成候选稿', '今天先处理'];
+const leakedLabels = duplicateDashboardLabels.filter((label) => mainSource.includes(label));
+if (leakedLabels.length) fail(`首页仍包含重复任务区块：${leakedLabels.join('、')}`);
+else ok('首页任务入口已收敛为单一操作队列');
+
+if (mainSource.includes('今日操作队列') && mainSource.includes('今日账号概览')) ok('首页保留操作队列和账号概览');
+else fail('首页缺少操作队列或账号概览');
+
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');
 fs.mkdirSync(dataDir, { recursive: true });

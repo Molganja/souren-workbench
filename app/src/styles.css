@@ -193,6 +193,10 @@ button.activeSmall {
   gap: 10px;
 }
 
+.dashboardStats {
+  grid-template-columns: repeat(4, 104px);
+}
+
 .reviewStats {
   grid-template-columns: repeat(5, 104px);
 }
@@ -237,7 +241,7 @@ button.activeSmall {
   color: var(--muted);
 }
 
-.taskList, .slotList, .assetList, .templateList, .accountGrid, .flowGrid {
+.taskList, .slotList, .assetList, .templateList, .accountGrid {
   display: grid;
   gap: 10px;
 }
@@ -274,44 +278,6 @@ button.activeSmall {
 
 .accountGrid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.flowGrid {
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-}
-
-.beginnerGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.beginnerStep {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  padding: 12px;
-  display: grid;
-  gap: 6px;
-}
-
-.beginnerStep.active {
-  border-color: #2b6cb0;
-  background: #f0f6ff;
-}
-
-.beginnerStep strong {
-  font-size: 14px;
-}
-
-.beginnerStep span {
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.beginnerStep small {
-  color: var(--muted);
-  line-height: 1.5;
 }
 
 .accountCard {
@@ -359,75 +325,8 @@ button.activeSmall {
   padding: 5px 8px;
 }
 
-.accountTaskList {
-  display: grid;
-  gap: 7px;
-  margin-top: 4px;
-}
-
-.accountTaskItem {
-  border-top: 1px solid var(--line);
-  padding-top: 7px;
-  display: grid;
-  grid-template-columns: minmax(90px, 1fr) auto;
-  gap: 5px 8px;
-  align-items: center;
-}
-
-.accountTaskItem .status {
-  justify-self: end;
-}
-
-.accountTaskItem em {
-  color: var(--muted);
-  font-style: normal;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.accountTaskItem > button:not(.linkButton) {
-  min-height: 28px;
-  padding: 4px 8px;
-}
-
 .compactActions {
   justify-content: flex-start;
-}
-
-.flowCard {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-
-.flowCard small {
-  color: var(--muted);
-}
-
-.flowItem {
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #fafbfc;
-  padding: 8px;
-  text-align: left;
-  display: grid;
-  gap: 3px;
-  cursor: pointer;
-}
-
-.flowItem span {
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.flowItem em {
-  color: var(--muted);
-  font-style: normal;
-  font-size: 12px;
 }
 
 .taskRow {
@@ -1291,7 +1190,7 @@ textarea {
   .hero, .caseHeader, .taskRow, .priorityRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow {
     grid-template-columns: 1fr;
   }
-  .stats, .draftGrid, .beginnerGrid {
+  .stats, .draftGrid {
     grid-template-columns: 1fr 1fr;
   }
   .filters {
@@ -1317,7 +1216,7 @@ textarea {
   .page {
     padding: 12px;
   }
-  .stats, .draftGrid, .formGrid, .beginnerGrid {
+  .stats, .draftGrid, .formGrid {
     grid-template-columns: 1fr;
   }
 }
