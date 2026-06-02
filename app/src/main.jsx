@@ -258,6 +258,7 @@ function App() {
     </div>
   );
   const canUseWorkbench = session ? (!session.authRequired || session.authenticated) : false;
+  const canOpenLocalPaths = Boolean(session?.canOpenLocalPaths);
 
   return (
     <div>
@@ -276,19 +277,19 @@ function App() {
           <AccessGate session={session} onLogin={(code) => act(() => login(code), '已进入工作台')} />
         )}
         {!loading && canUseWorkbench && view === 'dashboard' && dashboard && (
-          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onCopy={copyText} onOpenViral={() => setView('viral')} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} />
+          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onCopy={copyText} onOpenViral={() => setView('viral')} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'review' && review && (
           <ReviewView data={review} onOpenCase={openCase} />
         )}
         {!loading && canUseWorkbench && view === 'schedule' && schedule && (
-          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onCopy={copyText} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} />
+          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onCopy={copyText} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'cases' && (
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
         )}
         {!loading && canUseWorkbench && view === 'case' && caseDetail && (
-          <CaseDetail detail={caseDetail} onAct={act} onCopy={copyText} onBack={() => setView('cases')} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} />
+          <CaseDetail detail={caseDetail} onAct={act} onCopy={copyText} onBack={() => setView('cases')} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'viral' && (
           <ViralView
@@ -309,7 +310,7 @@ function App() {
           <SeedView seeds={contentSeeds} onNew={() => setSeedFormOpen(true)} onAct={act} />
         )}
         {!loading && canUseWorkbench && view === 'settings' && config && (
-          <SettingsView config={config} onAct={act} onCopy={copyText} />
+          <SettingsView config={config} onAct={act} onCopy={copyText} canOpenLocalPaths={canOpenLocalPaths} />
         )}
       </main>
       {caseFormOpen && (
@@ -377,6 +378,7 @@ function App() {
           onClose={() => setDeliverySlotOpen(null)}
           onAct={act}
           onCopy={copyText}
+          canOpenLocalPaths={canOpenLocalPaths}
         />
       )}
       {toast && <div className="toast">{toast}</div>}
@@ -384,9 +386,10 @@ function App() {
   );
 }
 
-function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onVerify, onDelivery }) {
+function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onVerify, onDelivery, canOpenLocalPaths }) {
   const contactGroups = groupTodayByContact(data.todaySlots);
   const flowGroups = buildTodayFlow(data.todaySlots);
+  const beginnerSteps = buildBeginnerSteps(data);
   return (
     <div className="stack">
       <section className="hero">
@@ -423,6 +426,22 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onVerify, onD
           <Metric label="图片任务" value={data.counts.imageTasks || 0} />
           <Metric label="剪辑任务" value={data.counts.clipTasks || 0} />
           <Metric label="待爆款" value={data.counts.pendingViral || 0} />
+        </div>
+      </section>
+
+      <section className="panel beginnerPanel">
+        <div className="sectionHead">
+          <h2>新手今日顺序</h2>
+          <span>{beginnerSteps.filter((item) => item.count > 0).length} 个动作</span>
+        </div>
+        <div className="beginnerGrid">
+          {beginnerSteps.map((step, index) => (
+            <div className={`beginnerStep ${step.count > 0 ? 'active' : ''}`} key={step.title}>
+              <strong>{index + 1}. {step.title}</strong>
+              <span>{step.count > 0 ? `${step.count} 条` : '暂无'}</span>
+              <small>{step.note}</small>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -478,15 +497,15 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onVerify, onD
         )}
       </section>
 
-      <TaskSection title="今天要处理" items={data.todaySlots} empty="今天没有到期任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} />
-      <TaskSection title="待生成候选稿" items={data.pendingGenerate} empty="没有待生成内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} />
-      <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} />
-      <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} />
-      <TaskSection title="待抖音核对" items={data.pendingVerify} empty="没有待核对任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} />
+      <TaskSection title="今天要处理" items={data.todaySlots} empty="今天没有到期任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
+      <TaskSection title="待生成候选稿" items={data.pendingGenerate} empty="没有待生成内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
+      <TaskSection title="待选择候选" items={data.pendingChoose} empty="没有待选择内容" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
+      <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
+      <TaskSection title="待抖音核对" items={data.pendingVerify} empty="没有待核对任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
       <PendingViralSection items={data.pendingViralTemplates || []} onCopy={onCopy} onOpenViral={onOpenViral} />
       <ImageTaskSection items={data.imageTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
-      <ClipTaskSection items={data.clipTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
-      <AiConsultSection items={data.aiConsults || []} onAct={onAct} />
+      <ClipTaskSection items={data.clipTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} canOpenLocalPaths={canOpenLocalPaths} />
+      <AiConsultSection items={data.aiConsults || []} onAct={onAct} canOpenLocalPaths={canOpenLocalPaths} />
 
       <section className="panel">
         <div className="sectionHead">
@@ -583,7 +602,7 @@ function ImageTaskSection({ items, onOpenCase, onAct, onCopy }) {
   );
 }
 
-function ClipTaskSection({ items, onOpenCase, onAct, onCopy }) {
+function ClipTaskSection({ items, onOpenCase, onAct, onCopy, canOpenLocalPaths }) {
   return (
     <section className="panel">
       <div className="sectionHead">
@@ -604,7 +623,7 @@ function ClipTaskSection({ items, onOpenCase, onAct, onCopy }) {
               </div>
               <div className="rowActions">
                 <button onClick={() => onCopy(task.brief, '剪辑任务单已复制')}>复制任务单</button>
-                <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>
+                {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}
                 {CLIP_ACTIONS.map(([status, label]) => (
                   <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
                 ))}
@@ -617,7 +636,7 @@ function ClipTaskSection({ items, onOpenCase, onAct, onCopy }) {
   );
 }
 
-function AiConsultSection({ items, onAct }) {
+function AiConsultSection({ items, onAct, canOpenLocalPaths }) {
   return (
     <section className="panel">
       <div className="sectionHead">
@@ -638,8 +657,8 @@ function AiConsultSection({ items, onAct }) {
                 <small>{item.path}</small>
               </div>
               <div className="rowActions">
-                <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.path }) }), '已打开顾问记录')}>打开记录</button>
-                {item.packetPath && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.packetPath }) }), '已打开工作包')}>打开工作包</button>}
+                {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.path }) }), '已打开顾问记录')}>打开记录</button>}
+                {canOpenLocalPaths && item.packetPath && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.packetPath }) }), '已打开工作包')}>打开工作包</button>}
               </div>
             </div>
           ))}
@@ -736,6 +755,42 @@ function buildTodayFlow(slots) {
       items: slots.filter((slot) => slot.status === status)
     }))
     .filter((group) => group.items.length > 0);
+}
+
+function buildBeginnerSteps(data) {
+  const counts = data.counts || {};
+  return [
+    {
+      title: '生成今天内容',
+      count: counts.pendingGenerate || 0,
+      note: '先让系统给待生成槽位出 3 条候选稿。'
+    },
+    {
+      title: '挑一条锁定',
+      count: counts.pendingChoose || 0,
+      note: '从候选里选最适合这个账号人设的一条。'
+    },
+    {
+      title: '处理素材缺口',
+      count: (counts.blocked || 0) + (counts.requiredMaterialGaps || 0),
+      note: '缺素材时复制补素材说明，或创建图片/剪辑任务。'
+    },
+    {
+      title: '微信交付',
+      count: counts.readyDelivery || 0,
+      note: '查看交付内容，复制文案，下载图片或视频发给兼职。'
+    },
+    {
+      title: '剪辑任务',
+      count: counts.clipTasks || 0,
+      note: '复制任务单，剪完或安排发布后标记完成。'
+    },
+    {
+      title: '核对回填',
+      count: counts.pendingVerify || 0,
+      note: '打开抖音链接，回填播放、点赞、评论和粉丝。'
+    }
+  ];
 }
 
 function buildDailyBrief(date, contactGroups, flowGroups) {
@@ -887,7 +942,7 @@ function caseContactLine(caze = {}) {
   ].filter(Boolean).join(' · ');
 }
 
-function ScheduleView({ data, onOpenCase, onAct, onCopy, onVerify, onDelivery }) {
+function ScheduleView({ data, onOpenCase, onAct, onCopy, onVerify, onDelivery, canOpenLocalPaths }) {
   const [range, setRange] = useState('14');
   const [status, setStatus] = useState('全部状态');
   const [kind, setKind] = useState('全部内容');
@@ -948,7 +1003,7 @@ function ScheduleView({ data, onOpenCase, onAct, onCopy, onVerify, onDelivery })
           <div className="sectionHead"><h2>{date}</h2><span>{items.length} 条</span></div>
           <div className="taskList">
             {items.map((slot) => (
-              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} />
+              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
             ))}
           </div>
         </section>
@@ -957,7 +1012,7 @@ function ScheduleView({ data, onOpenCase, onAct, onCopy, onVerify, onDelivery })
   );
 }
 
-function ScheduleRow({ slot, onOpenCase, onAct, onCopy, onVerify, onDelivery }) {
+function ScheduleRow({ slot, onOpenCase, onAct, onCopy, onVerify, onDelivery, canOpenLocalPaths }) {
   const caze = slot.case || {};
   const douyinUrl = slot.verifyTask?.douyinUrl || caze.douyinUrl;
   return (
@@ -980,7 +1035,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy, onVerify, onDelivery }) 
         {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), (result) => result.blocked ? '缺少素材，已打开阻塞说明' : '交付内容已生成')}>生成交付内容</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
-        {slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
+        {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
@@ -1008,7 +1063,7 @@ function Metric({ label, value }) {
   );
 }
 
-function TaskSection({ title, items, empty, onOpenCase, onAct, onCopy, onVerify, onDelivery }) {
+function TaskSection({ title, items, empty, onOpenCase, onAct, onCopy, onVerify, onDelivery, canOpenLocalPaths }) {
   return (
     <section className="panel">
       <div className="sectionHead">
@@ -1018,7 +1073,7 @@ function TaskSection({ title, items, empty, onOpenCase, onAct, onCopy, onVerify,
       {items.length === 0 ? <div className="empty">{empty}</div> : (
         <div className="taskList">
           {items.map((slot) => (
-            <TaskRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} />
+            <TaskRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onVerify={onVerify} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
           ))}
         </div>
       )}
@@ -1026,7 +1081,7 @@ function TaskSection({ title, items, empty, onOpenCase, onAct, onCopy, onVerify,
   );
 }
 
-function TaskRow({ slot, onOpenCase, onAct, onCopy, onVerify, onDelivery }) {
+function TaskRow({ slot, onOpenCase, onAct, onCopy, onVerify, onDelivery, canOpenLocalPaths }) {
   const caze = slot.case || {};
   const douyinUrl = slot.verifyTask?.douyinUrl || caze.douyinUrl;
   return (
@@ -1053,7 +1108,7 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy, onVerify, onDelivery }) {
         {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), (result) => result.blocked ? '缺少素材，已打开阻塞说明' : '交付内容已生成')}>生成交付内容</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
-        {slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
+        {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
         {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
@@ -1138,7 +1193,7 @@ function deleteCase(item, onAct) {
   onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), (result) => result.removedDir ? '案例和本地素材目录已删除' : '案例已删除，本地目录原本不存在');
 }
 
-function CaseDetail({ detail, onAct, onCopy, onBack, onVerify, onDelivery }) {
+function CaseDetail({ detail, onAct, onCopy, onBack, onVerify, onDelivery, canOpenLocalPaths }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], verifyTasks, metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const [slotFormOpen, setSlotFormOpen] = useState(false);
@@ -1167,7 +1222,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onVerify, onDelivery }) {
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 30 }) }), '已补齐 30 天排期槽位')}>生成30天排期</button>
           <button onClick={() => setSlotFormOpen(true)}>手动加槽位</button>
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>
-          <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>
+          {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>}
           <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>
           {caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音主页</a>}
         </div>
@@ -1198,7 +1253,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onVerify, onDelivery }) {
         {slots.length === 0 ? <div className="empty">还没有排期槽位</div> : (
           <div className="slotList">
             {slots.map((slot) => (
-              <SlotCard key={slot.id} slot={slot} candidates={candidatesBySlot[slot.id] || []} caze={caze} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} />
+              <SlotCard key={slot.id} slot={slot} candidates={candidatesBySlot[slot.id] || []} caze={caze} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
             ))}
           </div>
         )}
@@ -1267,7 +1322,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onVerify, onDelivery }) {
                   <small>{task.outputDir}</small>
                   <div className="inlineActions">
                     <button onClick={() => onCopy(task.brief, '剪辑任务单已复制')}>复制任务单</button>
-                    <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>
+                    {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}
                     {CLIP_ACTIONS.map(([status, label]) => (
                       <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
                     ))}
@@ -1394,7 +1449,7 @@ async function askLocalAi(onAct) {
   );
 }
 
-function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery }) {
+function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery, canOpenLocalPaths }) {
   const selected = candidates.find((item) => item.selected);
   return (
     <div className="slotCard">
@@ -1414,7 +1469,7 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery }) {
         {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
-        {slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
+        {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => markReported({ ...slot, case: caze }, onAct)}>兼职已汇报</button>}
         {slot.status !== '已核对' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
@@ -1443,7 +1498,7 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery }) {
   );
 }
 
-function DeliveryModal({ slot, onClose, onAct, onCopy }) {
+function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
   const [view, setView] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -1528,7 +1583,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy }) {
             <div><strong>成片保存到</strong><span>{view.editing?.finalVideoPath}</span></div>
             <div><strong>封面保存到</strong><span>{view.editing?.coverPath}</span></div>
             <button onClick={() => onCopy(view.editing?.finalVideoPath || '', '成片保存路径已复制')}>复制成片路径</button>
-            <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: view.deliveryDir }) }), '已打开剪辑目录')}>打开剪辑目录</button>
+            {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: view.deliveryDir }) }), '已打开剪辑目录')}>打开剪辑目录</button>}
           </div>
           {view.sourceAssets?.length > 0 && (
             <div className="sourceList">
@@ -1764,7 +1819,7 @@ function SeedForm({ onClose, onSubmit }) {
   );
 }
 
-function SettingsView({ config, onAct, onCopy }) {
+function SettingsView({ config, onAct, onCopy, canOpenLocalPaths }) {
   return (
     <div className="stack">
       <section className="hero">
@@ -1829,8 +1884,8 @@ function SettingsView({ config, onAct, onCopy }) {
           <div className="headerActions">
             <span>{config.localAi?.ready ? '本地助手已接入' : '本地助手待接入'}</span>
             <button onClick={() => onCopy(localAiSetupText(config), '本地助手接入说明已复制')}>复制接入说明</button>
-            <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.operatorPacketDir }) }), '已打开助手工作包目录')}>打开工作包目录</button>
-            <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.aiConsultDir }) }), '已打开顾问记录目录')}>打开顾问记录目录</button>
+            {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.operatorPacketDir }) }), '已打开助手工作包目录')}>打开工作包目录</button>}
+            {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.aiConsultDir }) }), '已打开顾问记录目录')}>打开顾问记录目录</button>}
           </div>
         </div>
         <div className="templateList">

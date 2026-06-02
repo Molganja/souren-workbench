@@ -243,6 +243,40 @@ button.primary, .button.primary {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
+.beginnerGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.beginnerStep {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.beginnerStep.active {
+  border-color: #2b6cb0;
+  background: #f0f6ff;
+}
+
+.beginnerStep strong {
+  font-size: 14px;
+}
+
+.beginnerStep span {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.beginnerStep small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .contactCard {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1046,7 +1080,7 @@ textarea {
   .hero, .caseHeader, .taskRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow {
     grid-template-columns: 1fr;
   }
-  .stats, .draftGrid {
+  .stats, .draftGrid, .beginnerGrid {
     grid-template-columns: 1fr 1fr;
   }
   .filters {
@@ -1072,7 +1106,7 @@ textarea {
   .page {
     padding: 12px;
   }
-  .stats, .draftGrid, .formGrid {
+  .stats, .draftGrid, .formGrid, .beginnerGrid {
     grid-template-columns: 1fr;
   }
 }
