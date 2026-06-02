@@ -1227,7 +1227,7 @@ function createCaseFromLibrary(input = {}) {
     throw error;
   }
   const created = createCaseFromBody({
-    weixinNick: input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick,
+    weixinNick: input.weixinNick || input.weixin_nick || '',
     douyinId: input.douyinId || input.douyin_id || '',
     douyinUrl: input.douyinUrl || input.douyin_url || '',
     project: input.project || candidate.project || '吸脂',

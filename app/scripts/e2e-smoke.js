@@ -347,6 +347,16 @@ async function main() {
     assert(libraryScan.root.endsWith(path.join('素材库', '服务器案例库')), 'case library root missing');
     assert(libraryCandidate && libraryCandidate.fileCount === 2 && libraryCandidate.imageCount === 1 && libraryCandidate.videoCount === 1, 'case library scan missing candidate counts');
     assert(libraryCandidate.project === '吸脂' && !libraryCandidate.alreadyRegistered, 'case library candidate metadata invalid');
+    let missingLibraryWeixinRejected = false;
+    try {
+      await api('/case-library/register', {
+        method: 'POST',
+        body: JSON.stringify({ sourceMaterialDir: libraryCaseDir })
+      });
+    } catch (error) {
+      missingLibraryWeixinRejected = /兼职微信昵称/.test(error.message);
+    }
+    assert(missingLibraryWeixinRejected, 'case library register allowed missing WeChat nickname');
     const registeredLibraryCase = await api('/case-library/register', {
       method: 'POST',
       body: JSON.stringify({
