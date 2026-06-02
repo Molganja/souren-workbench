@@ -708,7 +708,7 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, onClipTask
   if (item.alert) {
     return (
       <div className="rowActions">
-        {item.alert.video?.url && <a className="button" href={item.alert.video.url} target="_blank">打开作品</a>}
+        {item.alert.video?.url && <a className="button" href={item.alert.video.url} target="_blank" rel="noreferrer">打开互动作品</a>}
         <button onClick={() => onAct(
           () => request(`/viral-alerts/${item.alert.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
           '爆款互动已标记'
@@ -1574,16 +1574,15 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueue
         <div className="sectionHead"><h2>作品数据</h2><span>{videos.length} 条</span></div>
         {videos.length === 0 ? <div className="empty">采集到作品后，这里会显示每条作品的播放、点赞、评论，并自动标记爆款</div> : (
           <div className="metricTable">
-            <div className="metricHeader reviewMetricHeader"><span>作品</span><span>发布时间</span><span>播放</span><span>点赞</span><span>评论</span><span>状态</span><span>动作</span></div>
+            <div className="metricHeader reviewMetricHeader videoMetricHeader"><span>作品</span><span>发布时间</span><span>播放</span><span>点赞</span><span>评论</span><span>状态</span></div>
             {videos.map((video) => (
-              <div className="metricLine reviewMetricLine" key={video.id}>
+              <div className="metricLine reviewMetricLine videoMetricLine" key={video.id}>
                 <span>{video.title || video.url || '未命名作品'}</span>
                 <span>{video.publishTime || '—'}</span>
                 <span>{formatNumber(video.latestSnapshot?.plays)}</span>
                 <span>{formatNumber(video.latestSnapshot?.likes)}</span>
                 <span>{formatNumber(video.latestSnapshot?.comments)}</span>
                 <span>{video.activeAlert ? '爆款提醒' : '正常'}</span>
-                <span>{video.url ? <a href={video.url} target="_blank">打开作品</a> : '—'}</span>
               </div>
             ))}
           </div>
@@ -1687,7 +1686,7 @@ function ViralAlertRow({ alert, onAct, activeQueueItem }) {
         <small>{alert.interactionNote}</small>
       </div>
       <div className="rowActions">
-        {alert.video?.url && <a className="button" href={alert.video.url} target="_blank">打开作品</a>}
+        {isActiveQueueAlert && alert.video?.url && <a className="button" href={alert.video.url} target="_blank" rel="noreferrer">打开互动作品</a>}
         {isActiveQueueAlert && <button onClick={() => onAct(
           () => request(`/viral-alerts/${alert.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
           '爆款互动已标记'
@@ -2115,7 +2114,7 @@ function ViralView({ templates, onNew, onAct }) {
               <p>{isPendingViral(item) ? '等待系统分析内容结构和适合账号后再批量生成。' : item.hotStructure}</p>
               {!isPendingViral(item) && <small>{item.rawText}</small>}
               <div className="inlineActions">
-                {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
+                {item.sourceLink && <span className="lockedNote">原链接已记录</span>}
                 {isPendingViral(item) && <span className="lockedNote">等待系统分析</span>}
                 <button disabled={isPendingViral(item)} onClick={() => setBulkTarget(item)}>给可投放账号生成爆款候选</button>
               </div>

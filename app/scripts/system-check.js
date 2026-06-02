@@ -277,6 +277,19 @@ else fail('采集状态缺少折叠后台入口，或前台仍保留手工回填
 if (!mainSource.includes('打开抖音主页') && !mainSource.includes('target="_blank">打开主页</a>')) ok('前台不要求工作人员手动打开抖音主页');
 else fail('前台仍暴露手动打开抖音主页入口');
 
+const externalLinkCount = (mainSource.match(/target="_blank"/g) || []).length;
+if (
+  externalLinkCount === 2 &&
+  mainSource.includes('打开互动作品') &&
+  mainSource.includes('isActiveQueueAlert && alert.video?.url') &&
+  !mainSource.includes('>打开作品</a>') &&
+  !mainSource.includes('打开原链接') &&
+  !mainSource.includes('<span>动作</span>') &&
+  !mainSource.includes('video.url ? <a') &&
+  mainSource.includes('videoMetricHeader')
+) ok('抖音作品外链只保留在爆款互动队首动作里，作品数据和爆款链接库不再提供手动打开入口');
+else fail('前台仍可能在非队首场景打开抖音作品或爆款原链接');
+
 if (serverSource.includes('兼职须知') && serverSource.includes('固定发布说明') && serverSource.includes('话题只用文案里已有的') && serverSource.includes('话题只用抖音发布文案里已有的') && mainSource.includes('兼职须知（首次发送）')) ok('交付内容内置固定发布说明和兼职须知');
 else fail('缺少固定发布说明或兼职须知');
 

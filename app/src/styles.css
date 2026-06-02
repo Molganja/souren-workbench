@@ -1263,6 +1263,11 @@ button:disabled:hover,
   grid-template-columns: 1.2fr .8fr .7fr .7fr .7fr .7fr 1.5fr;
 }
 
+.videoMetricHeader,
+.videoMetricLine {
+  grid-template-columns: minmax(220px, 1.4fr) .8fr .7fr .7fr .7fr .7fr;
+}
+
 .assetRow span, .templateRow span, .assetRow small, .templateRow small {
   color: var(--muted);
   word-break: break-all;
