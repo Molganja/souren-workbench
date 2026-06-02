@@ -28,7 +28,7 @@ else fail('缺少 client / client:mac 脚本');
 if (pkg.devDependencies?.electron && pkg.devDependencies?.['electron-builder']) ok('Electron 依赖已安装');
 else fail('缺少 Electron 或 electron-builder 依赖');
 
-if (pkg.build?.asar === false) ok('客户端包关闭 asar，外部 Node 可读取后端文件');
+if (pkg.build?.asar === false) ok('客户端包关闭 asar，Electron 内置 Node 可读取后端文件');
 else fail('Electron build.asar 应为 false');
 
 const files = pkg.build?.files || [];
@@ -37,6 +37,13 @@ else fail('客户端打包未显式排除真实 .env');
 
 if (files.includes('dist/**/*') && files.includes('server/**/*') && files.includes('electron/**/*')) ok('客户端打包包含前端、后端和桌面壳');
 else fail('客户端打包文件范围不完整');
+
+const electronMainText = fs.readFileSync(electronMain, 'utf8');
+if (electronMainText.includes('import(serverUrl)') && electronMainText.includes('pathToFileURL')) ok('桌面端使用 Electron 内置 Node 启动后端');
+else fail('桌面端未使用 Electron 内置 Node 启动后端');
+
+if (!electronMainText.includes('SOUREN_NODE_BIN')) ok('桌面端不依赖外部 node 命令');
+else fail('桌面端仍依赖外部 node 命令');
 
 const electronCli = path.join(APP_DIR, 'node_modules', '.bin', process.platform === 'win32' ? 'electron.cmd' : 'electron');
 const electronPackage = path.join(APP_DIR, 'node_modules', 'electron', 'package.json');

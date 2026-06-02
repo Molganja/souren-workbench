@@ -1,12 +1,12 @@
 const { app, BrowserWindow, Menu, dialog } = require('electron');
-const { spawn } = require('node:child_process');
 const http = require('node:http');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 const PORT = Number(process.env.PORT || 5174);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-let serverProcess = null;
 let mainWindow = null;
+let embeddedServerStarted = false;
 
 function appDir() {
   return app.isPackaged ? app.getAppPath() : path.resolve(__dirname, '..');
@@ -40,24 +40,15 @@ async function waitForServer() {
 
 async function ensureServer() {
   if (await healthCheck()) return;
-  const nodeBin = process.env.SOUREN_NODE_BIN || 'node';
-  serverProcess = spawn(nodeBin, ['--no-warnings', 'server/index.js'], {
-    cwd: appDir(),
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      SOUREN_ROOT_DIR: rootDir(),
-      SOUREN_DESKTOP: '1'
-    },
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-  serverProcess.stdout.on('data', (chunk) => process.stdout.write(chunk));
-  serverProcess.stderr.on('data', (chunk) => process.stderr.write(chunk));
-  serverProcess.on('error', (error) => {
-    dialog.showErrorBox('启动失败', `无法启动本地服务：${error.message}\n\n请确认已经安装 Node.js 24+。`);
-  });
+  process.env.PORT = String(PORT);
+  process.env.SOUREN_ROOT_DIR = rootDir();
+  process.env.SOUREN_DESKTOP = '1';
+  process.chdir(appDir());
+  const serverUrl = pathToFileURL(path.join(appDir(), 'server', 'index.js')).href;
+  await import(serverUrl);
+  embeddedServerStarted = true;
   if (!(await waitForServer())) {
-    throw new Error('本地服务启动超时，请确认 Node.js 24+ 可用，或先运行“启动素人工作台.command”。');
+    throw new Error('本地服务启动超时，请重新打开客户端，或先运行“启动素人工作台.command”。');
   }
 }
 
@@ -95,9 +86,7 @@ app.on('activate', async () => {
 });
 
 app.on('before-quit', () => {
-  if (serverProcess && !serverProcess.killed) {
-    serverProcess.kill('SIGTERM');
-  }
+  if (embeddedServerStarted) console.log('本地服务随客户端退出。');
 });
 
 app.on('window-all-closed', () => {

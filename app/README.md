@@ -37,7 +37,7 @@ cd /Users/licc/Desktop/素人系统/app
 npm run client:mac
 ```
 
-打包输出在 `app/release/`。客户端包不会包含真实 `.env`、数据库和素材。当前后端使用 `node:sqlite`，所以运行客户端的电脑仍需要 Node.js 24+；如果要发给完全没有技术环境的 Windows 用户，下一阶段需要把后端 SQLite 运行时改成可随客户端一起打包的依赖，或随包内置 Node。
+打包输出在 `app/release/`。客户端包不会包含真实 `.env`、数据库和素材。Mac `.app` 会用 Electron 内置 Node 启动本地后端并打开工作台窗口，不需要工作人员手动启动服务。后续如果要做 Windows 分发，需要在 Windows 机器上跑对应打包验收。
 
 生产构建后也可以只跑后端：
 
