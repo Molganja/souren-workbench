@@ -166,6 +166,17 @@ if (
 ) ok('今日操作队列不按 20/30 条截断，可覆盖上百账号');
 else fail('今日操作队列仍可能被服务端截断，管理上百账号时会漏任务');
 
+if (
+  serverSource.includes('function localDate(value = new Date())')
+  && serverSource.includes('return localDate(d);')
+  && mainSource.includes('function formatLocalDate(value = new Date())')
+  && mainSource.includes('return formatLocalDate();')
+  && !serverSource.includes('toISOString().slice(0, 10)')
+  && !mainSource.includes('toISOString().slice(0, 10)')
+  && smokeSource.includes('dashboard today should use local date')
+) ok('今日日期使用本机本地日期，不用 UTC 日期切片');
+else fail('今日日期仍可能按 UTC 计算，晚上会错到明天');
+
 if (mainSource.includes('focusMeta') && mainSource.includes('微信：') && mainSource.includes('抖音：') && mainSource.includes('项目：')) ok('队首任务直接显示当前收件账号');
 else fail('队首任务缺少收件账号信息');
 

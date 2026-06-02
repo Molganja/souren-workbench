@@ -27,6 +27,14 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function localDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 async function api(pathname, options = {}, base = BASE) {
   const res = await fetch(`${base}${pathname}`, {
     headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER, ...(options.headers || {}) },
@@ -351,6 +359,8 @@ async function main() {
 
   try {
     await waitForServer(server);
+    const initialDashboard = await api('/dashboard');
+    assert(initialDashboard.today === localDate(), 'dashboard today should use local date');
 
     let blankViralRejected = false;
     try {

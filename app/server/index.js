@@ -677,10 +677,18 @@ function personaLine(persona = {}) {
     .join(' · ') || '普通素人人设';
 }
 
+function localDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function addDays(base, days) {
   const d = new Date(`${base}T00:00:00`);
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return localDate(d);
 }
 
 function pickWeighted(weights) {
@@ -1017,7 +1025,7 @@ function createSlotForCase(caze, input = {}) {
     [
       slotId,
       caze.id,
-      input.date || new Date().toISOString().slice(0, 10),
+      input.date || localDate(),
       input.timeWindow || '19:00-21:00',
       contentKind,
       input.goal || inferGoal(contentKind, stage),
@@ -1032,7 +1040,7 @@ function createSlotForCase(caze, input = {}) {
 
 function generateSlotsForCase(caze, input = {}) {
   const days = Number(input.days || 30);
-  const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+  const startDate = input.startDate || localDate();
   const postingStrategy = input.postingStrategy || postingStrategyForCase(caze);
   const created = [];
   if (postingStrategy.intervalDays === 0) return created;
@@ -1059,7 +1067,7 @@ function generateSlotsForCase(caze, input = {}) {
 function maintainRollingSchedule(cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase), input = {}) {
   const days = Math.max(0, Number(input.days ?? ROLLING_SCHEDULE_DAYS));
   if (!days) return { days, createdCount: 0, prunedCount: 0, canceledCount: 0, touchedCases: 0, autoPausedLostContact: [], created: [] };
-  const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+  const startDate = input.startDate || localDate();
   const autoPausedLostContact = autoPauseLostContactCases(cases);
   if (autoPausedLostContact.length) {
     const pausedIds = new Set(autoPausedLostContact.map((item) => item.caseId));
@@ -1202,7 +1210,7 @@ function resumeCaseAccount(caseId) {
     error.status = 404;
     throw error;
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const staleSentSlots = all(
     'SELECT * FROM plan_slots WHERE case_id = ? AND status = ? ORDER BY date ASC',
     [caze.id, '已派发']
@@ -2229,7 +2237,7 @@ function consecutiveColdVideos(snapshots = []) {
   return count;
 }
 
-function recentActiveSlots(slots = [], today = new Date().toISOString().slice(0, 10)) {
+function recentActiveSlots(slots = [], today = localDate()) {
   return slots.filter((slot) => {
     const offset = daysBetween(today, slot.date);
     return offset >= -3
@@ -2238,7 +2246,7 @@ function recentActiveSlots(slots = [], today = new Date().toISOString().slice(0,
   });
 }
 
-function lostContactSignal(slots = [], today = new Date().toISOString().slice(0, 10)) {
+function lostContactSignal(slots = [], today = localDate()) {
   const overdueSent = slots
     .filter((slot) => slot.status === '已派发')
     .map((slot) => ({ ...slot, overdueDays: daysBetween(slot.date, today) }))
@@ -2365,7 +2373,7 @@ function accountStrategy(input = {}) {
     slots = [],
     activeViralAlerts = []
   } = input;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const activeSlots = recentActiveSlots(slots, today);
   const fanDelta = latestSnapshot?.fans != null && initialSnapshot?.fans != null ? latestSnapshot.fans - initialSnapshot.fans : null;
   const topPlays = Number(topVideo?.latestSnapshot?.plays || 0);
@@ -2504,7 +2512,7 @@ function existingStrategySlot(caze, plan, startDate) {
   ));
 }
 
-function nextOpenStrategyDate(caze, postingStrategy = {}, startDate = addDays(new Date().toISOString().slice(0, 10), 1), searchDays = 45) {
+function nextOpenStrategyDate(caze, postingStrategy = {}, startDate = addDays(localDate(), 1), searchDays = 45) {
   for (let i = 0; i < searchDays; i += 1) {
     const date = addDays(startDate, i);
     if (!shouldCreateSlotForDate(caze, date, postingStrategy)) continue;
@@ -2514,7 +2522,7 @@ function nextOpenStrategyDate(caze, postingStrategy = {}, startDate = addDays(ne
   return null;
 }
 
-function prunePendingSlotsForStrategy(caze, postingStrategy = {}, startDate = new Date().toISOString().slice(0, 10)) {
+function prunePendingSlotsForStrategy(caze, postingStrategy = {}, startDate = localDate()) {
   if (!caze?.id) return 0;
   const slots = all(
     'SELECT * FROM plan_slots WHERE case_id = ? AND date >= ? AND status = ? ORDER BY date ASC',
@@ -2529,7 +2537,7 @@ function prunePendingSlotsForStrategy(caze, postingStrategy = {}, startDate = ne
   return pruned;
 }
 
-function cancelPreparedSlotsForStrategy(caze, postingStrategy = {}, startDate = new Date().toISOString().slice(0, 10)) {
+function cancelPreparedSlotsForStrategy(caze, postingStrategy = {}, startDate = localDate()) {
   if (!caze?.id) return 0;
   const placeholders = STRATEGY_CANCEL_SLOT_STATUSES.map(() => '?').join(', ');
   const slots = all(
@@ -2548,7 +2556,7 @@ function cancelPreparedSlotsForStrategy(caze, postingStrategy = {}, startDate = 
 function reconcilePendingScheduleForCase(caze, input = {}) {
   if (!caze?.id) return { startDate: '', days: 0, prunedCount: 0, canceledCount: 0, createdCount: 0, postingStrategy: null };
   const current = caseById(caze.id);
-  const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+  const startDate = input.startDate || localDate();
   const days = Math.max(0, Number(input.days ?? ROLLING_SCHEDULE_DAYS));
   const postingStrategy = postingStrategyForCase(current);
   const prunedCount = prunePendingSlotsForStrategy(current, postingStrategy, startDate);
@@ -2988,7 +2996,7 @@ function createMonitorActionSlot(input = {}) {
     error.status = 400;
     throw error;
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const postingStrategy = postingStrategyForCase(caze);
   if (caseIsPaused(caze) || Number(postingStrategy.intervalDays ?? 1) <= 0) {
     return {
@@ -3591,7 +3599,7 @@ function reviewSummary() {
   const clipTasks = all('SELECT * FROM clip_tasks ORDER BY created_at DESC').map(rowClipTask);
   const metrics = all('SELECT * FROM metrics ORDER BY date DESC, created_at DESC').map(rowMetric);
   const monitor = monitorData(cases);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const metricsByCase = cases.reduce((acc, caze) => {
     acc[caze.id] = metrics.filter((item) => item.caseId === caze.id);
     return acc;
@@ -3701,7 +3709,7 @@ function scheduleSummary() {
     return acc;
   }, {});
   return {
-    today: new Date().toISOString().slice(0, 10),
+    today: localDate(),
     slots: withMeta,
     days: Object.entries(byDate).map(([date, items]) => ({ date, items })),
     counts: {
@@ -3882,7 +3890,7 @@ function dashboard() {
     .filter((item) => item.activityTier === '失联暂停' || item.lostContact?.active || caseIsPaused(item.case))
     .map((item) => item.case?.id)
     .filter(Boolean));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const operatorStatuses = new Set(ACTIVE_OPERATOR_STATUSES);
   const dueSlots = slots.filter((s) => s.date <= today && operatorStatuses.has(s.status) && !pausedCaseIds.has(s.caseId));
@@ -4351,7 +4359,7 @@ app.get('/api/cases/:id', (req, res) => {
     latestSnapshot: latestVideoSnapshots.get(video.id) || null,
     activeAlert: accountMonitor.activeViralAlerts?.find((alert) => alert.videoId === video.id) || null
   }));
-  const health = caseHealth(caze, slots, assets, metrics, new Date().toISOString().slice(0, 10), accountMonitor);
+  const health = caseHealth(caze, slots, assets, metrics, localDate(), accountMonitor);
   res.json({
     case: { ...caze, healthStatus: health.status },
     slots,
@@ -5111,7 +5119,7 @@ app.post('/api/viral-templates', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
-      title || (linkOnly ? `待分析爆款链接 ${new Date().toISOString().slice(0, 10)}` : '未命名爆款模板'),
+      title || (linkOnly ? `待分析爆款链接 ${localDate()}` : '未命名爆款模板'),
       rawText || (linkOnly ? '待分析：待提取原视频内容' : ''),
       sourceLink,
       category || (linkOnly ? '待分析' : '情绪'),
@@ -5191,7 +5199,7 @@ app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
     return res.status(409).json({ error: '这个爆款链接还没完成内容提取和结构分析，先不要批量生成' });
   }
   const body = req.body || {};
-  const targetDate = body.date || new Date().toISOString().slice(0, 10);
+  const targetDate = body.date || localDate();
   const cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase);
   const created = [];
   const skipped = [];
