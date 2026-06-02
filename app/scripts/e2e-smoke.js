@@ -851,17 +851,29 @@ async function main() {
     const afterHandledDashboard = await api('/dashboard');
     assert(!afterHandledDashboard.viralAlerts.some((item) => item.id === ingested.viralAlerts[0].id), 'handled viral alert still shown as active');
     assert(!afterHandledDashboard.monitorActions.some((item) => item.alertId === ingested.viralAlerts[0].id), 'handled viral alert still shown in monitor actions');
-    const abnormalSlot = await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
+    let completedToAbnormalRejected = false;
+    try {
+      await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
+    } catch (error) {
+      completedToAbnormalRejected = /409/.test(error.message) || /交付链路/.test(error.message);
+    }
+    assert(completedToAbnormalRejected, 'completed slot was allowed to move back to abnormal');
+    const abnormalTestSlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-07', contentKind: '日常养号', stage: '起号期', goal: '异常标记验收' })
+    });
+    const abnormalSlot = await api(`/slots/${abnormalTestSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
     assert(abnormalSlot.status === '异常', 'manual abnormal status failed');
     let invalidSlotStatusRejected = false;
     try {
-      await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '乱写状态' }) });
+      await api(`/slots/${abnormalTestSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '乱写状态' }) });
     } catch (error) {
       invalidSlotStatusRejected = /400/.test(error.message) || /非法槽位状态/.test(error.message);
     }
     assert(invalidSlotStatusRejected, 'invalid slot status was accepted');
     const afterInvalidStatus = await api(`/cases/${caze.id}`);
-    assert(afterInvalidStatus.slots.find((item) => item.id === manualSlot.id)?.status === '异常', 'invalid slot status changed persisted status');
+    assert(afterInvalidStatus.slots.find((item) => item.id === manualSlot.id)?.status === '已完成', 'completed slot status changed after rejected abnormal update');
+    assert(afterInvalidStatus.slots.find((item) => item.id === abnormalTestSlot.id)?.status === '异常', 'invalid slot status changed persisted status');
 
     const imageTask = await api('/image-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, purpose: '封面图' }) });
     assert(imageTask.status === 'waiting_key' || imageTask.status === 'draft', 'image task status invalid');

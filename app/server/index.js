@@ -924,6 +924,15 @@ function canGenerateDeliveryForSlot(slot) {
   return false;
 }
 
+function canPatchSlotStatus(slot, nextStatus) {
+  if (!slot) return false;
+  if (slot.status === nextStatus) return true;
+  if (nextStatus === '异常') return ['待生成', '候选待选', '已锁定', '素材阻塞'].includes(slot.status);
+  if (nextStatus === '已派发') return slot.status === '可交付';
+  if (nextStatus === '已完成') return slot.status === '已派发';
+  return false;
+}
+
 function createSlotForCase(caze, input = {}) {
   const contentKind = CONTENT_KINDS.includes(input.contentKind) ? input.contentKind : '日常养号';
   const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
@@ -3598,6 +3607,9 @@ app.patch('/api/slots/:id/status', (req, res) => {
   const status = String(req.body?.status || '').trim();
   if (!PLAN_SLOT_STATUSES.includes(status)) {
     return res.status(400).json({ error: `非法槽位状态：${status || '空值'}` });
+  }
+  if (!canPatchSlotStatus(slot, status)) {
+    return res.status(409).json({ error: '这个排期已经进入交付链路，不能直接改成这个状态' });
   }
   run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', [status, now(), slot.id]);
   res.json(slotById(slot.id));

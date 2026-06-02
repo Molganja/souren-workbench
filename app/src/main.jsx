@@ -1507,6 +1507,7 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
   const canSelectCandidate = slot.status === '候选待选';
   const canGenerateDelivery = selected && (['素材阻塞', '异常'].includes(slot.status) || (slot.status === '已锁定' && !slot.deliveryDir));
   const canCreateClipTask = selected && !existingClipTask && ['已锁定', '素材阻塞', '可交付'].includes(slot.status);
+  const canMarkException = ['待生成', '候选待选', '已锁定', '素材阻塞'].includes(slot.status);
   return (
     <div className="slotCard">
       <div className="slotTop">
@@ -1526,7 +1527,7 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
         {existingClipTask && <span className="lockedNote">剪辑任务已建</span>}
         {slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
         {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
-        {slot.status !== '已完成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
+        {canMarkException && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
       </div>
       {slot.deliveryDir && <div className="path">交付内容已生成，可在网页内查看、复制和下载。</div>}
       {candidates.length > 0 && (
