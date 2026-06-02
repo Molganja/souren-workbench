@@ -1503,6 +1503,19 @@ function removeCaseDirectory(caze) {
   return { removedDir: true };
 }
 
+function caseDeleteConfirmationPhrase(caze = {}) {
+  return `删除 ${caze.weixinNick || caze.caseCode || '这个案例'}`;
+}
+
+function assertCaseDeleteConfirmed(req, caze) {
+  const expected = caseDeleteConfirmationPhrase(caze);
+  const actual = String(req.body?.confirmText || '').trim();
+  if (actual === expected) return;
+  const err = new Error(`删除确认不匹配，请输入「${expected}」`);
+  err.status = 409;
+  throw err;
+}
+
 function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
   const p = caze.persona || {};
   return [
@@ -4423,6 +4436,7 @@ app.delete('/api/cases/:id', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });
   try {
+    assertCaseDeleteConfirmed(req, caze);
     const { removedDir } = removeCaseDirectory(caze);
     run('DELETE FROM cases WHERE id = ?', [caze.id]);
     res.json({ deleted: true, id: caze.id, removedDir, localCaseDir: caze.localCaseDir });

@@ -118,8 +118,12 @@ if (
   && mainSource.includes('const deletePhrase = `删除 ${deleteName}`')
   && mainSource.includes("confirmText.trim() === deletePhrase")
   && mainSource.includes('placeholder={`输入：${deletePhrase}`}')
-) ok('删除案例必须输入删除加微信昵称，使用工作台内确认弹窗');
-else fail('删除案例仍使用浏览器原生确认框，或缺少绑定账号的明确删除确认');
+  && mainSource.includes('body: JSON.stringify({ confirmText })')
+  && serverSource.includes('function caseDeleteConfirmationPhrase')
+  && serverSource.includes('function assertCaseDeleteConfirmed')
+  && serverSource.includes('assertCaseDeleteConfirmed(req, caze)')
+) ok('删除案例前后端都必须校验删除加微信昵称');
+else fail('删除案例仍可能只在前端确认，或后端缺少明确删除确认');
 
 if (
   mainSource.includes('今日操作队列') &&
@@ -670,7 +674,7 @@ if (serverSource.includes('图片任务必须有明确用途') && mainSource.inc
 else fail('图片任务仍存在泛化入口或默认用途');
 
 const oldDeletedDirMarker = '_' + 'deleted';
-if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地素材副本也会同步删除')) ok('删除案例会同步删除本地案例目录');
+if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && serverSource.includes('assertCaseDeleteConfirmed(req, caze)') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地素材副本也会同步删除')) ok('删除案例会在确认后同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
 if (

@@ -48,6 +48,17 @@ async function api(pathname, options = {}, base = BASE) {
   return data;
 }
 
+function caseDeleteConfirmText(caze = {}) {
+  return `删除 ${caze.weixinNick || caze.caseCode || '这个案例'}`;
+}
+
+async function deleteCase(caze, base = BASE) {
+  return api(`/cases/${caze.id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmText: caseDeleteConfirmText(caze) })
+  }, base);
+}
+
 function deliveryMediaStepKey(file) {
   return `media:${file.path || file.url || file.name}`;
 }
@@ -539,7 +550,20 @@ async function main() {
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
     const deletedCaseDir = bulk.cases[1].localCaseDir;
     assert(fs.existsSync(deletedCaseDir), 'case directory missing before delete');
-    const deletedCase = await api(`/cases/${bulk.cases[1].id}`, { method: 'DELETE' });
+    const deleteWithoutConfirm = await fetch(`${BASE}/cases/${bulk.cases[1].id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER }
+    });
+    assert(deleteWithoutConfirm.status === 409, 'case delete without confirmation should be blocked');
+    assert(fs.existsSync(deletedCaseDir), 'case directory was removed without delete confirmation');
+    const deleteWrongConfirm = await fetch(`${BASE}/cases/${bulk.cases[1].id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER },
+      body: JSON.stringify({ confirmText: '删除 错误账号' })
+    });
+    assert(deleteWrongConfirm.status === 409, 'case delete with wrong confirmation should be blocked');
+    assert(fs.existsSync(deletedCaseDir), 'case directory was removed with wrong delete confirmation');
+    const deletedCase = await deleteCase(bulk.cases[1]);
     assert(deletedCase.removedDir === true, 'case delete did not report local directory removal');
     assert(!fs.existsSync(deletedCaseDir), 'case delete did not remove local material directory');
     const archivedKey = 'archived' + 'Dir';
@@ -646,7 +670,7 @@ async function main() {
     const fixedIntakeDashboard = await api('/dashboard');
     assert(!fixedIntakeDashboard.intakeIssues.some((item) => item.caseId === legacyCase.id), 'fixed legacy account still appears in intake issue queue');
     assert(fixedIntakeDashboard.readyDelivery.some((item) => item.id === legacyReadySlot.id), 'fixed intake account did not release its ready delivery slot');
-    await api(`/cases/${legacyCase.id}`, { method: 'DELETE' });
+    await deleteCase(fixedLegacyCase);
 
     const queueGenerated = await api('/dashboard/generate-today', { method: 'POST' });
     assert(queueGenerated.slotCount <= 1 && queueGenerated.candidateCount <= 3, 'dashboard generate should only process the queue head');
@@ -1019,10 +1043,10 @@ async function main() {
     assert(resumedLostDetail.slots.some((item) => item.status === '已取消'), 'resume did not keep stale sent slot as cancelled');
     assert(resumedLostDetail.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'resume did not create future pending slot');
     assert(resumedLostDetail.monitor.activityTier !== '失联暂停', 'resumed account still marked lost');
-    await api(`/cases/${throttleCase.id}`, { method: 'DELETE' });
-    await api(`/cases/${sleepCase.id}`, { method: 'DELETE' });
-    await api(`/cases/${hotQueueCase.id}`, { method: 'DELETE' });
-    await api(`/cases/${lostCase.id}`, { method: 'DELETE' });
+    await deleteCase(throttleCase);
+    await deleteCase(sleepCase);
+    await deleteCase(hotQueueCase);
+    await deleteCase(lostCase);
     const noAssetSlot = minimalDetail.slots[0];
     const noAssetDrafts = await api(`/slots/${noAssetSlot.id}/generate-candidates`, { method: 'POST' });
     await api(`/candidates/${noAssetDrafts[0].id}/select`, { method: 'POST' });
@@ -1371,7 +1395,7 @@ async function main() {
     assert(fs.existsSync(path.join(complianceDelivery.deliveryDir, '00-合规阻塞说明.txt')), 'compliance blocked note missing');
     const complianceView = await api(`/slots/${complianceSlot.id}/delivery-view`);
     assert(complianceView.texts.complianceNote.includes('合规提示'), 'compliance delivery view missing note');
-    await api(`/cases/${complianceCase.id}`, { method: 'DELETE' });
+    await deleteCase(complianceCase);
 
     await imageGenerationSmoke();
     await imageKeyOnlyConfigSmoke();
@@ -1413,7 +1437,7 @@ async function main() {
     assert(videoDeliveryView.texts.editBrief.includes('固定剪辑配方') && videoDeliveryView.texts.editBrief.includes('只替换素材和标题'), 'video delivery edit brief missing fixed recipe');
     assert(videoDeliveryView.texts.editBrief.includes('剪辑填空卡') && videoDeliveryView.texts.editBrief.includes('只换这些空'), 'video delivery edit brief missing fill-in recipe card');
     assert(!videoDeliveryView.texts.editBrief.includes('final.mp4') && !('finalVideoPath' in videoDeliveryView.editing), 'video delivery still exposes final video path');
-    await api(`/cases/${videoCase.id}`, { method: 'DELETE' });
+    await deleteCase(videoCase);
 
     const batchDeliverySlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -1519,7 +1543,7 @@ async function main() {
     assert(chromeQueue.text.includes('/api/douyin-monitor/ingest') && chromeQueue.text.includes('Chrome抖音采集清单'), 'chrome collection queue text missing ingest instructions');
     assert(chromeQueue.targets.some((item) => item.ingestPayloadTemplate?.caseId === caze.id), 'chrome collection queue missing payload template');
     assert(!chromeQueue.targets.some((item) => item.caseId === pauseCleanupCase.id), 'paused account still appears in chrome collection queue');
-    await api(`/cases/${pauseCleanupCase.id}`, { method: 'DELETE' });
+    await deleteCase(pauseCleanupCase);
     const registeredChromeQueue = await api('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 20 }) });
     assert(registeredChromeQueue.registeredCount === 0 && registeredChromeQueue.skippedQueuedCount >= 2, 'chrome queue duplicated already queued accounts');
     const ingested = await api('/douyin-monitor/ingest', {
@@ -1693,7 +1717,7 @@ async function main() {
     const pausedViralDashboard = await api('/dashboard');
     assert(!pausedViralDashboard.viralAlerts.some((item) => item.case?.id === pausedViralCase.id), 'paused account viral alert leaked into dashboard queue');
     assert(!pausedViralDashboard.monitorActions.some((item) => item.kind === '爆款互动' && item.case?.id === pausedViralCase.id), 'paused account viral action leaked into monitor actions');
-    await api(`/cases/${pausedViralCase.id}`, { method: 'DELETE' });
+    await deleteCase(pausedViralCase);
     const filteredBulk = await api(`/viral-templates/${filteredViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-03' }) });
     assert(filteredBulk.createdCount >= 1 && filteredBulk.skippedCount >= 1, 'viral persona filter bulk generation failed');
     let pendingRejected = false;

@@ -1097,7 +1097,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
           <DeleteCaseModal
             item={deleteTarget}
             onClose={() => setDeleteTarget(null)}
-            onDelete={() => deleteCase(deleteTarget, onAct, () => setDeleteTarget(null))}
+            onDelete={(confirmText) => deleteCase(deleteTarget, confirmText, onAct, () => setDeleteTarget(null))}
           />
         )}
       </section>
@@ -1225,15 +1225,18 @@ function DeleteCaseModal({ item, onClose, onDelete }) {
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="dangerButton" disabled={!ready} onClick={onDelete}>确认删除</button>
+        <button className="dangerButton" disabled={!ready} onClick={() => onDelete(confirmText.trim())}>确认删除</button>
       </div>
     </Modal>
   );
 }
 
-function deleteCase(item, onAct, onDone) {
+function deleteCase(item, confirmText, onAct, onDone) {
   onAct(async () => {
-    const result = await request(`/cases/${item.id}`, { method: 'DELETE' });
+    const result = await request(`/cases/${item.id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirmText })
+    });
     onDone?.();
     return result;
   }, (result) => result.removedDir ? '案例已删除，本地素材副本已同步删除' : '案例已删除，本地素材副本原本不存在');
