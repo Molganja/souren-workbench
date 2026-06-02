@@ -666,6 +666,14 @@ async function main() {
     assert(exported.viralAlerts.length === 1, 'export missing viral alerts');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
+    assert(!('verifyTasks' in exported), 'export still exposes legacy verify tasks');
+    let legacyVerifyRejected = false;
+    try {
+      await api('/verify-tasks/legacy/checklist');
+    } catch (error) {
+      legacyVerifyRejected = /404|api not found/.test(error.message);
+    }
+    assert(legacyVerifyRejected, 'legacy verify task endpoint still available');
     const importResult = await api('/import', { method: 'POST', body: JSON.stringify(exported) });
     assert(importResult.imported === true && importResult.cases === exported.cases.length, 'import did not report imported cases');
     let badImportRejected = false;

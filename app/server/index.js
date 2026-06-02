@@ -453,24 +453,6 @@ function rowClipTask(row) {
   };
 }
 
-function rowVerify(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    caseId: row.case_id,
-    planItemId: row.plan_item_id,
-    douyinUrl: row.douyin_url,
-    expectedTitle: row.expected_title,
-    expectedPublishDate: row.expected_publish_date,
-    expectedAssets: parseJson(row.expected_assets, []),
-    status: row.status,
-    resultNote: row.result_note,
-    metricsSnapshot: parseJson(row.metrics_snapshot, null),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
 function rowMetric(row) {
   if (!row) return null;
   return {
@@ -840,7 +822,7 @@ function createCandidate(slot, caze, variant, viral = null, seed = null, overrid
 }
 
 async function generateCandidatesForSlot(slot) {
-  if (!slot || slot.selectedCandidateId || ['已锁定', '素材阻塞', '可交付', '已派发', '已完成', '已汇报', '已核对'].includes(slot.status)) {
+  if (!slot || slot.selectedCandidateId || ['已锁定', '素材阻塞', '可交付', '已派发', '已完成'].includes(slot.status)) {
     return [];
   }
   const caze = caseById(slot.caseId);
@@ -1471,31 +1453,6 @@ function imagePromptText(task) {
     '',
     '反向提示词：',
     task.negativePrompt || ''
-  ].join('\n');
-}
-
-function verifyChecklistText(task) {
-  return [
-    '抖音发布核对清单',
-    `作品链接：${task.douyinUrl || '未填，先让兼职补链接或截图'}`,
-    `预期标题：${task.expectedTitle || '未记录'}`,
-    `预期发布日期：${task.expectedPublishDate || '未记录'}`,
-    '',
-    '需要核对：',
-    '1. 是否已经发布',
-    '2. 发布时间是否和排期一致',
-    '3. 标题/正文是否和交付内容一致',
-    '4. 图片/视频素材是否匹配，顺序是否正确',
-    '5. 是否有违规、缺图、错图、错文案、未按要求发布',
-    '6. 记录播放、点赞、评论、粉丝',
-    '7. 评论区是否有可转化问题',
-    '',
-    '预期素材：',
-    task.expectedAssets?.length ? task.expectedAssets.map((item, index) => `${index + 1}. ${item}`).join('\n') : '未记录素材清单',
-    '',
-    '回填到系统：',
-    '核对正常 -> 点“核对并回填”',
-    '内容不匹配 -> 点“异常”，备注具体问题'
   ].join('\n');
 }
 
@@ -2588,7 +2545,6 @@ function exportData() {
     sharedAssets: all('SELECT * FROM shared_assets').map(rowSharedAsset),
     imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
     clipTasks: all('SELECT * FROM clip_tasks').map(rowClipTask),
-    verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify),
     metrics: all('SELECT * FROM metrics').map(rowMetric),
     accountSnapshots: all('SELECT * FROM account_snapshots').map(rowAccountSnapshot),
     douyinVideos: all('SELECT * FROM douyin_videos').map(rowDouyinVideo),
@@ -2648,11 +2604,6 @@ function validateImportData(data) {
     requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `剪辑任务 ${item.id || ''} 引用了不存在的案例`);
     const slotId = refId(item, 'planSlotId', 'plan_slot_id');
     if (slotId) requireKnownId(slotIds, slotId, `剪辑任务 ${item.id || ''} 引用了不存在的排期`);
-  });
-  (data.verifyTasks || []).forEach((item) => {
-    requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `核对任务 ${item.id || ''} 引用了不存在的案例`);
-    const slotId = refId(item, 'planItemId', 'plan_item_id');
-    if (slotId) requireKnownId(slotIds, slotId, `核对任务 ${item.id || ''} 引用了不存在的排期`);
   });
   (data.metrics || []).forEach((item) => requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `数据记录 ${item.id || ''} 引用了不存在的案例`));
   (data.accountSnapshots || []).forEach((item) => requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `账号快照 ${item.id || ''} 引用了不存在的案例`));
@@ -3340,7 +3291,7 @@ app.post('/api/cases/:id/slots', (req, res) => {
 app.post('/api/slots/:id/generate-candidates', async (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
-  if (slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已完成', '已汇报', '已核对'].includes(slot.status)) {
+  if (slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已完成'].includes(slot.status)) {
     return res.status(409).json({ error: '该槽位已锁定，不能重新生成候选' });
   }
   res.json(await generateCandidatesForSlot(slot));
@@ -3360,30 +3311,6 @@ app.patch('/api/slots/:id/status', (req, res) => {
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   const status = req.body?.status || slot.status;
   run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', [status, now(), slot.id]);
-  if (status === '已汇报') {
-    const caze = caseById(slot.caseId);
-    const selected = rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId]));
-    const reportedUrl = String(req.body?.douyinUrl || '').trim();
-    const verifyUrl = reportedUrl || caze.douyinUrl;
-    const reportNote = req.body?.resultNote || req.body?.reportNote || (reportedUrl ? `兼职回传作品链接：${reportedUrl}` : '');
-    const expectedAssets = slot.deliveryDir && fs.existsSync(path.join(slot.deliveryDir, '05-素材顺序清单.txt'))
-      ? fs.readFileSync(path.join(slot.deliveryDir, '05-素材顺序清单.txt'), 'utf8').split('\n').filter((line) => /^\d+\./.test(line.trim()))
-      : [];
-    const exists = get('SELECT id FROM verify_tasks WHERE plan_item_id = ?', [slot.id]);
-    if (!exists) {
-      run(
-        `INSERT INTO verify_tasks
-        (id, case_id, plan_item_id, douyin_url, expected_title, expected_publish_date, expected_assets, status, result_note, metrics_snapshot, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, ?, ?)`,
-        [uid('verify'), caze.id, slot.id, verifyUrl, selected?.title || '', slot.date, JSON.stringify(expectedAssets), reportNote, now(), now()]
-      );
-    } else if (reportedUrl || reportNote) {
-      run(
-        'UPDATE verify_tasks SET douyin_url = ?, result_note = ?, updated_at = ? WHERE plan_item_id = ?',
-        [verifyUrl, reportNote, now(), slot.id]
-      );
-    }
-  }
   res.json(slotById(slot.id));
 });
 
@@ -3876,51 +3803,6 @@ app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
   res.json({ createdCount: created.length, skippedCount: cases.length - created.length, slots: created });
 });
 
-app.patch('/api/verify-tasks/:id', (req, res) => {
-  const task = rowVerify(get('SELECT * FROM verify_tasks WHERE id = ?', [req.params.id]));
-  if (!task) return res.status(404).json({ error: 'verify task not found' });
-  const body = req.body || {};
-  run(
-    'UPDATE verify_tasks SET status = ?, result_note = ?, metrics_snapshot = ?, updated_at = ? WHERE id = ?',
-    [
-      body.status || task.status,
-      body.resultNote ?? task.resultNote,
-      body.metricsSnapshot ? JSON.stringify(body.metricsSnapshot) : JSON.stringify(task.metricsSnapshot),
-      now(),
-      task.id
-    ]
-  );
-  if (body.status === 'verified') {
-    run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['已核对', now(), task.planItemId]);
-    const snapshot = body.metricsSnapshot || {};
-    const hasMetric = ['fans', 'plays', 'likes', 'comments'].some((key) => snapshot[key] !== undefined && snapshot[key] !== '');
-    if (hasMetric) {
-      run(
-        `INSERT INTO metrics (id, case_id, date, fans, plays, likes, comments, note, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          uid('metric'),
-          task.caseId,
-          new Date().toISOString().slice(0, 10),
-          snapshot.fans === '' ? null : Number(snapshot.fans),
-          snapshot.plays === '' ? null : Number(snapshot.plays),
-          snapshot.likes === '' ? null : Number(snapshot.likes),
-          snapshot.comments === '' ? null : Number(snapshot.comments),
-          body.resultNote || '账号数据记录',
-          now()
-        ]
-      );
-    }
-  }
-  res.json(rowVerify(get('SELECT * FROM verify_tasks WHERE id = ?', [task.id])));
-});
-
-app.get('/api/verify-tasks/:id/checklist', (req, res) => {
-  const task = rowVerify(get('SELECT * FROM verify_tasks WHERE id = ?', [req.params.id]));
-  if (!task) return res.status(404).json({ error: 'verify task not found' });
-  res.json({ text: verifyChecklistText(task) });
-});
-
 app.get('/api/export', (_req, res) => {
   res.json(exportData());
 });
@@ -3937,7 +3819,6 @@ app.post('/api/import', (req, res) => {
   run('DELETE FROM account_snapshots');
   run('DELETE FROM collection_runs');
   run('DELETE FROM metrics');
-  run('DELETE FROM verify_tasks');
   run('DELETE FROM clip_tasks');
   run('DELETE FROM image_tasks');
   run('DELETE FROM assets');
@@ -4141,28 +4022,6 @@ app.post('/api/import', (req, res) => {
     );
   });
 
-  (data.verifyTasks || []).forEach((item) => {
-    run(
-      `INSERT INTO verify_tasks
-      (id, case_id, plan_item_id, douyin_url, expected_title, expected_publish_date, expected_assets, status, result_note, metrics_snapshot, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        item.id,
-        item.caseId || item.case_id,
-        item.planItemId || item.plan_item_id,
-        item.douyinUrl || item.douyin_url || '',
-        item.expectedTitle || item.expected_title || '',
-        item.expectedPublishDate || item.expected_publish_date || '',
-        JSON.stringify(item.expectedAssets || []),
-        item.status || 'pending',
-        item.resultNote || item.result_note || '',
-        item.metricsSnapshot ? JSON.stringify(item.metricsSnapshot) : null,
-        item.createdAt || importedAt,
-        item.updatedAt || importedAt
-      ]
-    );
-  });
-
   (data.metrics || []).forEach((item) => {
     run(
       `INSERT INTO metrics (id, case_id, date, fans, plays, likes, comments, note, created_at)
@@ -4326,6 +4185,8 @@ app.post('/api/open-path', (req, res) => {
     res.status(err.status || 500).json({ error: err.message });
   }
 });
+
+app.use('/api', (_req, res) => res.status(404).json({ error: 'api not found' }));
 
 app.use('/files', express.static(MATERIAL_ROOT));
 app.use('/shared-files', express.static(SHARED_MATERIAL_ROOT));
