@@ -2472,7 +2472,7 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   }
   if (caze.healthStatus !== '健康') {
     reasons.push(caze.healthStatus);
-    actions.push('按人工标记状态优先处理，必要时手动新增临时槽位');
+    actions.push('按人工标记状态优先处理，必要时由系统生成临时槽位');
   }
 
   const status = reasons.length === 0 ? '健康' : reasons.includes('播放下滑') ? '偏冷' : reasons[0];

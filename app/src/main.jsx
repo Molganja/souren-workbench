@@ -499,7 +499,6 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
         </div>
       </section>}
 
-      <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} />
     </div>
   );
 }
@@ -610,47 +609,6 @@ function MonitorActionSection({ title = '账号策略动作', empty = '暂无需
           ))}
         </div>
       )}
-    </section>
-  );
-}
-
-function MonitorSection({ monitor, onOpenCase, onAct }) {
-  const accounts = monitor?.accounts || [];
-  const due = accounts.filter((item) => item.dueCollection).slice(0, 8);
-  return (
-    <section className="panel backstagePanel">
-      <details>
-        <summary>
-          <strong>后台采集状态</strong>
-          <span>{monitor?.totals?.monitoredAccounts || 0} 个账号 · {monitor?.totals?.dueCollection || 0} 个待登记 · {monitor?.totals?.collectionQueued || 0} 个已排队</span>
-        </summary>
-        <div className="backstageBody">
-          <div className="sectionHead">
-            <h2>抖音账号采集</h2>
-            <div className="headerActions">
-              <span>这是后台数据入口，不是工作人员每日首要动作</span>
-              <button onClick={() => onAct(
-                () => request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 80 }) }),
-                (result) => `Chrome采集清单已生成：${result.registeredCount} 个账号`
-              )}>生成Chrome采集清单</button>
-            </div>
-          </div>
-          {accounts.length === 0 ? <div className="empty">新建案例时填写抖音主页后，会进入 24 小时账号数据监控</div> : (
-            <div className="accountGrid">
-              {(due.length ? due : accounts.slice(0, 8)).map((item) => (
-                <div className="accountCard" key={item.case.id}>
-                  <button className="linkButton" onClick={() => onOpenCase(item.case.id)}>{item.case.weixinNick}</button>
-                  <span>{item.collectionQueued ? '已排队' : item.dueCollection ? '待登记' : '已采集'} · 粉丝 {formatNumber(item.latestSnapshot?.fans)} · 初始 {formatNumber(item.initialSnapshot?.fans)}</span>
-                  <small>{item.topVideo ? `最高播放 ${formatNumber(item.topVideo.latestSnapshot?.plays)}｜${item.topVideo.title || '未命名作品'}` : `最近采集：${shortTime(item.lastCollectedAt)}`}</small>
-                  <div className="inlineActions compactActions">
-                    {item.case.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </details>
     </section>
   );
 }
@@ -1650,7 +1608,6 @@ function deleteCase(item, onAct) {
 function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPaths }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], monitor = {}, videos = [], viralAlerts = [], metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
-  const [slotFormOpen, setSlotFormOpen] = useState(false);
   const candidatesBySlot = useMemo(() => {
     const map = {};
     candidates.forEach((item) => {
@@ -1674,7 +1631,6 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
         </div>
         <div className="headerActions">
           <button onClick={() => setEditOpen(true)}>编辑案例</button>
-          <button onClick={() => setSlotFormOpen(true)}>手动加槽位</button>
           <button disabled={!caze.sourceMaterialDir} onClick={() => onAct(
             () => request(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' }),
             (result) => `已同步共享素材：复制 ${result.copied} 个，新增 ${result.inserted} 个`
@@ -1694,16 +1650,6 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
             await request(`/cases/${caze.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
             setEditOpen(false);
           }, '案例信息已更新')}
-        />
-      )}
-      {slotFormOpen && (
-        <SlotForm
-          caze={caze}
-          onClose={() => setSlotFormOpen(false)}
-          onSubmit={(payload) => onAct(async () => {
-            await request(`/cases/${caze.id}/slots`, { method: 'POST', body: JSON.stringify(payload) });
-            setSlotFormOpen(false);
-          }, '槽位已新增')}
         />
       )}
 
@@ -2475,34 +2421,6 @@ function BulkCaseForm({ onClose, onSubmit }) {
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
         <button className="primary" onClick={() => onSubmit({ text })}>导入</button>
-      </div>
-    </Modal>
-  );
-}
-
-function SlotForm({ caze, onClose, onSubmit }) {
-  const [form, setForm] = useState({
-    date: today(),
-    timeWindow: '19:00-21:00',
-    contentKind: '日常养号',
-    stage: caze.stage || '起号期',
-    goal: ''
-  });
-  function update(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-  return (
-    <Modal title="手动新增内容槽位" onClose={onClose}>
-      <div className="formGrid">
-        <label>日期<input value={form.date} onChange={(e) => update('date', e.target.value)} /></label>
-        <label>时间窗<input value={form.timeWindow} onChange={(e) => update('timeWindow', e.target.value)} /></label>
-        <label>内容类型<select value={form.contentKind} onChange={(e) => update('contentKind', e.target.value)}>{KINDS.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label>阶段<select value={form.stage} onChange={(e) => update('stage', e.target.value)}>{STAGES.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="wide">目标/备注<textarea value={form.goal} onChange={(e) => update('goal', e.target.value)} placeholder="留空则按类型自动生成目标" /></label>
-      </div>
-      <div className="modalActions">
-        <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={() => onSubmit(form)}>新增</button>
       </div>
     </Modal>
   );
