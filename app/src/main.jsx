@@ -36,10 +36,16 @@ const REVIEW_ACTIONS = [
   ['approved', '标记通过'],
   ['rejected', '标记驳回']
 ];
+const CLIP_ACTIONS = [
+  ['completed', '标记完成'],
+  ['review', '待确认'],
+  ['rejected', '退回处理']
+];
 
 async function request(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const res = await fetch(`${API}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: isFormData ? { ...(options.headers || {}) } : { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options
   });
   if (!res.ok) {
@@ -95,6 +101,37 @@ function randomCaseDefaults() {
   };
 }
 
+function AccessGate({ session, onLogin }) {
+  const [accessCode, setAccessCode] = useState('');
+  return (
+    <section className="hero accessGate">
+      <div>
+        <p className="eyebrow">局域网工作台</p>
+        <h1>输入访问码</h1>
+        <p>这个页面用于同局域网电脑访问主机工作台。通过后可以处理兼职对接、复制交付内容和回填任务状态。</p>
+        <form className="accessForm" onSubmit={(event) => {
+          event.preventDefault();
+          onLogin(accessCode);
+        }}>
+          <input
+            type="password"
+            value={accessCode}
+            onChange={(event) => setAccessCode(event.target.value)}
+            placeholder="访问码"
+            autoFocus
+          />
+          <button className="primary" disabled={!accessCode.trim()}>进入工作台</button>
+        </form>
+      </div>
+      <div className="stats">
+        <Metric label="本机地址" value={session.network?.localUrl || '-'} />
+        <Metric label="局域网" value={session.network?.lanEnabled ? '已开放' : '未开放'} />
+        <Metric label="访问码" value={session.network?.accessCodeRequired ? '已开启' : '未开启'} />
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const [view, setView] = useState('dashboard');
   const [dashboard, setDashboard] = useState(null);
@@ -106,6 +143,7 @@ function App() {
   const [viralTemplates, setViralTemplates] = useState([]);
   const [contentSeeds, setContentSeeds] = useState([]);
   const [config, setConfig] = useState(null);
+  const [session, setSession] = useState(null);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(true);
   const [caseFormOpen, setCaseFormOpen] = useState(false);
@@ -141,8 +179,37 @@ function App() {
   }
 
   useEffect(() => {
-    refresh().catch((err) => showToast(err.message));
+    let alive = true;
+    async function boot() {
+      try {
+        const sessionData = await request('/session');
+        if (!alive) return;
+        setSession(sessionData);
+        if (sessionData.authRequired && !sessionData.authenticated) {
+          setLoading(false);
+          return;
+        }
+        await refresh();
+      } catch (err) {
+        if (alive) {
+          setLoading(false);
+          showToast(err.message);
+        }
+      }
+    }
+    boot();
+    return () => {
+      alive = false;
+    };
   }, [selectedCaseId]);
+
+  async function login(accessCode) {
+    await request('/session/login', { method: 'POST', body: JSON.stringify({ accessCode }) });
+    const sessionData = await request('/session');
+    setSession(sessionData);
+    setLoading(true);
+    await refresh();
+  }
 
   function showToast(message) {
     setToast(message);
@@ -187,36 +254,43 @@ function App() {
       <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>排期规划</button>
       <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
       <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款链接</button>
+      <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>系统配置</button>
     </div>
   );
+  const canUseWorkbench = session ? (!session.authRequired || session.authenticated) : false;
 
   return (
     <div>
       <header className="topbar">
         <div className="brand">素人种草运营工作台</div>
-        {nav}
-        <div className="topActions">
-          <button className="button primary" onClick={() => setCaseFormOpen(true)}>新建案例</button>
-        </div>
+        {canUseWorkbench && nav}
+        {canUseWorkbench && (
+          <div className="topActions">
+            <button className="button primary" onClick={() => setCaseFormOpen(true)}>新建案例</button>
+          </div>
+        )}
       </header>
       <main className="page">
         {loading && <div className="empty">加载中</div>}
-        {!loading && view === 'dashboard' && dashboard && (
+        {!loading && session?.authRequired && !session?.authenticated && (
+          <AccessGate session={session} onLogin={(code) => act(() => login(code), '已进入工作台')} />
+        )}
+        {!loading && canUseWorkbench && view === 'dashboard' && dashboard && (
           <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onCopy={copyText} onOpenViral={() => setView('viral')} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} />
         )}
-        {!loading && view === 'review' && review && (
+        {!loading && canUseWorkbench && view === 'review' && review && (
           <ReviewView data={review} onOpenCase={openCase} />
         )}
-        {!loading && view === 'schedule' && schedule && (
+        {!loading && canUseWorkbench && view === 'schedule' && schedule && (
           <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onCopy={copyText} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} />
         )}
-        {!loading && view === 'cases' && (
+        {!loading && canUseWorkbench && view === 'cases' && (
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
         )}
-        {!loading && view === 'case' && caseDetail && (
+        {!loading && canUseWorkbench && view === 'case' && caseDetail && (
           <CaseDetail detail={caseDetail} onAct={act} onCopy={copyText} onBack={() => setView('cases')} onVerify={setVerifyTaskOpen} onDelivery={setDeliverySlotOpen} />
         )}
-        {!loading && view === 'viral' && (
+        {!loading && canUseWorkbench && view === 'viral' && (
           <ViralView
             templates={viralTemplates}
             onNew={() => {
@@ -231,10 +305,10 @@ function App() {
             onCopy={copyText}
           />
         )}
-        {!loading && view === 'seeds' && (
+        {!loading && canUseWorkbench && view === 'seeds' && (
           <SeedView seeds={contentSeeds} onNew={() => setSeedFormOpen(true)} onAct={act} />
         )}
-        {!loading && view === 'settings' && config && (
+        {!loading && canUseWorkbench && view === 'settings' && config && (
           <SettingsView config={config} onAct={act} onCopy={copyText} />
         )}
       </main>
@@ -531,7 +605,7 @@ function ClipTaskSection({ items, onOpenCase, onAct, onCopy }) {
               <div className="rowActions">
                 <button onClick={() => onCopy(task.brief, '剪辑任务单已复制')}>复制任务单</button>
                 <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>
-                {REVIEW_ACTIONS.map(([status, label]) => (
+                {CLIP_ACTIONS.map(([status, label]) => (
                   <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
                 ))}
               </div>
@@ -1060,8 +1134,8 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
 }
 
 function deleteCase(item, onAct) {
-  if (!window.confirm(`删除案例「${item.weixinNick}」？数据库记录会删除，本地素材目录不会自动删除。`)) return;
-  onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), '案例已删除');
+  if (!window.confirm(`删除案例「${item.weixinNick}」？数据库记录和本地素材目录都会删除，不能恢复。`)) return;
+  onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), (result) => result.removedDir ? '案例和本地素材目录已删除' : '案例已删除，本地目录原本不存在');
 }
 
 function CaseDetail({ detail, onAct, onCopy, onBack, onVerify, onDelivery }) {
@@ -1194,7 +1268,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onVerify, onDelivery }) {
                   <div className="inlineActions">
                     <button onClick={() => onCopy(task.brief, '剪辑任务单已复制')}>复制任务单</button>
                     <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>
-                    {REVIEW_ACTIONS.map(([status, label]) => (
+                    {CLIP_ACTIONS.map(([status, label]) => (
                       <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
                     ))}
                   </div>
@@ -1702,10 +1776,30 @@ function SettingsView({ config, onAct, onCopy }) {
         <div className="stats">
           <Metric label="图片接口" value={config.image?.ready ? '已接入' : '待接入'} />
           <Metric label="文案接口" value={config.llmKeyReady ? '已接入' : '待接入'} />
+          <Metric label="局域网" value={config.network?.lanEnabled ? '已开放' : '本机'} />
           <Metric label="阶段" value={config.stages.length} />
           <Metric label="内容类" value={config.contentKinds.length} />
-          <Metric label="模板" value={Object.keys(config.materialTemplates).length} />
           <Metric label="就绪" value={`${config.readiness?.summary?.ready || 0}/${config.readiness?.summary?.total || 0}`} />
+        </div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>局域网访问</h2>
+          <button onClick={() => onCopy(networkSetupText(config), '局域网配置说明已复制')}>复制配置说明</button>
+        </div>
+        <div className="templateList">
+          <div className="templateRow">
+            <strong>本机地址</strong>
+            <span>{config.network?.localUrl}</span>
+          </div>
+          <div className="templateRow">
+            <strong>给工作人员的网址</strong>
+            <span>{config.network?.lanEnabled && config.network?.lanUrls?.length ? config.network.lanUrls.join(' / ') : '当前未开放局域网访问'}</span>
+          </div>
+          <div className="templateRow">
+            <strong>访问码</strong>
+            <span>{config.network?.accessCodeRequired ? '已开启' : '未开启；建议开放局域网时设置 SOUREN_ACCESS_CODE'}</span>
+          </div>
         </div>
       </section>
       <section className="panel">
@@ -1815,6 +1909,24 @@ function localAiSetupText(config) {
     '',
     `助手工作包目录：${config.operatorPacketDir}`,
     `顾问记录目录：${config.aiConsultDir}`
+  ].join('\n');
+}
+
+function networkSetupText(config) {
+  const lanUrls = config.network?.lanEnabled ? (config.network?.lanUrls || []) : [];
+  return [
+    '局域网工作台配置',
+    '',
+    '1. 在主机 app/.env 中设置：',
+    'SOUREN_HOST=0.0.0.0',
+    'SOUREN_ACCESS_CODE=这里填一个给工作人员的访问码',
+    '',
+    '2. 重启工作台。',
+    '',
+    '3. 把下面任意一个网址发给同一局域网内的工作人员：',
+    ...(lanUrls.length ? lanUrls : ['当前未检测到局域网地址，请确认已经设置 SOUREN_HOST=0.0.0.0 并重启。']),
+    '',
+    '工作人员只需要打开网址、输入访问码，然后处理对接、复制交付内容和回填状态。'
   ].join('\n');
 }
 

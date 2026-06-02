@@ -9,6 +9,7 @@ const TEST_LLM_APP_PORT = 5186;
 const TEST_LLM_PORT = 5187;
 const TEST_IMAGE_APP_PORT = 5188;
 const TEST_IMAGE_PORT = 5189;
+const TEST_AUTH_PORT = 5190;
 const ORIGIN = `http://127.0.0.1:${TEST_PORT}`;
 const BASE = `${ORIGIN}/api`;
 const APP_DIR = path.resolve(import.meta.dirname, '..');
@@ -17,6 +18,7 @@ const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
 const AI_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-ai');
 const LLM_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-llm');
 const IMAGE_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image');
+const AUTH_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-auth');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -217,6 +219,56 @@ async function imageGenerationSmoke() {
   }
 }
 
+async function authAccessSmoke() {
+  fs.rmSync(path.join(AUTH_ROOT_DIR, 'data'), { recursive: true, force: true });
+  fs.rmSync(path.join(AUTH_ROOT_DIR, '素材库'), { recursive: true, force: true });
+  fs.mkdirSync(AUTH_ROOT_DIR, { recursive: true });
+  const authOrigin = `http://127.0.0.1:${TEST_AUTH_PORT}`;
+  const authBase = `${authOrigin}/api`;
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: {
+      ...process.env,
+      PORT: String(TEST_AUTH_PORT),
+      SOUREN_ROOT_DIR: AUTH_ROOT_DIR,
+      SOUREN_ACCESS_CODE: 'lan-test-code',
+      SOUREN_AUTH_LOCAL_BYPASS: '0',
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  try {
+    await waitForServer(server, authBase);
+    const session = await api('/session', {}, authBase);
+    assert(session.authRequired === true && session.authenticated === false, 'auth session did not require access code');
+    const blockedDashboard = await fetch(`${authBase}/dashboard`);
+    assert(blockedDashboard.status === 401, 'dashboard was accessible without access code');
+    const blockedFiles = await fetch(`${authOrigin}/files/app/.env`);
+    assert(blockedFiles.status === 401, 'files route was accessible without access code');
+    const badLogin = await fetch(`${authBase}/session/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessCode: 'wrong' })
+    });
+    assert(badLogin.status === 401, 'wrong access code was accepted');
+    const login = await fetch(`${authBase}/session/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessCode: 'lan-test-code' })
+    });
+    assert(login.ok, 'correct access code was rejected');
+    const cookie = login.headers.get('set-cookie')?.split(';')[0];
+    assert(cookie?.startsWith('souren_access='), 'login did not set access cookie');
+    const allowedDashboard = await fetch(`${authBase}/dashboard`, { headers: { Cookie: cookie } });
+    assert(allowedDashboard.ok, 'dashboard was not accessible after access code login');
+  } finally {
+    server.kill('SIGTERM');
+    fs.rmSync(AUTH_ROOT_DIR, { recursive: true, force: true });
+  }
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -321,7 +373,11 @@ async function main() {
     assert(bulk.createdCount === 2, 'bulk import did not create two cases');
     assert(bulk.cases[0].staff === '咨询A' && bulk.cases[1].staff === '咨询B', 'bulk import staff missing');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
-    await api(`/cases/${bulk.cases[1].id}`, { method: 'DELETE' });
+    const deletedCaseDir = bulk.cases[1].localCaseDir;
+    assert(fs.existsSync(deletedCaseDir), 'case directory missing before delete');
+    const deletedCase = await api(`/cases/${bulk.cases[1].id}`, { method: 'DELETE' });
+    assert(deletedCase.removedDir === true, 'case delete did not report local directory removal');
+    assert(!fs.existsSync(deletedCaseDir), 'case delete did not remove local material directory');
     const afterDelete = await api('/cases');
     assert(afterDelete.length === 1 && afterDelete[0].id === bulk.cases[0].id, 'case delete failed');
     const batchGenerated = await api('/dashboard/generate-today', { method: 'POST' });
@@ -437,10 +493,10 @@ async function main() {
     const clipDashboard = await api('/dashboard');
     assert(clipDashboard.counts.clipTasks >= 1, 'dashboard clip task count missing');
     assert(clipDashboard.clipTasks.some((item) => item.id === clip.id && item.case?.id === caze.id), 'dashboard clip task list missing case task');
-    const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
-    assert(reviewedClip.status === 'approved', 'clip status update failed');
+    const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) });
+    assert(reviewedClip.status === 'completed', 'clip status update failed');
     const clipDashboardAfter = await api('/dashboard');
-    assert(!clipDashboardAfter.clipTasks.some((item) => item.id === clip.id), 'approved clip task still shown as pending');
+    assert(!clipDashboardAfter.clipTasks.some((item) => item.id === clip.id), 'completed clip task still shown as pending');
     const delivery = await api(`/slots/${slot.id}/delivery`, { method: 'POST' });
     const wxChecklistPath = path.join(delivery.deliveryDir, '00-微信发送清单.txt');
     assert(fs.existsSync(wxChecklistPath), 'delivery package missing WeChat checklist');
@@ -483,6 +539,7 @@ async function main() {
     await localAiSuccessSmoke();
     await llmCandidateSmoke();
     await imageGenerationSmoke();
+    await authAccessSmoke();
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -633,6 +690,7 @@ async function main() {
     fs.rmSync(AI_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(LLM_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(IMAGE_ROOT_DIR, { recursive: true, force: true });
+    fs.rmSync(AUTH_ROOT_DIR, { recursive: true, force: true });
   }
 }
 

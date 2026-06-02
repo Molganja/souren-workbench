@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import {
   DATA_DIR,
@@ -20,6 +22,11 @@ import {
 
 const app = express();
 const PORT = Number(process.env.PORT || 5174);
+const LISTEN_HOST = process.env.SOUREN_HOST || '127.0.0.1';
+const ACCESS_CODE = String(process.env.SOUREN_ACCESS_CODE || '').trim();
+const AUTH_LOCAL_BYPASS = process.env.SOUREN_AUTH_LOCAL_BYPASS !== '0';
+const AUTH_COOKIE = 'souren_access';
+const AUTH_SECRET = process.env.SOUREN_AUTH_SECRET || `${ROOT_DIR}:${ACCESS_CODE || 'local'}`;
 const REPO_DIR = path.resolve(process.cwd(), '..');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const OPERATOR_PACKET_DIR = path.join(DATA_DIR, 'operator-packets');
@@ -29,6 +36,29 @@ const DEFAULT_IMAGE_MODEL = 'image-v2';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+app.get('/api/session', (req, res) => {
+  res.json(authSession(req));
+});
+
+app.post('/api/session/login', (req, res) => {
+  const accessCode = String(req.body?.accessCode || '').trim();
+  if (!ACCESS_CODE) return res.json(authSession(req));
+  if (accessCode !== ACCESS_CODE) return res.status(401).json({ error: '访问码不正确' });
+  res.cookie(AUTH_COOKIE, authToken(), {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/'
+  });
+  res.json({ ...authSession(req), authenticated: true });
+});
+
+app.use('/api', (req, res, next) => {
+  if (['/session', '/session/login', '/health'].includes(req.path)) return next();
+  return requireWorkbenchAccess(req, res, next);
+});
+app.use('/files', requireWorkbenchAccess);
 
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
@@ -63,6 +93,73 @@ const STATUS_LABELS = {
 
 function displayStatus(status) {
   return STATUS_LABELS[status] || status || '未知';
+}
+
+function networkSettings() {
+  const interfaces = os.networkInterfaces();
+  const lanIps = Object.values(interfaces)
+    .flat()
+    .filter((item) => item && item.family === 'IPv4' && !item.internal)
+    .map((item) => item.address);
+  const lanUrls = Array.from(new Set(lanIps.map((ip) => `http://${ip}:${PORT}`)));
+  const lanEnabled = !['127.0.0.1', 'localhost', '::1'].includes(LISTEN_HOST);
+  return {
+    listenHost: LISTEN_HOST,
+    port: PORT,
+    localUrl: `http://127.0.0.1:${PORT}`,
+    lanUrls,
+    lanEnabled,
+    accessCodeRequired: Boolean(ACCESS_CODE),
+    localBypass: AUTH_LOCAL_BYPASS
+  };
+}
+
+function clientIp(req) {
+  return String(req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+}
+
+function isLoopbackRequest(req) {
+  const ip = clientIp(req);
+  return ip === '::1' || ip === '127.0.0.1' || ip.startsWith('127.');
+}
+
+function parseCookies(req) {
+  return Object.fromEntries(String(req.headers.cookie || '')
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const index = item.indexOf('=');
+      if (index === -1) return [item, ''];
+      return [decodeURIComponent(item.slice(0, index)), decodeURIComponent(item.slice(index + 1))];
+    }));
+}
+
+function authToken() {
+  return crypto.createHmac('sha256', AUTH_SECRET).update(ACCESS_CODE).digest('hex');
+}
+
+function hasValidAccess(req) {
+  if (!ACCESS_CODE) return true;
+  if (AUTH_LOCAL_BYPASS && isLoopbackRequest(req)) return true;
+  if (req.get('X-Souren-Access') === ACCESS_CODE) return true;
+  return parseCookies(req)[AUTH_COOKIE] === authToken();
+}
+
+function authSession(req) {
+  return {
+    authRequired: Boolean(ACCESS_CODE),
+    authenticated: hasValidAccess(req),
+    localRequest: isLoopbackRequest(req),
+    canOpenLocalPaths: isLoopbackRequest(req),
+    localBypassActive: Boolean(ACCESS_CODE && AUTH_LOCAL_BYPASS && isLoopbackRequest(req)),
+    network: networkSettings()
+  };
+}
+
+function requireWorkbenchAccess(req, res, next) {
+  if (hasValidAccess(req)) return next();
+  return res.status(401).json({ error: '请输入工作台访问码' });
 }
 
 function llmSettings() {
@@ -809,6 +906,19 @@ function writeCaseManifest(caze) {
   if (!caze?.localCaseDir) return;
   ensureCaseDirs(caze.localCaseDir);
   fs.writeFileSync(path.join(caze.localCaseDir, 'case.json'), JSON.stringify(caze, null, 2));
+}
+
+function removeCaseDirectory(caze) {
+  if (!caze?.localCaseDir) return false;
+  const target = assertInsideMaterialRoot(caze.localCaseDir);
+  if (target === MATERIAL_ROOT) {
+    const err = new Error('refuse to delete material root');
+    err.status = 400;
+    throw err;
+  }
+  if (!fs.existsSync(target)) return false;
+  fs.rmSync(target, { recursive: true, force: true });
+  return true;
 }
 
 function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
@@ -1809,8 +1919,17 @@ function systemReadiness() {
   const llm = llmSettings();
   const ai = localAiStatus();
   const github = gitSyncStatus();
+  const network = networkSettings();
   const checks = [
     { key: 'local-web', label: '本地网页工作台', status: 'ready', detail: `http://127.0.0.1:${PORT}` },
+    {
+      key: 'lan-workbench',
+      label: '局域网工作台',
+      status: network.lanEnabled ? (network.accessCodeRequired ? 'ready' : 'warning') : 'waiting',
+      detail: network.lanEnabled
+        ? `${network.lanUrls[0] || `http://${LISTEN_HOST}:${PORT}`}｜${network.accessCodeRequired ? '访问码已开启' : '未设置访问码'}`
+        : '当前只允许本机访问；设置 SOUREN_HOST=0.0.0.0 后可给同局域网工作人员使用'
+    },
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已汇报、已核对、助手记录' },
@@ -1930,6 +2049,7 @@ app.get('/api/health', (_req, res) => {
     llmKeyReady: llm.ready,
     llm: { ready: llm.ready, baseUrl: llm.baseUrl, model: llm.model },
     localAi: localAiStatus(),
+    network: networkSettings(),
     readiness: systemReadiness().summary
   });
 });
@@ -2078,8 +2198,13 @@ app.patch('/api/cases/:id', (req, res) => {
 app.delete('/api/cases/:id', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });
-  run('DELETE FROM cases WHERE id = ?', [caze.id]);
-  res.json({ deleted: true, id: caze.id });
+  try {
+    const removedDir = removeCaseDirectory(caze);
+    run('DELETE FROM cases WHERE id = ?', [caze.id]);
+    res.json({ deleted: true, id: caze.id, removedDir, localCaseDir: caze.localCaseDir });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.get('/api/cases/:id', (req, res) => {
@@ -2124,6 +2249,7 @@ app.get('/api/config', (_req, res) => {
     llmKeyReady: llm.ready,
     llm: { ready: llm.ready, baseUrl: llm.baseUrl, model: llm.model },
     localAi: localAiStatus(),
+    network: networkSettings(),
     readiness: systemReadiness(),
     materialRoot: MATERIAL_ROOT,
     operatorPacketDir: OPERATOR_PACKET_DIR,
@@ -3046,6 +3172,9 @@ app.patch('/api/assets/:id', (req, res) => {
 
 app.post('/api/open-path', (req, res) => {
   try {
+    if (!isLoopbackRequest(req)) {
+      return res.status(403).json({ error: '局域网端不能打开主机本地目录，请在网页内复制、下载和标记状态' });
+    }
     const target = assertInsideRoot(req.body?.path || ROOT_DIR);
     if (!fs.existsSync(target)) return res.status(404).json({ error: 'path not found' });
     openLocalPath(target, (error) => {
@@ -3067,7 +3196,12 @@ if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
   app.get('*splat', (_req, res) => res.sendFile(path.join(process.cwd(), 'dist', 'index.html')));
 }
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`API running at http://127.0.0.1:${PORT}`);
+app.listen(PORT, LISTEN_HOST, () => {
+  const network = networkSettings();
+  console.log(`API running at ${network.localUrl}`);
+  if (network.lanEnabled && network.lanUrls.length) {
+    console.log(`LAN workbench: ${network.lanUrls.join(' / ')}`);
+    console.log(`LAN access code: ${network.accessCodeRequired ? 'enabled' : 'not set'}`);
+  }
   console.log(`Material root: ${MATERIAL_ROOT}`);
 });

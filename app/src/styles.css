@@ -152,6 +152,23 @@ button.primary, .button.primary {
   line-height: 1.7;
 }
 
+.accessGate {
+  margin-top: 48px;
+}
+
+.accessForm {
+  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 430px;
+}
+
+.accessForm input {
+  flex: 1;
+  min-width: 0;
+}
+
 .healthLine {
   color: var(--orange) !important;
   font-weight: 650;
@@ -1044,6 +1061,10 @@ textarea {
   }
   .deliveryHeader {
     display: grid;
+  }
+  .accessForm {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
