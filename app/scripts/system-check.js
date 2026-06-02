@@ -158,6 +158,22 @@ else fail('案例详情仍可能绕过今日队首执行素材同步或扫描');
 if (mainSource.includes('素材标记排到今日队列队首后处理') && mainSource.includes('素材缺口排到今日队列队首后处理') && mainSource.includes('图片任务排到今日队列队首后处理') && mainSource.includes('canRunMaterialActions && REVIEW_ACTIONS')) ok('素材标记、缺口建图和图片审核也受队首限制');
 else fail('案例详情仍可能绕过今日队首执行素材标记、缺口建图或图片审核');
 
+if (
+  !mainSource.includes('重 roll') &&
+  !mainSource.includes('标记待审核') &&
+  !mainSource.includes('标记通过') &&
+  !mainSource.includes('标记驳回') &&
+  !mainSource.includes('待确认</button>') &&
+  !mainSource.includes('退回处理') &&
+  !mainSource.includes('已按配方完成') &&
+  mainSource.includes('重新生成候选') &&
+  mainSource.includes('暂缓这条') &&
+  mainSource.includes('待检查') &&
+  mainSource.includes('需要重剪') &&
+  mainSource.includes('剪辑已完成')
+) ok('候选、图片和剪辑按钮使用日常话术，不暴露技术口径');
+else fail('候选、图片或剪辑按钮仍有重 roll、审核、驳回等技术口径');
+
 if (!mainSource.includes('内容阶段比例') && !mainSource.includes('<h2>素材模板</h2>') && !serverSource.includes('stageRatios: STAGE_RATIOS') && !serverSource.includes('materialTemplates: MATERIAL_TEMPLATES')) ok('系统配置不暴露后台阶段比例和素材模板');
 else fail('系统配置仍暴露后台阶段比例或素材模板');
 

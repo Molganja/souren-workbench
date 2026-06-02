@@ -23,9 +23,9 @@ const STATUS_LABELS = {
   unknown: '未知'
 };
 const REVIEW_ACTIONS = [
-  ['review', '标记待审核'],
-  ['approved', '标记通过'],
-  ['rejected', '标记驳回']
+  ['review', '待检查'],
+  ['approved', '可用'],
+  ['rejected', '不用']
 ];
 
 async function request(path, options = {}) {
@@ -1663,14 +1663,14 @@ function ClipTaskModal({ task, onClose, onAct, activeQueueItem }) {
       </div>
       {isActiveQueueClip && (
         <div className={`handoffGuard ${completeReady ? 'ready' : ''}`}>
-          {completeReady ? '已确认剪辑配方，可以按实际结果标记状态。' : '先看完整剪辑配方，再标记完成，避免剪错或漏看素材要求。'}
+          {completeReady ? '已看完配方，可以收尾。' : '先看完整剪辑配方，再标记完成，避免剪错或漏看素材要求。'}
         </div>
       )}
       <div className="modalActions">
         <button onClick={onClose}>关闭</button>
-        {isActiveQueueClip && <button onClick={() => patchClipStatus('review')}>待确认</button>}
-        {isActiveQueueClip && <button onClick={() => patchClipStatus('rejected')}>退回处理</button>}
-        {isActiveQueueClip && <button className="primary" disabled={!completeReady} onClick={() => patchClipStatus('completed', { recipeConfirmed: true })}>已按配方完成</button>}
+        {isActiveQueueClip && <button onClick={() => patchClipStatus('review')}>等确认</button>}
+        {isActiveQueueClip && <button onClick={() => patchClipStatus('rejected')}>需要重剪</button>}
+        {isActiveQueueClip && <button className="primary" disabled={!completeReady} onClick={() => patchClipStatus('completed', { recipeConfirmed: true })}>剪辑已完成</button>}
       </div>
     </Modal>
   );
@@ -1723,13 +1723,13 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
       <p>{slot.goal}</p>
       <div className="inlineActions">
         {isActiveQueueSlot && !selected && ['待生成', '候选待选', '素材阻塞', '异常'].includes(slot.status) && (
-          <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
+          <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>{slot.status === '待生成' ? '生成候选' : '重新生成候选'}</button>
         )}
         {canGenerateDelivery && <button onClick={() => onAct(() => generateDeliveryAndOpen({ ...slot, case: caze }, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
         {canCreateClipTask && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), (result) => result.alreadyExisting ? '已有剪辑任务' : '剪辑任务已创建')}>创建剪辑任务</button>}
         {existingClipTask && <span className="lockedNote">剪辑任务已建</span>}
         {isActiveQueueSlot && slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
-        {canMarkException && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
+        {canMarkException && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已暂缓处理')}>暂缓这条</button>}
         {!isActiveQueueSlot && hasQueueAction && <span className="lockedNote">排到今日队列队首后处理</span>}
       </div>
       {slot.deliveryDir && <div className="path">交付内容已生成，可在网页内查看、复制和下载。</div>}
