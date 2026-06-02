@@ -1618,6 +1618,26 @@ async function main() {
     assert(minimalAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 1200), 'chrome agent ingest video metrics missing');
     const afterChromeAgentDashboard = await api('/dashboard');
     assert(afterChromeAgentDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing cold content action');
+    const nonHeadStrategyAction = afterChromeAgentDashboard.monitorActions.find((item) => (
+      ['偏冷补内容', '增长承接'].includes(item.kind)
+      && item.case?.id
+      && !(afterChromeAgentDashboard.queueHead?.monitorAction?.kind === item.kind
+        && afterChromeAgentDashboard.queueHead?.monitorAction?.case?.id === item.case.id)
+    ));
+    assert(nonHeadStrategyAction, 'missing non-head monitor action for queue guard smoke');
+    const nonHeadStrategyDetail = await api(`/cases/${nonHeadStrategyAction.case.id}`);
+    const nonHeadStrategySlotCount = nonHeadStrategyDetail.slots.filter((item) => String(item.goal || '').includes('账号策略动作')).length;
+    const nonHeadStrategyResponse = await fetch(`${BASE}/douyin-monitor/actions/slot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: nonHeadStrategyAction.case.id, kind: nonHeadStrategyAction.kind })
+    });
+    assert(nonHeadStrategyResponse.status === 409, 'non-head monitor action was allowed to create strategy slot');
+    const nonHeadStrategyAfterBlocked = await api(`/cases/${nonHeadStrategyAction.case.id}`);
+    assert(
+      nonHeadStrategyAfterBlocked.slots.filter((item) => String(item.goal || '').includes('账号策略动作')).length === nonHeadStrategySlotCount,
+      'non-head monitor action created a strategy slot'
+    );
     const coldSlot = await api('/douyin-monitor/actions/slot', {
       method: 'POST',
       body: JSON.stringify({ caseId: minimalCase.id, kind: '偏冷补内容' })

@@ -1067,6 +1067,20 @@ function requireQueueHeadForAlert(req, alert, action = '处理') {
   throw queueGuardError(`这条爆款提醒不是今日操作队列队首，不能越过前面的任务${action}`);
 }
 
+function monitorActionIsDashboardQueueHead(input = {}) {
+  if (!input?.caseId || !input?.kind) return false;
+  const queueHead = dashboardQueueHead(dashboard());
+  const action = queueHead?.monitorAction;
+  const actionCaseId = action?.case?.id || action?.caseId;
+  return Boolean(action?.kind && action.kind === input.kind && actionCaseId && String(actionCaseId) === String(input.caseId));
+}
+
+function requireQueueHeadForMonitorAction(req, input = {}, action = '处理') {
+  if (queueGuardBypassed(req)) return;
+  if (monitorActionIsDashboardQueueHead(input)) return;
+  throw queueGuardError(`这条账号策略动作不是今日操作队列队首，不能越过前面的任务${action}`);
+}
+
 function clipTaskIsDashboardQueueHead(task) {
   if (!task?.id) return false;
   const queueHead = dashboardQueueHead(dashboard());
@@ -4244,7 +4258,9 @@ app.post('/api/douyin-monitor/ingest', (req, res) => {
 
 app.post('/api/douyin-monitor/actions/slot', (req, res) => {
   try {
-    res.json(createMonitorActionSlot(req.body || {}));
+    const body = req.body || {};
+    requireQueueHeadForMonitorAction(req, body, '生成排期');
+    res.json(createMonitorActionSlot(body));
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }
