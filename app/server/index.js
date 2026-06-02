@@ -1601,6 +1601,39 @@ function isPendingViralTemplate(viral) {
     || viral.category === '待分析';
 }
 
+function cleanKeywordList(value) {
+  const input = Array.isArray(value) ? value : String(value || '').split(/[,\n，、]/);
+  return input.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function normalizeViralAnalysisResult(body = {}) {
+  const title = String(body.title || '').trim();
+  const rawText = String(body.rawText || '').trim();
+  const category = String(body.category || '').trim();
+  const hotStructure = String(body.hotStructure || '').trim();
+  const rewritePolicy = String(body.rewritePolicy || '').trim();
+  const missing = [];
+  if (!title) missing.push('标题');
+  if (!rawText || rawText.startsWith('待分析')) missing.push('原视频内容');
+  if (!category || category === '待分析') missing.push('类别');
+  if (!hotStructure || hotStructure.startsWith('待分析')) missing.push('结构分析');
+  if (!rewritePolicy) missing.push('改写策略');
+  if (missing.length) {
+    const error = new Error(`爆款分析结果缺少：${missing.join('、')}`);
+    error.status = 400;
+    throw error;
+  }
+  return {
+    title,
+    rawText,
+    category,
+    hotStructure,
+    suitablePersonas: cleanKeywordList(body.suitablePersonas),
+    forbiddenPersonas: cleanKeywordList(body.forbiddenPersonas),
+    rewritePolicy
+  };
+}
+
 function viralAnalysisTaskText(viral) {
   return [
     '爆款链接分析任务',
@@ -1615,14 +1648,19 @@ function viralAnalysisTaskText(viral) {
     '5. 适合人设关键词：城市、职业、项目、语气等',
     '6. 禁用人设关键词：不适合套用的账号类型',
     '',
-    '记录到系统：',
-    '标题 -> 备注标题',
-    '正文 -> 原视频内容',
-    '类别 -> 情绪/职场/穿搭/美食/本地生活/清单/反差故事',
-    '结构和建议 -> 分析结论',
-    '适合/禁用关键词 -> 对应输入框',
+    '后台写回接口：',
+    `POST /api/viral-templates/${viral.id}/analysis-result`,
     '',
-    '填写完成后再点“给可投放账号生成爆款候选”。'
+    'JSON字段：',
+    'title：标题或备注名',
+    'rawText：原视频完整正文/口播/字幕',
+    'category：情绪/职场/穿搭/美食/本地生活/清单/反差故事',
+    'hotStructure：结构拆解和下一步改写建议',
+    'suitablePersonas：适合账号关键词数组',
+    'forbiddenPersonas：禁用账号关键词数组',
+    'rewritePolicy：结构模仿/话题模仿/仅参考',
+    '',
+    '写回成功后，前台会从“待分析”变成“可生成”，工作人员不需要填写模板内容。'
   ].join('\n');
 }
 
@@ -4553,6 +4591,34 @@ app.get('/api/viral-templates/:id/analysis-task', (req, res) => {
   const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
   if (!viral) return res.status(404).json({ error: 'viral template not found' });
   res.json({ text: viralAnalysisTaskText(viral) });
+});
+
+app.post('/api/viral-templates/:id/analysis-result', (req, res) => {
+  const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
+  if (!viral) return res.status(404).json({ error: 'viral template not found' });
+  let result;
+  try {
+    result = normalizeViralAnalysisResult(req.body || {});
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
+  run(
+    `UPDATE viral_templates
+    SET title = ?, raw_text = ?, category = ?, hot_structure = ?, suitable_personas = ?, forbidden_personas = ?, rewrite_policy = ?, updated_at = ?
+    WHERE id = ?`,
+    [
+      result.title,
+      result.rawText,
+      result.category,
+      result.hotStructure,
+      JSON.stringify(result.suitablePersonas),
+      JSON.stringify(result.forbiddenPersonas),
+      result.rewritePolicy,
+      now(),
+      viral.id
+    ]
+  );
+  res.json(rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [viral.id])));
 });
 
 app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {

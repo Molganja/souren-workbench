@@ -69,6 +69,9 @@ const leakedViralAnalysisFields = viralAnalysisFields.filter((label) => mainSour
 if (!mainSource.includes('onEdit={(item)') && !mainSource.includes('editingViral') && !leakedViralAnalysisFields.length && mainSource.includes('等待系统分析')) ok('爆款链接前台只收链接，不要求工作人员填写分析字段');
 else fail(`爆款链接前台仍暴露分析字段：${leakedViralAnalysisFields.join('、') || '编辑入口'}`);
 
+if (serverSource.includes('/api/viral-templates/:id/analysis-result') && serverSource.includes('normalizeViralAnalysisResult') && serverSource.includes('爆款分析结果缺少') && smokeSource.includes('viral analysis result accepted incomplete payload') && smokeSource.includes('/analysis-result')) ok('爆款链接有后台分析写回接口，且不接受半分析结果');
+else fail('爆款链接缺少专用分析写回接口，或未验证半分析结果会被拒绝');
+
 if (mainSource.includes('disabled={!ready}') && mainSource.includes('sourceLink: form.sourceLink.trim()') && serverSource.includes('请先粘贴爆款视频链接') && smokeSource.includes('blankViralRejected')) ok('空爆款链接不会生成假模板');
 else fail('空爆款链接仍可能生成假模板');
 
@@ -153,7 +156,7 @@ else fail('缺少失联暂停账号恢复闭环');
 if (serverSource.includes('pauseCaseWork') && serverSource.includes('PAUSE_CANCEL_SLOT_STATUSES') && serverSource.includes("status = ?, finished_at = ?, note = ?, updated_at = ?") && serverSource.includes('pauseMaintenance')) ok('确认暂停会撤下未完成排期和等待中的采集单');
 else fail('确认暂停仍可能只隐藏账号，不撤下旧任务或采集单');
 
-if (serverSource.includes('给可投放账号生成爆款候选') && serverSource.includes('已有同一天同爆款任务') && !mainSource.includes("kind: '爆款分析'")) ok('爆款批量生成只进入可投放账号且不占用今日队列');
+if (serverSource.includes('这个爆款链接还没完成内容提取和结构分析') && serverSource.includes('已有同一天同爆款任务') && serverSource.includes('viralSuitableForCase') && serverSource.includes('shouldCreateSlotForDate(caze, targetDate, postingStrategy)') && !mainSource.includes("kind: '爆款分析'")) ok('爆款批量生成只进入可投放账号且不占用今日队列');
 else fail('爆款批量生成仍可能制造无效任务或占用今日队列');
 
 if (serverSource.includes('nextOpenStrategyDate') && serverSource.includes('existingStrategySlot') && serverSource.includes('账号已暂停或休眠，先不生成新的排期') && serverSource.includes('当天已有排期，先不额外加任务')) ok('账号策略动作按投放频率找空档，不给暂停或休眠账号造任务');
@@ -247,7 +250,10 @@ const staleOperatorDocs = [
   '回到系统补分析结果',
   '底部折叠的「后台采集状态」',
   '远端代码写权限未配置',
-  '待爆款分析链接只保留打开原链接和补分析结果'
+  '如果本机没有写权限',
+  '待爆款分析链接只保留打开原链接和补分析结果',
+  '适合/禁用关键词 -> 对应输入框',
+  '填写完成后再点“给可投放账号生成爆款候选”'
 ];
 const leakedOperatorDocs = staleOperatorDocs.filter((label) => [readmeSource, sopSource].some((source) => source.includes(label)));
 if (!leakedOperatorDocs.length) ok('SOP 和 README 不再保留手工分析、手工采集或远端权限旧口径');

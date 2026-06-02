@@ -286,7 +286,7 @@ async function main() {
     });
     assert(linkOnlyViral.rawText.includes('待分析') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
     const viralAnalysisTask = await api(`/viral-templates/${linkOnlyViral.id}/analysis-task`);
-    assert(viralAnalysisTask.text.includes('https://www.douyin.com/video/link-only-smoke') && viralAnalysisTask.text.includes('记录到系统'), 'viral analysis task text missing');
+    assert(viralAnalysisTask.text.includes('https://www.douyin.com/video/link-only-smoke') && viralAnalysisTask.text.includes('/analysis-result'), 'viral analysis task text missing writeback endpoint');
     const viralDashboard = await api('/dashboard');
     assert(viralDashboard.counts.pendingViral >= 1, 'dashboard pending viral count missing');
     assert(viralDashboard.pendingViralTemplates.some((item) => item.id === linkOnlyViral.id), 'dashboard pending viral list missing link-only template');
@@ -1220,18 +1220,29 @@ async function main() {
       pendingRejected = /409/.test(error.message) || /结构分析/.test(error.message);
     }
     assert(pendingRejected, 'pending link-only viral template allowed bulk generation');
-    const analyzedViral = await api(`/viral-templates/${linkOnlyViral.id}`, {
-      method: 'PATCH',
+    let incompleteAnalysisRejected = false;
+    try {
+      await api(`/viral-templates/${linkOnlyViral.id}/analysis-result`, {
+        method: 'POST',
+        body: JSON.stringify({ title: '缺结构的爆款分析', rawText: '只有原视频内容' })
+      });
+    } catch (error) {
+      incompleteAnalysisRejected = /爆款分析结果缺少/.test(error.message);
+    }
+    assert(incompleteAnalysisRejected, 'viral analysis result accepted incomplete payload');
+    const analyzedViral = await api(`/viral-templates/${linkOnlyViral.id}/analysis-result`, {
+      method: 'POST',
       body: JSON.stringify({
         title: '分析后的爆款链接',
         rawText: '原视频内容：真实生活开头，三段转折，评论提问。',
         category: '情绪',
         hotStructure: '生活场景开头 + 三段状态变化 + 评论区提问',
         suitablePersonas: ['吸脂'],
+        forbiddenPersonas: ['不做医美'],
         rewritePolicy: '结构模仿'
       })
     });
-    assert(analyzedViral.title === '分析后的爆款链接' && analyzedViral.category === '情绪', 'viral analysis patch failed');
+    assert(analyzedViral.title === '分析后的爆款链接' && analyzedViral.category === '情绪' && analyzedViral.forbiddenPersonas.length === 1, 'viral analysis writeback failed');
     const analyzedBulk = await api(`/viral-templates/${analyzedViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-05' }) });
     assert(analyzedBulk.createdCount >= 1, 'analyzed viral link did not generate filtered slots');
 

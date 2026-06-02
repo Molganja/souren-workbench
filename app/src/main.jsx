@@ -2153,7 +2153,7 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
         <div>
           <p className="eyebrow">系统配置</p>
           <h1>运行状态</h1>
-          <p>这里只保留工作人员会用到的状态：局域网访问、素材目录、图片生成占位和通用素材管理。</p>
+          <p>这里只保留工作人员能判断的状态：验收清单、后台采集、局域网访问、素材目录、图片生成占位和通用素材管理。</p>
         </div>
         <div className="stats">
           <Metric label="图片接口" value={config.image?.ready ? '已接入' : '待接入'} />
