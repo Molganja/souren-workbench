@@ -568,12 +568,15 @@ async function main() {
     assert(!lostDashboard.todaySlots.some((item) => item.case?.id === lostCase.id), 'lost account leaked into normal due slots');
     const lostAfterPrune = await api(`/cases/${lostCase.id}`);
     assert(!lostAfterPrune.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'lost account future pending slots were not pruned');
-    await api(`/cases/${lostCase.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) });
+    const lostChromeQueue = await api('/douyin-monitor/chrome-queue?includeFresh=1&limit=200');
+    assert(!lostChromeQueue.targets.some((item) => item.caseId === lostCase.id), 'lost account appeared in chrome collection queue');
+    const lostPaused = await api(`/cases/${lostCase.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) });
+    assert(lostPaused.pauseMaintenance?.canceledSlotCount >= 1, 'confirmed lost pause did not cancel stale sent slot');
     const lostPausedDashboard = await api('/dashboard');
     assert(!lostPausedDashboard.monitorActions.some((item) => item.kind === '失联处理' && item.case?.id === lostCase.id), 'paused lost account still prompted action');
     const resumedLost = await api(`/cases/${lostCase.id}/resume`, { method: 'POST' });
     assert(resumedLost.case.healthStatus === '健康', 'resume did not restore case health');
-    assert(resumedLost.canceledCount >= 1 && resumedLost.slotsCreated >= 1, 'resume did not cancel stale sent slots and create new schedule');
+    assert(resumedLost.slotsCreated >= 1, 'resume did not create new schedule');
     const resumedLostDetail = await api(`/cases/${lostCase.id}`);
     assert(resumedLostDetail.slots.some((item) => item.status === '已取消'), 'resume did not keep stale sent slot as cancelled');
     assert(resumedLostDetail.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'resume did not create future pending slot');
@@ -894,13 +897,24 @@ async function main() {
     const completedDashboard = await api('/dashboard');
     assert(!completedDashboard.todaySlots.some((item) => item.id === slot.id), 'completed slot should disappear from dashboard today queue');
     assert(!completedDashboard.readyDelivery.some((item) => item.id === slot.id), 'completed slot should disappear from delivery queue');
+    const pauseCleanupCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ weixinNick: '暂停清理验收兼职', douyinUrl: 'https://www.douyin.com/user/pause-cleanup-smoke', project: '吸脂' })
+    });
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
     assert(monitorQueued.createdCount >= 2, 'monitor run did not register Chrome collection tasks');
     assert(monitorQueued.monitor.totals.collectionQueued >= 2 && monitorQueued.monitor.totals.waitingChrome >= 2, 'monitor run did not mark queued Chrome collection');
+    const pauseCleanup = await api(`/cases/${pauseCleanupCase.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) });
+    assert(pauseCleanup.pauseMaintenance?.canceledSlotCount > 0, 'pause did not cancel open schedule slots');
+    assert(pauseCleanup.pauseMaintenance?.canceledCollectionCount > 0, 'pause did not cancel waiting chrome collection run');
+    const pauseCleanupDetail = await api(`/cases/${pauseCleanupCase.id}`);
+    assert(!pauseCleanupDetail.slots.some((item) => ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'].includes(item.status)), 'paused account still has active operator slots');
     const chromeQueue = await api('/douyin-monitor/chrome-queue');
     assert(chromeQueue.count >= 2, 'chrome collection queue missing due accounts');
     assert(chromeQueue.text.includes('/api/douyin-monitor/ingest') && chromeQueue.text.includes('Chrome抖音采集清单'), 'chrome collection queue text missing ingest instructions');
     assert(chromeQueue.targets.some((item) => item.ingestPayloadTemplate?.caseId === caze.id), 'chrome collection queue missing payload template');
+    assert(!chromeQueue.targets.some((item) => item.caseId === pauseCleanupCase.id), 'paused account still appears in chrome collection queue');
+    await api(`/cases/${pauseCleanupCase.id}`, { method: 'DELETE' });
     const registeredChromeQueue = await api('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 20 }) });
     assert(registeredChromeQueue.registeredCount === 0 && registeredChromeQueue.skippedQueuedCount >= 2, 'chrome queue duplicated already queued accounts');
     const ingested = await api('/douyin-monitor/ingest', {

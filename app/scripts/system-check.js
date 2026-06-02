@@ -130,6 +130,9 @@ else fail('暂停账号的爆款提醒仍可能进入今日队列');
 if (serverSource.includes('/api/cases/:id/resume') && serverSource.includes('已取消') && mainSource.includes('恢复账号')) ok('失联暂停账号支持一键恢复');
 else fail('缺少失联暂停账号恢复闭环');
 
+if (serverSource.includes('pauseCaseWork') && serverSource.includes('PAUSE_CANCEL_SLOT_STATUSES') && serverSource.includes("status = ?, finished_at = ?, note = ?, updated_at = ?") && serverSource.includes('pauseMaintenance')) ok('确认暂停会撤下未完成排期和等待中的采集单');
+else fail('确认暂停仍可能只隐藏账号，不撤下旧任务或采集单');
+
 if (serverSource.includes('给可投放账号生成爆款候选') && serverSource.includes('已有同一天同爆款任务') && !mainSource.includes("kind: '爆款分析'")) ok('爆款批量生成只进入可投放账号且不占用今日队列');
 else fail('爆款批量生成仍可能制造无效任务或占用今日队列');
 
@@ -139,7 +142,7 @@ else fail('账号策略动作仍可能给暂停、休眠或已有排期账号制
 if (serverSource.includes('reconcilePendingScheduleForCase') && serverSource.includes('scheduleMaintenance') && serverSource.includes('prunePendingSlotsForStrategy(current, postingStrategy')) ok('采集写入后会立即按账号策略裁剪未来待生成任务');
 else fail('采集写入后仍可能留下旧的未来待生成任务');
 
-if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
+if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)') && serverSource.includes('item.collectionPolicy?.intervalHours != null')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
 else fail('Chrome采集清单缺少活跃度优先排序');
 
 if (!mainSource.includes('打开抖音主页') && !mainSource.includes('target="_blank">打开主页</a>')) ok('前台不要求工作人员手动打开抖音主页');
