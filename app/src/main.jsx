@@ -301,7 +301,7 @@ function App() {
           />
         )}
         {!loading && canUseWorkbench && view === 'settings' && config && (
-          <SettingsView config={config} onCopy={copyText} onAct={act} canOpenLocalPaths={canOpenLocalPaths} />
+          <SettingsView config={config} onAct={act} canOpenLocalPaths={canOpenLocalPaths} />
         )}
       </main>
       {caseFormOpen && (
@@ -418,12 +418,6 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
           <h2>今日账号清单</h2>
           <div className="headerActions">
             <span>{accountGroups.length} 个兼职/账号</span>
-            {accountGroups.length > 0 && (
-              <button onClick={() => onCopy(buildAccountChecklist(data.today, accountGroups), '今日账号清单已复制')}>复制清单</button>
-            )}
-            {data.todaySlots.length > 0 && (
-              <button onClick={() => onCopy(buildDailyBrief(data.today, accountGroups, flowGroups), '今日工作简报已复制')}>复制简报</button>
-            )}
           </div>
         </div>
         {accountGroups.length === 0 ? <div className="empty">今天没有需要处理的兼职任务</div> : (
@@ -432,8 +426,6 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
               <AccountTaskCard
                 key={group.name}
                 group={group}
-                date={data.today}
-                onCopy={onCopy}
                 onOpenCase={onOpenCase}
                 onDelivery={onDelivery}
               />
@@ -515,7 +507,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
         </div>
       </section>}
 
-      <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} />
     </div>
   );
 }
@@ -630,7 +622,7 @@ function MonitorActionSection({ title = '账号策略动作', empty = '暂无需
   );
 }
 
-function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
+function MonitorSection({ monitor, onOpenCase, onAct }) {
   const accounts = monitor?.accounts || [];
   const due = accounts.filter((item) => item.dueCollection).slice(0, 8);
   return (
@@ -649,10 +641,6 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
                 () => request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 80 }) }),
                 (result) => `Chrome采集清单已生成：${result.registeredCount} 个账号`
               )}>生成Chrome采集清单</button>
-              <button onClick={() => onAct(
-                () => copyChromeCollectionQueue(onCopy),
-                (result) => `已复制Chrome采集清单：${result.count} 个账号`
-              )}>复制给我采集清单</button>
             </div>
           </div>
           {accounts.length === 0 ? <div className="empty">新建案例时填写抖音主页后，会进入 24 小时账号数据监控</div> : (
@@ -851,7 +839,6 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onCopy, onOpenViral, o
     return (
       <div className="rowActions">
         <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>去选择</button>
-        {item.slot.selectedCandidate && <button onClick={() => onCopy(`${item.slot.selectedCandidate.title}\n\n${item.slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制文案</button>}
       </div>
     );
   }
@@ -945,12 +932,6 @@ function MaterialSyncSection({ items, onOpenCase, onAct, canOpenLocalPaths }) {
       )}
     </section>
   );
-}
-
-async function copyChromeCollectionQueue(onCopy) {
-  const result = await request('/douyin-monitor/chrome-queue?limit=80');
-  await onCopy(result.text, 'Chrome采集清单已复制');
-  return result;
 }
 
 function PendingViralSection({ items, onCopy, onOpenViral }) {
@@ -1083,7 +1064,7 @@ function sortAccountItems(items = []) {
   });
 }
 
-function AccountTaskCard({ group, date, onCopy, onOpenCase, onDelivery }) {
+function AccountTaskCard({ group, onOpenCase, onDelivery }) {
   const items = sortAccountItems(group.items);
   return (
     <div className="accountCard accountDetailCard">
@@ -1092,7 +1073,6 @@ function AccountTaskCard({ group, date, onCopy, onOpenCase, onDelivery }) {
           <strong>{group.name}</strong>
           <span>{group.items.length} 条任务 · {accountStatusSummary(group)}</span>
         </div>
-        <button onClick={() => onCopy(buildAccountChecklist(date, [group]), `${group.name}清单已复制`)}>复制账号清单</button>
       </div>
       <div className="accountTaskList">
         {items.slice(0, 10).map((slot) => (
@@ -1103,7 +1083,7 @@ function AccountTaskCard({ group, date, onCopy, onOpenCase, onDelivery }) {
             {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付</button>}
           </div>
         ))}
-        {items.length > 10 && <small>还有 {items.length - 10} 条，复制清单查看完整任务。</small>}
+        {items.length > 10 && <small>还有 {items.length - 10} 条，可到「排期规划」按账号搜索查看。</small>}
       </div>
     </div>
   );
@@ -1147,25 +1127,6 @@ function accountStatusSummary(group) {
     .filter(([, count]) => count > 0)
     .map(([label, count]) => `${label} ${count}`)
     .join(' · ') || '暂无待办';
-}
-
-function buildAccountChecklist(date, groups) {
-  const lines = [`${date} 今日账号清单`];
-  groups.forEach((group) => {
-    lines.push('', `【${group.name}】${group.items.length} 条`);
-    group.items.forEach((slot, index) => {
-      const caze = slot.case || {};
-      lines.push([
-        `${index + 1}. 发给：${caze.weixinNick || '未命名兼职'}`,
-        `账号：${caze.douyinId || '未填抖音号'}`,
-        `内容：${slot.contentKind}`,
-        `状态：${slot.status}`,
-        `动作：${nextActionText(slot)}`
-      ].join('｜'));
-      if (slot.deliveryDir) lines.push('   交付内容：系统内点“查看交付内容”复制文案和下载素材');
-    });
-  });
-  return lines.join('\n');
 }
 
 const TODAY_FLOW = [
@@ -1228,24 +1189,6 @@ function buildBeginnerSteps(data, operatorMonitorActions = []) {
       note: '只看需要工作人员处理的偏冷补内容和增长承接。'
     }
   ];
-}
-
-function buildDailyBrief(date, accountGroups, flowGroups) {
-  const lines = [`${date} 今日工作简报`];
-  lines.push('', '【链路统计】');
-  flowGroups.forEach((group) => {
-    lines.push(`${group.status}：${group.items.length}｜${group.action}`);
-  });
-  lines.push('', '【按兼职/账号】');
-  accountGroups.forEach((group) => {
-    lines.push(`${group.name}：${group.items.length} 条｜可交付 ${group.readyDelivery}｜等回传 ${group.sentWaitReport}｜已完成 ${group.completed}`);
-    group.items.forEach((slot, index) => {
-      const caze = slot.case || {};
-      lines.push(`  ${index + 1}. 发给 ${caze.weixinNick || '未命名兼职'}｜账号 ${caze.douyinId || '未填抖音号'}｜${slot.contentKind}｜${slot.status}｜${nextActionText(slot)}`);
-      if (slot.deliveryDir) lines.push('     交付内容：系统内点“查看交付内容”复制文案和下载素材');
-    });
-  });
-  return lines.join('\n');
 }
 
 function nextActionText(slot) {
@@ -1482,8 +1425,6 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy, onDelivery, canOpenLocal
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
         {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
-        {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
-        {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => markCompleted(slot, onAct)}>标记完成</button>}
       </div>
@@ -1550,8 +1491,6 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy, onDelivery, canOpenLocalPath
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
         {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
-        {slot.selectedCandidate && <button onClick={() => onCopy(slot.selectedCandidate.operatorInstruction, '执行说明已复制')}>复制执行说明</button>}
-        {slot.selectedCandidate && <button onClick={() => onCopy(`${slot.selectedCandidate.title}\n\n${slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制发布文案</button>}
         {slot.status === '可交付' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>标记派发</button>}
         {slot.status === '已派发' && <button onClick={() => markCompleted(slot, onAct)}>标记完成</button>}
       </div>
@@ -2016,8 +1955,6 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery, canOpenLo
               <p>{draft.publishText}</p>
               <div className="inlineActions">
                 <button onClick={() => onAct(() => request(`/candidates/${draft.id}/select`, { method: 'POST' }), '已锁定候选')}>{draft.selected ? '已选择' : '选择这条'}</button>
-                <button onClick={() => onCopy(draft.operatorInstruction, '执行说明已复制')}>复制执行说明</button>
-                <button onClick={() => onCopy(`${draft.title}\n\n${draft.publishText}`, '发布文案已复制')}>复制发布文案</button>
               </div>
             </div>
           ))}
@@ -2098,7 +2035,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
         )}
       </section>
 
-      {texts.assetOrder && <TextPanel title="素材发送顺序" text={texts.assetOrder} onCopy={onCopy} />}
+      {texts.assetOrder && <TextPanel title="素材发送顺序" text={texts.assetOrder} onCopy={onCopy} copyable={false} />}
       {texts.publishRules && <TextPanel title="发布要求" text={texts.publishRules} onCopy={onCopy} />}
 
       {view.isVideo && (
@@ -2111,7 +2048,6 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
           <div className="deliveryPaths">
             <div><strong>成片保存到</strong><span>{view.editing?.finalVideoPath}</span></div>
             <div><strong>封面保存到</strong><span>{view.editing?.coverPath}</span></div>
-            <button onClick={() => onCopy(view.editing?.finalVideoPath || '', '成片保存路径已复制')}>复制成片路径</button>
             {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: view.deliveryDir }) }), '已打开剪辑目录')}>打开剪辑目录</button>}
           </div>
           {view.sourceAssets?.length > 0 && (
@@ -2148,12 +2084,12 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
   );
 }
 
-function TextPanel({ title, text, onCopy }) {
+function TextPanel({ title, text, onCopy, copyable = true }) {
   return (
     <div className="textPanel">
       <div className="rowTitle">
         <strong>{title}</strong>
-        {text && <button onClick={() => onCopy(text, `${title}已复制`)}>复制</button>}
+        {copyable && text && <button onClick={() => onCopy(text, `${title}已复制`)}>复制</button>}
       </div>
       <pre>{text || '暂无内容'}</pre>
     </div>
@@ -2239,7 +2175,7 @@ function pendingViralTitle(item) {
   return item.sourceLink ? '待分析爆款链接' : (item.title || '待分析爆款链接');
 }
 
-function SettingsView({ config, onCopy, onAct, canOpenLocalPaths }) {
+function SettingsView({ config, onAct, canOpenLocalPaths }) {
   const [sharedAssets, setSharedAssets] = useState([]);
   const [sharedAssetsLoading, setSharedAssetsLoading] = useState(false);
   async function loadSharedAssets() {
@@ -2272,7 +2208,6 @@ function SettingsView({ config, onCopy, onAct, canOpenLocalPaths }) {
       <section className="panel">
         <div className="sectionHead">
           <h2>局域网访问</h2>
-          <button onClick={() => onCopy(networkSetupText(config), '局域网配置说明已复制')}>复制配置说明</button>
         </div>
         <div className="templateList">
           <div className="templateRow">
@@ -2474,24 +2409,6 @@ function updateSharedAsset(asset, patch, onAct, onReload) {
     await onReload();
     return result;
   }, '通用素材已更新');
-}
-
-function networkSetupText(config) {
-  const lanUrls = config.network?.lanEnabled ? (config.network?.lanUrls || []) : [];
-  return [
-    '局域网工作台配置',
-    '',
-    '1. 在主机 app/.env 中设置：',
-    'SOUREN_HOST=0.0.0.0',
-    'SOUREN_ACCESS_CODE=这里填一个给工作人员的访问码',
-    '',
-    '2. 重启工作台。',
-    '',
-    '3. 把下面任意一个网址发给同一局域网内的工作人员：',
-    ...(lanUrls.length ? lanUrls : ['当前未检测到局域网地址，请确认已经设置 SOUREN_HOST=0.0.0.0 并重启。']),
-    '',
-    '工作人员只需要打开网址、输入访问码，然后查看今日任务、复制交付内容和标记状态。'
-  ].join('\n');
 }
 
 function readinessStatusClass(status) {
