@@ -414,6 +414,58 @@ button:disabled:hover,
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.accountOverviewPanel {
+  background: #fbfcfe;
+}
+
+.accountOverviewDetails summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.accountOverviewDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.accountOverviewDetails summary::after {
+  content: "展开";
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: #fff;
+  white-space: nowrap;
+}
+
+.accountOverviewDetails[open] summary::after {
+  content: "收起";
+}
+
+.accountOverviewDetails summary h2,
+.accountOverviewDetails summary p {
+  margin: 0;
+}
+
+.accountOverviewDetails summary p {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.accountOverviewDetails summary > span {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.accountOverviewDetails .accountGrid,
+.accountOverviewDetails .empty {
+  margin-top: 14px;
+}
+
 .accountCard {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1523,6 +1575,13 @@ textarea {
   }
   .recipientConfirm {
     grid-template-columns: 1fr;
+  }
+  .accountOverviewDetails summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .accountOverviewDetails summary > span {
+    white-space: normal;
   }
   .accessForm {
     align-items: stretch;

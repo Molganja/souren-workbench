@@ -218,7 +218,7 @@ function App() {
       <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}>数据复盘</button>
       <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
       <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款链接</button>
-      <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>系统配置</button>
+      <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>运行状态</button>
     </div>
   );
   const canUseWorkbench = session ? (!session.authRequired || session.authenticated) : false;
@@ -354,25 +354,28 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask }) {
         onDelivery={onDelivery}
       />
 
-      <section className="panel">
-        <div className="sectionHead">
-          <h2>今日账号概览</h2>
-          <div className="headerActions">
-            <span>{accountGroups.length} 个待处理账号</span>
-          </div>
-        </div>
-        {accountGroups.length === 0 ? <div className="empty">今天没有需要处理的兼职任务</div> : (
-          <div className="accountGrid">
-            {accountGroups.map((group) => (
-              <AccountTaskCard
-                key={group.name}
-                group={group}
-                onOpenCase={onOpenCase}
-                activeCaseId={activeCaseId}
-              />
-            ))}
-          </div>
-        )}
+      <section className="panel accountOverviewPanel">
+        <details className="accountOverviewDetails">
+          <summary>
+            <div>
+              <h2>后续账号预览</h2>
+              <p>只用来提前看后面有哪些微信要处理；当前动作仍以上方队首为准。</p>
+            </div>
+            <span>{accountGroups.length ? `${accountGroups.length} 个待处理账号` : '已清空'}</span>
+          </summary>
+          {accountGroups.length === 0 ? <div className="empty">今天没有需要处理的兼职任务</div> : (
+            <div className="accountGrid">
+              {accountGroups.map((group) => (
+                <AccountTaskCard
+                  key={group.name}
+                  group={group}
+                  onOpenCase={onOpenCase}
+                  activeCaseId={activeCaseId}
+                />
+              ))}
+            </div>
+          )}
+        </details>
       </section>
 
       {data.abnormalCases.length > 0 && <section className="panel">
@@ -2184,7 +2187,7 @@ function SettingsView({ config, onAct }) {
     <div className="stack">
       <section className="hero">
         <div>
-          <p className="eyebrow">系统配置</p>
+          <p className="eyebrow">运行状态</p>
           <h1>运行状态</h1>
           <p>日常只看局域网网址、通用素材扫描、图片生成状态和验收清单；采集登记、爆款分析和图片生成排队放进系统后台，平时不用展开。</p>
         </div>
