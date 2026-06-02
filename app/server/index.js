@@ -3297,6 +3297,10 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
     reasons.push('缺少抖音链接');
     actions.push('编辑案例，补齐抖音主页或作品链接');
   }
+  if (!String(caze.project || '').trim()) {
+    reasons.push('缺少项目');
+    actions.push('编辑案例，补齐项目');
+  }
   if (!String(caze.sourceMaterialDir || '').trim()) {
     reasons.push('缺少共享原始素材路径');
     actions.push('编辑案例，填写共享盘/服务器里的原始素材目录');
@@ -3350,6 +3354,7 @@ function caseIntakeIssue(caze = {}) {
   const issues = [];
   if (!String(caze.weixinNick || '').trim()) issues.push('缺少兼职微信昵称');
   if (!String(caze.douyinUrl || '').trim()) issues.push('缺少抖音链接');
+  if (!String(caze.project || '').trim()) issues.push('缺少项目');
   if (!String(caze.sourceMaterialDir || '').trim()) issues.push('缺少共享原始素材路径');
   if (!issues.length) return null;
   return {
@@ -3359,7 +3364,7 @@ function caseIntakeIssue(caze = {}) {
     issues,
     title: `${caze.weixinNick || '未命名账号'} 登记资料缺失`,
     detail: issues.join(' / '),
-    action: '打开案例，点“编辑案例”，补齐微信、抖音主页和共享原始素材路径。',
+    action: '打开案例，点“编辑案例”，补齐微信、抖音主页、项目和共享原始素材路径。',
     case: caze
   };
 }

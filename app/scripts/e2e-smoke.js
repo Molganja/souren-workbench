@@ -436,17 +436,17 @@ async function main() {
     });
     const legacyDb = new DatabaseSync(path.join(ROOT_DIR, 'data', 'souren.sqlite'));
     legacyDb.exec('PRAGMA foreign_keys = ON;');
-    legacyDb.prepare('UPDATE cases SET douyin_url = ?, source_material_dir = ?, updated_at = ? WHERE id = ?').run('', '', new Date().toISOString(), legacyCase.id);
+    legacyDb.prepare('UPDATE cases SET douyin_url = ?, project = ?, source_material_dir = ?, updated_at = ? WHERE id = ?').run('', '', '', new Date().toISOString(), legacyCase.id);
     legacyDb.close();
     const intakeDashboard = await api('/dashboard');
     const intakeIssue = intakeDashboard.intakeIssues.find((item) => item.caseId === legacyCase.id);
-    assert(intakeIssue?.issues.includes('缺少抖音链接') && intakeIssue.issues.includes('缺少共享原始素材路径'), 'legacy missing account did not enter intake issue queue');
+    assert(intakeIssue?.issues.includes('缺少抖音链接') && intakeIssue.issues.includes('缺少项目') && intakeIssue.issues.includes('缺少共享原始素材路径'), 'legacy missing account did not enter intake issue queue');
     assert(intakeDashboard.counts.intakeIssues >= 1, 'dashboard missing intake issue count');
     let invalidSourcePatchRejected = false;
     try {
       await api(`/cases/${legacyCase.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/user/legacy-fixed-smoke', sourceMaterialDir: path.join(ROOT_DIR, '不存在的编辑共享目录') })
+        body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/user/legacy-fixed-smoke', project: '吸脂', sourceMaterialDir: path.join(ROOT_DIR, '不存在的编辑共享目录') })
       });
     } catch (error) {
       invalidSourcePatchRejected = /共享原始素材路径不存在/.test(error.message);

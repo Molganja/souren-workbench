@@ -506,7 +506,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       statusClass: 'bad',
       title: row.title || `${row.case?.weixinNick || '未知账号'} 登记资料缺失`,
       detail: row.detail || (row.issues || []).join(' / '),
-      note: row.action || '打开案例，编辑微信、抖音主页和共享原始素材路径。',
+      note: row.action || '打开案例，编辑微信、抖音主页、项目和共享原始素材路径。',
       case: row.case,
       intakeIssue: row
     });
@@ -880,7 +880,7 @@ function accountStatusSummary(group) {
 
 function nextActionText(item) {
   if (item.alert) return '安排助理号/阑尾号评论区互动';
-  if (item.intakeIssue) return '打开案例补齐微信、抖音主页和共享素材路径';
+  if (item.intakeIssue) return '打开案例补齐微信、抖音主页、项目和共享素材路径';
   if (item.materialSync) return item.materialSync.status === '目录不可用' ? '检查共享素材路径' : '同步共享素材';
   if (item.monitorAction) return monitorActionSlotLabel(item.monitorAction.kind) || item.monitorAction.action || '处理账号策略';
   if (item.clipTask) return '打开固定剪辑配方，剪完或安排发布后标记完成';
@@ -2543,7 +2543,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
   const caseFormMissingRequired = !form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim();
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      <div className="hintBox">{isCreate ? '新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。四项都必须填，系统会自动建立目录、近期排期和采集链路。' : '编辑时只改对接必需信息：微信、抖音、项目和共享素材路径。四项都必须填，人设和阶段由系统内部维护。'}</div>
+      <div className="hintBox">{isCreate ? '新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。四项都必须填，系统会自动建立目录、近期排期和采集链路。' : '编辑时只改账号必需信息：微信、抖音、项目和共享素材路径。四项都必须填，人设和阶段由系统内部维护。'}</div>
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
