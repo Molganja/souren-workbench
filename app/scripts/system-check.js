@@ -136,6 +136,9 @@ else fail('爆款批量生成仍可能制造无效任务或占用今日队列');
 if (serverSource.includes('nextOpenStrategyDate') && serverSource.includes('existingStrategySlot') && serverSource.includes('账号已暂停或休眠，先不生成新的排期') && serverSource.includes('当天已有排期，先不额外加任务')) ok('账号策略动作按投放频率找空档，不给暂停或休眠账号造任务');
 else fail('账号策略动作仍可能给暂停、休眠或已有排期账号制造新任务');
 
+if (serverSource.includes('reconcilePendingScheduleForCase') && serverSource.includes('scheduleMaintenance') && serverSource.includes('prunePendingSlotsForStrategy(current, postingStrategy')) ok('采集写入后会立即按账号策略裁剪未来待生成任务');
+else fail('采集写入后仍可能留下旧的未来待生成任务');
+
 if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
 else fail('Chrome采集清单缺少活跃度优先排序');
 

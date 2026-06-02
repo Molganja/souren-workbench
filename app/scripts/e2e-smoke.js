@@ -462,7 +462,7 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({ weixinNick: '降频验收兼职', douyinUrl: 'https://www.douyin.com/user/throttle-smoke', project: '吸脂' })
     });
-    await api('/douyin-monitor/ingest', {
+    const throttleIngest = await api('/douyin-monitor/ingest', {
       method: 'POST',
       body: JSON.stringify({
         caseId: throttleCase.id,
@@ -475,12 +475,12 @@ async function main() {
         ]
       })
     });
+    assert(throttleIngest.scheduleMaintenance?.prunedCount > 0, 'cold ingest did not immediately prune future pending slots');
     const throttleMonitor = await api('/douyin-monitor');
     const throttleAccount = throttleMonitor.accounts.find((item) => item.case?.id === throttleCase.id);
     assert(throttleAccount?.activityTier === '偏冷', 'two cold videos should mark account cold');
     assert(throttleAccount.postingStrategy?.mode === '两天一条', 'cold account should throttle posting');
     assert(throttleAccount.collectionPolicy?.intervalHours === 72, 'cold account should collect every three days');
-    await api('/dashboard');
     const throttleDetail = await api(`/cases/${throttleCase.id}`);
     assert(throttleDetail.slots.length > 0 && throttleDetail.slots.length <= 8, 'throttled account generated too many future slots');
     assert(throttleDetail.monitor.postingStrategy?.mode === '两天一条', 'case detail missing throttled posting strategy');
@@ -499,7 +499,7 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({ weixinNick: '休眠验收兼职', douyinUrl: 'https://www.douyin.com/user/sleep-smoke', project: '吸脂' })
     });
-    await api('/douyin-monitor/ingest', {
+    const sleepIngest = await api('/douyin-monitor/ingest', {
       method: 'POST',
       body: JSON.stringify({
         caseId: sleepCase.id,
@@ -513,6 +513,7 @@ async function main() {
         ]
       })
     });
+    assert(sleepIngest.scheduleMaintenance?.prunedCount > 0, 'sleeping ingest did not immediately remove future pending slots');
     const sleepMonitor = await api('/douyin-monitor');
     const sleepAccount = sleepMonitor.accounts.find((item) => item.case?.id === sleepCase.id);
     assert(sleepAccount?.activityTier === '休眠', 'three cold videos should mark account sleeping');

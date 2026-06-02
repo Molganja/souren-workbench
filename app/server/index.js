@@ -2199,6 +2199,23 @@ function prunePendingSlotsForStrategy(caze, postingStrategy = {}, startDate = ne
   return pruned;
 }
 
+function reconcilePendingScheduleForCase(caze, input = {}) {
+  if (!caze?.id) return { startDate: '', days: 0, prunedCount: 0, createdCount: 0, postingStrategy: null };
+  const current = caseById(caze.id);
+  const startDate = input.startDate || new Date().toISOString().slice(0, 10);
+  const days = Math.max(0, Number(input.days ?? ROLLING_SCHEDULE_DAYS));
+  const postingStrategy = postingStrategyForCase(current);
+  const prunedCount = prunePendingSlotsForStrategy(current, postingStrategy, startDate);
+  const created = generateSlotsForCase(current, { days, startDate, postingStrategy });
+  return {
+    startDate,
+    days,
+    prunedCount,
+    createdCount: created.length,
+    postingStrategy
+  };
+}
+
 function latestSnapshotForVideo(videoId) {
   return rowVideoSnapshot(get(
     'SELECT * FROM video_snapshots WHERE video_id = ? ORDER BY collected_at DESC, created_at DESC LIMIT 1',
@@ -2927,12 +2944,15 @@ function ingestDouyinData(body = {}) {
     throw error;
   }
 
+  const scheduleMaintenance = reconcilePendingScheduleForCase(caze);
+
   return {
     case: caseById(caze.id),
     accountSnapshot,
     videos: videoRows,
     videoSnapshots,
     viralAlerts: viralAlerts.map((item) => joinedViralAlerts('va.id = ?', [item.id], 1)[0] || item),
+    scheduleMaintenance,
     monitor: monitorData()
   };
 }
