@@ -1,6 +1,8 @@
 {
   "name": "souren-workbench",
   "version": "1.0.0",
+  "description": "素人种草运营工作台本地客户端",
+  "author": "Molganja",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -12,6 +14,7 @@
     "client": "npm run build && electron electron/main.cjs",
     "client:check": "node --no-warnings scripts/desktop-check.js",
     "client:mac": "npm run build && electron-builder --mac dir",
+    "client:package:check": "node --no-warnings scripts/desktop-package-smoke.js",
     "client:dist": "npm run build && electron-builder --mac dmg",
     "start": "node --no-warnings server/index.js",
     "check": "npm run build",

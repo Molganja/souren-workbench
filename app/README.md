@@ -35,9 +35,10 @@ npm run client
 ```bash
 cd /Users/licc/Desktop/素人系统/app
 npm run client:mac
+npm run client:package:check
 ```
 
-打包输出在 `app/release/`。客户端包不会包含真实 `.env`、数据库和素材。Mac `.app` 会用 Electron 内置 Node 启动本地后端并打开工作台窗口，不需要工作人员手动启动服务。后续如果要做 Windows 分发，需要在 Windows 机器上跑对应打包验收。
+打包输出在 `app/release/`。客户端包不会包含真实 `.env`、数据库和素材。Mac `.app` 会用 Electron 内置 Node 启动本地后端并打开工作台窗口，不需要工作人员手动启动服务。`client:package:check` 会实际启动打包后的 `.app`，确认内置后端和独立工作数据目录可用。后续如果要做 Windows 分发，需要在 Windows 机器上跑对应打包验收。
 
 生产构建后也可以只跑后端：
 
