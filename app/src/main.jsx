@@ -449,6 +449,10 @@ function activeQueueMatchesClip(activeQueueItem, task) {
   return Boolean(activeQueueItem?.clipTask?.id && task?.id && activeQueueItem.clipTask.id === task.id);
 }
 
+function activeQueueMatchesAlert(activeQueueItem, alert) {
+  return Boolean(activeQueueItem?.alert?.id && alert?.id && activeQueueItem.alert.id === alert.id);
+}
+
 function buildPriorityActions(data = {}, strategyActions = []) {
   const items = [];
   (data.viralAlerts || []).forEach((alert) => {
@@ -1368,18 +1372,13 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
           {clipTasks.length === 0 ? <div className="empty">暂无剪辑任务</div> : (
             <div className="assetList">
               {clipTasks.map((task) => (
-                <div className="assetRow" key={task.id}>
-                  <strong>{task.title}</strong>
-                  <span>{displayStatus(task.status)}</span>
-                  {task.brief && <pre className="taskBrief">{task.brief.split('\n').slice(0, 14).join('\n')}</pre>}
-                  <small>{task.outputDir}</small>
-                  <div className="inlineActions">
-                    {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}
-                    {CLIP_ACTIONS.map(([status, label]) => (
-                      <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
-                    ))}
-                  </div>
-                </div>
+                <ClipTaskRow
+                  key={task.id}
+                  task={task}
+                  onAct={onAct}
+                  canOpenLocalPaths={canOpenLocalPaths}
+                  activeQueueItem={activeQueueItem}
+                />
               ))}
             </div>
           )}
@@ -1462,20 +1461,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
           <div className="sectionHead"><h2>爆款互动</h2><span>{viralAlerts.length} 条</span></div>
           <div className="taskList">
             {viralAlerts.map((alert) => (
-              <div className="taskRow" key={alert.id}>
-                <div className="taskMain">
-                  <div className="rowTitle"><strong>{alert.video?.title || '爆款作品'}</strong><span className="status report">待互动</span></div>
-                  <p>{alert.reason}</p>
-                  <small>{alert.interactionNote}</small>
-                </div>
-                <div className="rowActions">
-                  {alert.video?.url && <a className="button" href={alert.video.url} target="_blank">打开作品</a>}
-                  <button onClick={() => onAct(
-                    () => request(`/viral-alerts/${alert.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
-                    '爆款互动已标记'
-                  )}>标记已安排互动</button>
-                </div>
-              </div>
+              <ViralAlertRow key={alert.id} alert={alert} onAct={onAct} activeQueueItem={activeQueueItem} />
             ))}
           </div>
         </section>
@@ -1488,6 +1474,46 @@ async function generateImageTask(task, onAct) {
   await onAct(
     () => request(`/image-tasks/${task.id}/generate`, { method: 'POST' }),
     (result) => `图片已生成 ${result.files?.length || 0} 张，等待审核`
+  );
+}
+
+function ClipTaskRow({ task, onAct, canOpenLocalPaths, activeQueueItem }) {
+  const isActiveQueueClip = activeQueueMatchesClip(activeQueueItem, task);
+  return (
+    <div className="assetRow">
+      <strong>{task.title}</strong>
+      <span>{displayStatus(task.status)}</span>
+      {task.brief && <pre className="taskBrief">{task.brief.split('\n').slice(0, 14).join('\n')}</pre>}
+      <small>{task.outputDir}</small>
+      <div className="inlineActions">
+        {isActiveQueueClip && canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}
+        {isActiveQueueClip && CLIP_ACTIONS.map(([status, label]) => (
+          <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
+        ))}
+        {!isActiveQueueClip && <span className="lockedNote">排到今日队列队首后处理</span>}
+      </div>
+    </div>
+  );
+}
+
+function ViralAlertRow({ alert, onAct, activeQueueItem }) {
+  const isActiveQueueAlert = activeQueueMatchesAlert(activeQueueItem, alert);
+  return (
+    <div className="taskRow">
+      <div className="taskMain">
+        <div className="rowTitle"><strong>{alert.video?.title || '爆款作品'}</strong><span className="status report">待互动</span></div>
+        <p>{alert.reason}</p>
+        <small>{alert.interactionNote}</small>
+      </div>
+      <div className="rowActions">
+        {alert.video?.url && <a className="button" href={alert.video.url} target="_blank">打开作品</a>}
+        {isActiveQueueAlert && <button onClick={() => onAct(
+          () => request(`/viral-alerts/${alert.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
+          '爆款互动已标记'
+        )}>标记已安排互动</button>}
+        {!isActiveQueueAlert && <span className="lockedNote">排到今日队列队首后处理</span>}
+      </div>
+    </div>
   );
 }
 
