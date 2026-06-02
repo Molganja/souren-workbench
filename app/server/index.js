@@ -1593,6 +1593,74 @@ function monitorForCase(monitor, caseId) {
   return monitor.accounts.find((item) => item.case.id === caseId) || {};
 }
 
+function monitorActionQueue(monitor = {}) {
+  const actions = [];
+  (monitor.viralAlerts || []).forEach((alert) => {
+    actions.push({
+      id: `viral-${alert.id}`,
+      priority: alert.level === 'high' ? 100 : 90,
+      kind: '爆款互动',
+      title: '安排助理号/阑尾号互动',
+      reason: alert.reason,
+      action: alert.interactionNote || '顶高质量评论，回复咨询问题，把流量承接到咨询。',
+      case: alert.case,
+      video: alert.video,
+      snapshot: alert.snapshot,
+      alertId: alert.id
+    });
+  });
+  (monitor.accounts || []).forEach((item) => {
+    const caze = item.case;
+    if (!caze?.id) return;
+    if (item.dueCollection) {
+      actions.push({
+        id: `collect-${caze.id}`,
+        priority: item.latestSnapshot ? 80 : 85,
+        kind: '账号采集',
+        title: item.latestSnapshot ? '超过24小时未采集' : '首次采集账号数据',
+        reason: item.latestSnapshot ? `上次采集：${item.lastCollectedAt}` : '这个账号还没有粉丝和作品数据',
+        action: '用已登录抖音的 Chrome 打开主页，在首页点「回填数据」写回粉丝和作品数据。',
+        case: caze,
+        latestSnapshot: item.latestSnapshot,
+        topVideo: item.topVideo
+      });
+    }
+    if (!item.activeViralAlerts?.length && item.topVideo?.latestSnapshot) {
+      const plays = item.topVideo.latestSnapshot.plays || 0;
+      const comments = item.topVideo.latestSnapshot.comments || 0;
+      if (plays > 0 && plays < 2000 && comments < 20) {
+        actions.push({
+          id: `cold-${caze.id}`,
+          priority: 45,
+          kind: '偏冷补内容',
+          title: '播放偏低，下一轮补爆款提权',
+          reason: `最高播放 ${plays}，评论 ${comments}`,
+          action: '下一条优先安排爆款提权或互动版内容，暂缓连续种草。',
+          case: caze,
+          latestSnapshot: item.latestSnapshot,
+          topVideo: item.topVideo
+        });
+      }
+    }
+    if (!item.activeViralAlerts?.length && item.fanDelta != null && item.fanDelta >= 50) {
+      actions.push({
+        id: `growth-${caze.id}`,
+        priority: 55,
+        kind: '增长承接',
+        title: '粉丝增长明显，安排承接互动',
+        reason: `粉丝较初始 ${signedNumber(item.fanDelta)}`,
+        action: '检查评论区咨询问题，安排助理号承接，并补一条答疑或复盘内容。',
+        case: caze,
+        latestSnapshot: item.latestSnapshot,
+        topVideo: item.topVideo
+      });
+    }
+  });
+  return actions
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 40);
+}
+
 function truthy(value) {
   return ['1', 'true', 'yes', 'y', 'on'].includes(String(value || '').trim().toLowerCase());
 }
@@ -1631,7 +1699,7 @@ function buildChromeCollectionText(queue) {
     `回填接口：POST ${endpoint}`,
     '',
     '采集方式：用已登录抖音的 Chrome 打开账号主页，读取账号粉丝/关注/获赞/作品数，并记录最近作品的播放、点赞、评论、转发、收藏。',
-    '回填要求：每个账号采集完后，把对应 JSON 发到回填接口；系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
+    '回填要求：优先回到首页账号卡片点「回填数据」填写；JSON 模板只作为自动回填备用。系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
     ''
   ];
   if (!queue.targets.length) {
@@ -2193,6 +2261,7 @@ function dashboard() {
   const imageTasks = all('SELECT * FROM image_tasks ORDER BY created_at DESC').map(rowImageTask);
   const clipTasks = all('SELECT * FROM clip_tasks ORDER BY created_at DESC').map(rowClipTask);
   const monitor = monitorData(cases);
+  const monitorActions = monitorActionQueue(monitor);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const caseHealthRows = cases.map((caze) => {
@@ -2227,6 +2296,7 @@ function dashboard() {
   return {
     today,
     monitor,
+    monitorActions,
     viralAlerts: monitor.viralAlerts,
     counts: {
       cases: cases.length,
@@ -2237,6 +2307,7 @@ function dashboard() {
       sentWaitReport: slots.filter((s) => s.status === '已派发').length,
       completed: slots.filter((s) => s.status === '已完成').length,
       viralAlerts: monitor.totals.viralAlerts,
+      monitorActions: monitorActions.length,
       monitoredAccounts: monitor.totals.monitoredAccounts,
       dueCollection: monitor.totals.dueCollection,
       pendingViral: viralTemplates.filter(isPendingViralTemplate).length,

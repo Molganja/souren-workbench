@@ -398,6 +398,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
           <Metric label="等回传" value={data.counts.sentWaitReport} />
           <Metric label="爆款提醒" value={data.counts.viralAlerts || 0} />
           <Metric label="待采集" value={data.counts.dueCollection || 0} />
+          <Metric label="数据动作" value={data.counts.monitorActions || 0} />
           <Metric label="阻塞" value={data.counts.blocked || 0} />
           <Metric label="必补素材" value={data.counts.requiredMaterialGaps || 0} />
           <Metric label="图片任务" value={data.counts.imageTasks || 0} />
@@ -406,7 +407,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
         </div>
       </section>
 
-      <ViralAlertSection items={data.viralAlerts || []} onOpenCase={onOpenCase} onAct={onAct} />
+      <MonitorActionSection items={data.monitorActions || []} onOpenCase={onOpenCase} onAct={onAct} />
       <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
 
       <section className="panel beginnerPanel">
@@ -545,6 +546,60 @@ function ViralAlertSection({ items, onOpenCase, onAct }) {
                   () => request(`/viral-alerts/${alert.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
                   '爆款互动已标记'
                 )}>标记已安排互动</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function monitorActionClass(kind) {
+  if (kind === '爆款互动') return 'bad';
+  if (kind === '账号采集') return 'wait';
+  if (kind === '偏冷补内容') return 'report';
+  if (kind === '增长承接') return 'ok';
+  return 'ready';
+}
+
+function MonitorActionSection({ items, onOpenCase, onAct }) {
+  return (
+    <section className="panel alertPanel">
+      <div className="sectionHead">
+        <h2>账号数据动作</h2>
+        <span>{items.length} 条</span>
+      </div>
+      {items.length === 0 ? <div className="empty">暂无需要处理的账号数据动作</div> : (
+        <div className="taskList">
+          {items.map((item) => (
+            <div className="taskRow" key={item.id}>
+              <div className="dateBox">
+                <strong>{item.kind}</strong>
+                <span>{item.priority}</span>
+              </div>
+              <div className="taskMain">
+                <div className="rowTitle">
+                  <button className="linkButton" onClick={() => item.case?.id && onOpenCase(item.case.id)}>{item.case?.weixinNick || '未知账号'}</button>
+                  <span className={`status ${monitorActionClass(item.kind)}`}>{item.title}</span>
+                </div>
+                <p>{item.reason}</p>
+                <small>{item.action}</small>
+                {item.topVideo?.latestSnapshot && (
+                  <div className="deliveryMeta">
+                    <span>最高播放：{formatNumber(item.topVideo.latestSnapshot.plays)}</span>
+                    <span>点赞：{formatNumber(item.topVideo.latestSnapshot.likes)}</span>
+                    <span>评论：{formatNumber(item.topVideo.latestSnapshot.comments)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="rowActions">
+                {item.case?.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
+                {item.video?.url && <a className="button" href={item.video.url} target="_blank">打开作品</a>}
+                {item.alertId && <button onClick={() => onAct(
+                  () => request(`/viral-alerts/${item.alertId}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
+                  '爆款互动已标记'
+                )}>标记已安排互动</button>}
               </div>
             </div>
           ))}
@@ -934,9 +989,9 @@ function buildBeginnerSteps(data) {
       note: '有爆款作品时，安排助理号/阑尾号去评论区互动。'
     },
     {
-      title: '账号采集',
-      count: counts.dueCollection || 0,
-      note: '抖音主页数据超过 24 小时时，登记一次采集任务。'
+      title: '账号数据动作',
+      count: counts.monitorActions || 0,
+      note: '按优先级处理待采集、爆款互动、偏冷补内容和增长承接。'
     }
   ];
 }

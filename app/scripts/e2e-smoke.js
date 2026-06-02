@@ -474,6 +474,8 @@ async function main() {
     const monitorDashboard = await api('/dashboard');
     assert(monitorDashboard.counts.viralAlerts >= 1, 'dashboard viral alert count missing');
     assert(monitorDashboard.viralAlerts.some((item) => item.case?.id === caze.id && item.video?.url === 'https://www.douyin.com/video/smoke-published'), 'dashboard viral alert list missing ingested video');
+    assert(monitorDashboard.counts.monitorActions >= 1, 'dashboard monitor action count missing');
+    assert(monitorDashboard.monitorActions.some((item) => item.kind === '爆款互动' && item.case?.id === caze.id), 'dashboard monitor actions missing viral interaction');
     const detailAfterIngest = await api(`/cases/${caze.id}`);
     assert(detailAfterIngest.monitor.latestSnapshot.fans === 100, 'case monitor latest snapshot missing');
     assert(detailAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 8000), 'case video metrics missing');
@@ -503,12 +505,15 @@ async function main() {
     const minimalAfterIngest = await api(`/cases/${minimalCase.id}`);
     assert(minimalAfterIngest.monitor.latestSnapshot.fans === 88, 'manual web ingest latest snapshot missing');
     assert(minimalAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 1200), 'manual web ingest video metrics missing');
+    const afterManualWebDashboard = await api('/dashboard');
+    assert(afterManualWebDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing cold content action');
     await api(`/viral-alerts/${ingested.viralAlerts[0].id}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'handled', interactionNote: '烟测已安排互动' })
     });
     const afterHandledDashboard = await api('/dashboard');
     assert(!afterHandledDashboard.viralAlerts.some((item) => item.id === ingested.viralAlerts[0].id), 'handled viral alert still shown as active');
+    assert(!afterHandledDashboard.monitorActions.some((item) => item.alertId === ingested.viralAlerts[0].id), 'handled viral alert still shown in monitor actions');
     const abnormalSlot = await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
     assert(abnormalSlot.status === '异常', 'manual abnormal status failed');
 
