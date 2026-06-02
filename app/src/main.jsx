@@ -322,10 +322,10 @@ function App() {
 }
 
 function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask, canOpenLocalPaths }) {
-  const accountGroups = groupTodayByAccount(data.todaySlots);
   const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
   const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
   const priorityActions = buildPriorityActions(data, strategyActions);
+  const accountGroups = groupQueueByAccount(priorityActions);
   const dashboardStats = buildDashboardStats(data, priorityActions);
   const activeCaseId = priorityActions[0]?.case?.id || null;
   return (
@@ -354,7 +354,7 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask, canOpenLoc
         <div className="sectionHead">
           <h2>今日账号概览</h2>
           <div className="headerActions">
-            <span>{accountGroups.length} 个兼职/账号</span>
+            <span>{accountGroups.length} 个待处理账号</span>
           </div>
         </div>
         {accountGroups.length === 0 ? <div className="empty">今天没有需要处理的兼职任务</div> : (
@@ -578,7 +578,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
     items.push({
       id: `sent-${slot.id}`,
       priority: 35,
-      kind: '等确认',
+      kind: '待完成',
       status: slot.status,
       statusClass: 'report',
       title: `${slot.case?.weixinNick || '未命名兼职'} 已派发`,
@@ -765,16 +765,16 @@ const CONTACT_STATUS_PRIORITY = {
   已完成: 10
 };
 
-function sortAccountItems(items = []) {
+function sortAccountActions(items = []) {
   return [...items].sort((a, b) => {
-    const byStatus = (CONTACT_STATUS_PRIORITY[b.status] || 0) - (CONTACT_STATUS_PRIORITY[a.status] || 0);
-    if (byStatus) return byStatus;
-    return `${a.date || ''}${a.timeWindow || ''}`.localeCompare(`${b.date || ''}${b.timeWindow || ''}`);
+    const byPriority = (b.priority || 0) - (a.priority || 0);
+    if (byPriority) return byPriority;
+    return String(a.id || '').localeCompare(String(b.id || ''));
   });
 }
 
 function AccountTaskCard({ group, onOpenCase, activeCaseId }) {
-  const items = sortAccountItems(group.items);
+  const items = sortAccountActions(group.items);
   const first = items[0];
   const isActiveQueueCase = Boolean(group.case?.id && group.case.id === activeCaseId);
   return (
@@ -784,62 +784,56 @@ function AccountTaskCard({ group, onOpenCase, activeCaseId }) {
           <strong>{group.name}</strong>
           <span>{group.items.length} 条任务 · {accountStatusSummary(group)}</span>
         </div>
-        {first?.case?.id && isActiveQueueCase && <button onClick={() => onOpenCase(first.case.id)}>打开账号</button>}
-        {first?.case?.id && !isActiveQueueCase && <span className="lockedNote">排到今日队列队首后打开</span>}
+        {group.case?.id && isActiveQueueCase && <button onClick={() => onOpenCase(group.case.id)}>打开账号</button>}
+        {group.case?.id && !isActiveQueueCase && <span className="lockedNote">排到今日队列队首后打开</span>}
       </div>
       {first && <small>下一步：{nextActionText(first)}；具体动作在上方「今日操作队列」处理。</small>}
-      {items.length > 1 && <small>还有 {items.length - 1} 条同日任务，可到「排期规划」按账号搜索查看。</small>}
+      {items.length > 1 && <small>还有 {items.length - 1} 条同账号动作，排到队首后逐条处理。</small>}
     </div>
   );
 }
 
-function groupTodayByAccount(slots) {
+function groupQueueByAccount(actions = []) {
   const groups = new Map();
-  slots.forEach((slot) => {
-    const key = slot.case?.id || slot.case?.weixinNick || slot.id;
+  actions.filter((item) => item.case?.id || item.case?.weixinNick).forEach((item) => {
+    const key = item.case?.id || item.case?.weixinNick || item.id;
     if (!groups.has(key)) {
       groups.set(key, {
-        name: slot.case?.weixinNick || '未命名兼职',
-        case: slot.case || null,
+        name: item.case?.weixinNick || '未命名兼职',
+        case: item.case || null,
         items: []
       });
     }
-    groups.get(key).items.push(slot);
+    groups.get(key).items.push(item);
   });
   return Array.from(groups.values()).map(({ name, case: caze, items }) => ({
     name,
     case: caze,
-    items: sortAccountItems(items),
-    pendingGenerate: items.filter((slot) => slot.status === '待生成').length,
-    pendingChoose: items.filter((slot) => slot.status === '候选待选').length,
-    locked: items.filter((slot) => slot.status === '已锁定').length,
-    blocked: items.filter((slot) => slot.status === '素材阻塞').length,
-    readyDelivery: items.filter((slot) => slot.status === '可交付').length,
-    sentWaitDone: items.filter((slot) => slot.status === '已派发').length,
-    completed: items.filter((slot) => slot.status === '已完成').length
+    items: sortAccountActions(items),
+    actionCounts: items.reduce((acc, item) => {
+      acc[item.kind] = (acc[item.kind] || 0) + 1;
+      return acc;
+    }, {})
   })).sort((a, b) => {
-    const aPriority = Math.max(...a.items.map((slot) => CONTACT_STATUS_PRIORITY[slot.status] || 0));
-    const bPriority = Math.max(...b.items.map((slot) => CONTACT_STATUS_PRIORITY[slot.status] || 0));
+    const aPriority = Math.max(...a.items.map((item) => item.priority || CONTACT_STATUS_PRIORITY[item.status] || 0));
+    const bPriority = Math.max(...b.items.map((item) => item.priority || CONTACT_STATUS_PRIORITY[item.status] || 0));
     return bPriority - aPriority || b.items.length - a.items.length;
   });
 }
 
 function accountStatusSummary(group) {
-  return [
-    ['待生成', group.pendingGenerate],
-    ['待选', group.pendingChoose],
-    ['已锁定', group.locked],
-    ['阻塞', group.blocked],
-    ['可交付', group.readyDelivery],
-    ['待完成', group.sentWaitDone],
-    ['已完成', group.completed]
-  ]
+  return Object.entries(group.actionCounts || {})
     .filter(([, count]) => count > 0)
     .map(([label, count]) => `${label} ${count}`)
     .join(' · ') || '暂无待办';
 }
 
-function nextActionText(slot) {
+function nextActionText(item) {
+  if (item.alert) return '安排助理号/阑尾号评论区互动';
+  if (item.materialSync) return item.materialSync.status === '目录不可用' ? '检查共享素材路径' : '同步共享素材';
+  if (item.monitorAction) return monitorActionSlotLabel(item.monitorAction.kind) || item.monitorAction.action || '处理账号策略';
+  if (item.clipTask) return '打开固定剪辑配方，剪完或安排发布后标记完成';
+  const slot = item.slot || item;
   if (slot.status === '待生成') return '生成候选稿';
   if (slot.status === '候选待选') return '选择一条候选';
   if (slot.status === '已锁定') return '生成交付内容';

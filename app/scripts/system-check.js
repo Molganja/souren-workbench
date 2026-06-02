@@ -110,6 +110,9 @@ else fail('前台仍把必填抖音链接显示成旧抖音号口径');
 if (mainSource.includes('activeCaseId') && mainSource.includes('排到今日队列队首后打开') && mainSource.includes('isActiveQueueCase')) ok('首页账号概览和异常账号不能打开非队首账号');
 else fail('首页仍可能从概览或异常账号绕过队首打开账号');
 
+if (mainSource.includes('const accountGroups = groupQueueByAccount(priorityActions)') && !mainSource.includes('const accountGroups = groupTodayByAccount(data.todaySlots)') && mainSource.includes('actionCounts') && mainSource.includes('同账号动作') && mainSource.includes('个待处理账号')) ok('首页账号概览按操作队列聚合，不只看排期槽位');
+else fail('首页账号概览仍可能只按今日排期显示，漏掉素材同步、剪辑或爆款互动');
+
 if (serverSource.includes('dashboardQueueHead') && serverSource.includes('当前队首不是准备类任务') && !serverSource.includes('for (const slot of dueSlots)')) ok('后台准备接口也只处理当前队首');
 else fail('后台准备接口仍可能批量推进今日队列');
 
