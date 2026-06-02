@@ -11,6 +11,7 @@ const TEST_AUTH_PORT = 5190;
 const TEST_LAN_FAIL_PORT = 5191;
 const TEST_IMAGE_KEY_ONLY_PORT = 5192;
 const TEST_PLACEHOLDER_PORT = 5193;
+const TEST_LAN_CONFIG_PORT = 5194;
 const ORIGIN = `http://127.0.0.1:${TEST_PORT}`;
 const BASE = `${ORIGIN}/api`;
 const E2E_SETUP_HEADER = { 'X-Souren-E2E-Setup': '1' };
@@ -22,6 +23,7 @@ const IMAGE_KEY_ONLY_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image-key-onl
 const AUTH_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-auth');
 const LAN_FAIL_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-lan-fail');
 const PLACEHOLDER_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-placeholder');
+const LAN_CONFIG_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-lan-config');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -257,6 +259,42 @@ async function lanFailClosedSmoke() {
   fs.rmSync(LAN_FAIL_ROOT_DIR, { recursive: true, force: true });
   assert(exitCode !== 0, 'LAN server without access code should fail startup');
   assert(output.includes('SOUREN_ACCESS_CODE') || output.includes('访问码'), 'LAN fail-closed message missing access code guidance');
+}
+
+async function lanAccessConfigSmoke() {
+  fs.rmSync(LAN_CONFIG_ROOT_DIR, { recursive: true, force: true });
+  fs.mkdirSync(LAN_CONFIG_ROOT_DIR, { recursive: true });
+  const envPath = path.join(LAN_CONFIG_ROOT_DIR, 'runtime.env');
+  fs.writeFileSync(envPath, 'IMAGE_API_KEY=keep-this-key\n');
+  const lanBase = `http://127.0.0.1:${TEST_LAN_CONFIG_PORT}/api`;
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: {
+      ...process.env,
+      PORT: String(TEST_LAN_CONFIG_PORT),
+      SOUREN_ROOT_DIR: LAN_CONFIG_ROOT_DIR,
+      SOUREN_ENV_PATH: envPath,
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  try {
+    await waitForServer(server, lanBase);
+    const before = await api('/config', {}, lanBase);
+    assert(before.network.lanEnabled === false && before.network.localRequest === true, 'LAN config smoke should start local-only');
+    const result = await api('/network/lan-access', { method: 'POST', body: JSON.stringify({ action: 'enable' }) }, lanBase);
+    assert(result.restartRequired === true && /^\d{6}$/.test(result.accessCode), 'LAN enable did not return a six digit access code');
+    const envText = fs.readFileSync(envPath, 'utf8');
+    assert(envText.includes('IMAGE_API_KEY=keep-this-key'), 'LAN enable did not preserve existing env values');
+    assert(envText.includes('SOUREN_HOST=0.0.0.0'), 'LAN enable did not write host');
+    assert(envText.includes(`SOUREN_ACCESS_CODE=${result.accessCode}`), 'LAN enable did not write generated access code');
+  } finally {
+    server.kill('SIGTERM');
+    await sleep(300);
+    fs.rmSync(LAN_CONFIG_ROOT_DIR, { recursive: true, force: true });
+  }
 }
 
 function assert(condition, message) {
@@ -1299,6 +1337,7 @@ async function main() {
     await imageKeyOnlyConfigSmoke();
     await authAccessSmoke();
     await lanFailClosedSmoke();
+    await lanAccessConfigSmoke();
     await placeholderDouyinCollectionSmoke();
 
     const videoCase = await api('/cases', {
@@ -1684,6 +1723,7 @@ async function main() {
     fs.rmSync(AUTH_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(LAN_FAIL_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(PLACEHOLDER_ROOT_DIR, { recursive: true, force: true });
+    fs.rmSync(LAN_CONFIG_ROOT_DIR, { recursive: true, force: true });
   }
 }
 

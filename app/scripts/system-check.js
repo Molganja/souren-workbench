@@ -320,6 +320,19 @@ if (
 ) ok('运行状态前台不暴露英文环境变量、Key 或 Chrome 状态口径');
 else fail('运行状态前台仍暴露英文环境变量、Key 或 Chrome 状态口径');
 
+if (
+  mainSource.includes('开启局域网访问') &&
+  mainSource.includes("request('/network/lan-access'") &&
+  mainSource.includes('访问码：{lanSetup.accessCode}') &&
+  serverSource.includes("app.post('/api/network/lan-access'") &&
+  serverSource.includes('localControlOnly(req, res)') &&
+  serverSource.includes('writeRuntimeEnvUpdates') &&
+  serverSource.includes('SOUREN_ENV_PATH') &&
+  fs.readFileSync(path.join(APP_DIR, 'electron', 'main.cjs'), 'utf8').includes('SOUREN_ENV_PATH') &&
+  smokeSource.includes('LAN enable did not write generated access code')
+) ok('本机运行状态可一键生成局域网访问码并写入运行配置，重启后给工作人员使用');
+else fail('局域网访问仍需要工作人员手改配置，或缺少本机专用写入保护');
+
 const pkg = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8'));
 if (pkg.scripts?.['client:verify']?.includes('client:mac') && pkg.scripts?.['client:verify']?.includes('client:package:check')) ok('客户端可一条命令打包并启动验收');
 else fail('客户端缺少一条命令打包验收脚本');

@@ -2038,6 +2038,7 @@ function SettingsView({ config, onAct }) {
   const [sharedAssetsLoading, setSharedAssetsLoading] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState(null);
   const [agentWork, setAgentWork] = useState(null);
+  const [lanSetup, setLanSetup] = useState(null);
   async function loadSharedAssets() {
     setSharedAssetsLoading(true);
     try {
@@ -2078,6 +2079,7 @@ function SettingsView({ config, onAct }) {
   const agentWorkCounts = agentWork?.counts || {};
   const agentWorkItems = agentWork?.items || [];
   const collector = config.douyinCollector || {};
+  const canPrepareLan = Boolean(config.network?.localRequest && !config.network?.lanEnabled);
   return (
     <div className="stack">
       <section className="hero">
@@ -2110,7 +2112,29 @@ function SettingsView({ config, onAct }) {
             <strong>访问码</strong>
             <span>{config.network?.accessCodeRequired ? '已开启' : '未开启；开放局域网前请先设置访问码'}</span>
           </div>
+          {canPrepareLan && (
+            <div className="templateRow actionTemplateRow">
+              <div>
+                <strong>给另一台电脑使用</strong>
+                <p>系统会自动生成访问码并写入主机配置；重启后把局域网网址和访问码发给工作人员。</p>
+              </div>
+              <button onClick={() => onAct(
+                async () => {
+                  const result = await request('/network/lan-access', { method: 'POST', body: JSON.stringify({ action: 'enable' }) });
+                  setLanSetup(result);
+                  return result;
+                },
+                '已生成局域网访问码，重启工作台后生效'
+              )}>开启局域网访问</button>
+            </div>
+          )}
         </div>
+        {lanSetup && (
+          <div className="hintBox lanSetupResult">
+            <strong>访问码：{lanSetup.accessCode}</strong>
+            <span>重启工作台后，在这里查看局域网网址，再把网址和访问码发给工作人员。</span>
+          </div>
+        )}
       </section>
       <section className="panel">
         <div className="sectionHead">

@@ -42,6 +42,7 @@ async function ensureServer() {
   if (await healthCheck()) return;
   process.env.PORT = String(PORT);
   process.env.SOUREN_ROOT_DIR = rootDir();
+  process.env.SOUREN_ENV_PATH = path.join(rootDir(), '工作台配置.env');
   process.env.SOUREN_DESKTOP = '1';
   process.chdir(appDir());
   const serverUrl = pathToFileURL(path.join(appDir(), 'server', 'index.js')).href;

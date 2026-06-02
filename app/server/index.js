@@ -21,6 +21,34 @@ import {
   uid
 } from './db.js';
 
+const RUNTIME_ENV_PATH = process.env.SOUREN_ENV_PATH
+  ? path.resolve(process.env.SOUREN_ENV_PATH)
+  : path.join(process.cwd(), '.env');
+const RUNTIME_ENV_OVERRIDES_DEFAULT = Boolean(process.env.SOUREN_ENV_PATH);
+
+function parseRuntimeEnvLine(line = '') {
+  const trimmed = String(line || '').trim();
+  if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) return null;
+  const index = trimmed.indexOf('=');
+  const key = trimmed.slice(0, index).trim();
+  let value = trimmed.slice(index + 1).trim();
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    value = value.slice(1, -1);
+  }
+  return key ? { key, value } : null;
+}
+
+function loadRuntimeEnvFile(filePath = RUNTIME_ENV_PATH, overrideExisting = false) {
+  if (!filePath || !fs.existsSync(filePath)) return;
+  fs.readFileSync(filePath, 'utf8').split(/\r?\n/).forEach((line) => {
+    const parsed = parseRuntimeEnvLine(line);
+    if (!parsed || (!overrideExisting && process.env[parsed.key] !== undefined)) return;
+    process.env[parsed.key] = parsed.value;
+  });
+}
+
+loadRuntimeEnvFile(RUNTIME_ENV_PATH, RUNTIME_ENV_OVERRIDES_DEFAULT);
+
 const app = express();
 const PORT = Number(process.env.PORT || 5174);
 const LISTEN_HOST = process.env.SOUREN_HOST || '127.0.0.1';
@@ -160,6 +188,40 @@ function networkSettings() {
     accessCodeRequired: Boolean(ACCESS_CODE),
     localBypass: AUTH_LOCAL_BYPASS
   };
+}
+
+function runtimeEnvLine(key, value) {
+  const cleanValue = String(value ?? '').replace(/\r?\n/g, '').trim();
+  return `${key}=${cleanValue}`;
+}
+
+function writeRuntimeEnvUpdates(updates = {}) {
+  const keys = Object.keys(updates);
+  fs.mkdirSync(path.dirname(RUNTIME_ENV_PATH), { recursive: true });
+  const lines = fs.existsSync(RUNTIME_ENV_PATH)
+    ? fs.readFileSync(RUNTIME_ENV_PATH, 'utf8').split(/\r?\n/)
+    : [];
+  const used = new Set();
+  const nextLines = lines.map((line) => {
+    const parsed = parseRuntimeEnvLine(line);
+    if (!parsed || !keys.includes(parsed.key)) return line;
+    used.add(parsed.key);
+    return runtimeEnvLine(parsed.key, updates[parsed.key]);
+  });
+  keys.forEach((key) => {
+    if (!used.has(key)) nextLines.push(runtimeEnvLine(key, updates[key]));
+  });
+  fs.writeFileSync(RUNTIME_ENV_PATH, `${nextLines.filter((line, index) => line !== '' || index < nextLines.length - 1).join('\n')}\n`);
+}
+
+function generateAccessCode() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+function localControlOnly(req, res) {
+  if (isLoopbackRequest(req)) return true;
+  res.status(403).json({ error: '只有主机本机可以修改局域网访问设置' });
+  return false;
 }
 
 function clientIp(req) {
@@ -4406,7 +4468,26 @@ app.get('/api/cases/:id', (req, res) => {
   });
 });
 
-app.get('/api/config', (_req, res) => {
+app.post('/api/network/lan-access', (req, res) => {
+  if (!localControlOnly(req, res)) return;
+  const action = String(req.body?.action || 'enable').trim();
+  if (action !== 'enable') return res.status(400).json({ error: '暂只支持开启局域网访问' });
+  const accessCode = ACCESS_CODE || generateAccessCode();
+  writeRuntimeEnvUpdates({
+    SOUREN_HOST: '0.0.0.0',
+    SOUREN_ACCESS_CODE: accessCode
+  });
+  const urls = networkSettings().lanUrls;
+  res.json({
+    status: 'restart_required',
+    restartRequired: true,
+    accessCode,
+    lanUrls: urls,
+    message: '已生成局域网访问码。重启工作台后，把局域网网址和访问码发给工作人员。'
+  });
+});
+
+app.get('/api/config', (req, res) => {
   const image = imageSettings();
   const caseLibrary = caseLibraryCandidates();
   res.json({
@@ -4419,7 +4500,7 @@ app.get('/api/config', (_req, res) => {
       size: image.size,
       missing: image.missing
     },
-    network: networkSettings(),
+    network: { ...networkSettings(), localRequest: isLoopbackRequest(req) },
     douyinCollector: douyinCollectorStatus(),
     readiness: systemReadiness(),
     materialRoot: MATERIAL_ROOT,

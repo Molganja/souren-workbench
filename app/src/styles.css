@@ -1240,6 +1240,26 @@ button:disabled:hover,
   margin-top: 12px;
 }
 
+.actionTemplateRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.actionTemplateRow p {
+  margin: 3px 0 0;
+}
+
+.lanSetupResult {
+  margin-top: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.lanSetupResult strong {
+  color: var(--ink);
+}
+
 .readinessRow {
   align-items: start;
 }
