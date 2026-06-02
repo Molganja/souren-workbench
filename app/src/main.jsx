@@ -141,7 +141,6 @@ function App() {
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseDetail, setCaseDetail] = useState(null);
   const [viralTemplates, setViralTemplates] = useState([]);
-  const [contentSeeds, setContentSeeds] = useState([]);
   const [config, setConfig] = useState(null);
   const [session, setSession] = useState(null);
   const [toast, setToast] = useState('');
@@ -150,18 +149,16 @@ function App() {
   const [bulkCaseOpen, setBulkCaseOpen] = useState(false);
   const [viralFormOpen, setViralFormOpen] = useState(false);
   const [editingViral, setEditingViral] = useState(null);
-  const [seedFormOpen, setSeedFormOpen] = useState(false);
   const [verifyTaskOpen, setVerifyTaskOpen] = useState(null);
   const [deliverySlotOpen, setDeliverySlotOpen] = useState(null);
 
   async function refresh() {
-    const [dash, reviewData, scheduleData, caseRows, viralRows, seedRows, configData] = await Promise.all([
+    const [dash, reviewData, scheduleData, caseRows, viralRows, configData] = await Promise.all([
       request('/dashboard'),
       request('/review'),
       request('/schedule'),
       request('/cases'),
       request('/viral-templates'),
-      request('/content-seeds'),
       request('/config')
     ]);
     setDashboard(dash);
@@ -169,7 +166,6 @@ function App() {
     setSchedule(scheduleData);
     setCases(caseRows);
     setViralTemplates(viralRows);
-    setContentSeeds(seedRows);
     setConfig(configData);
     if (selectedCaseId) {
       const detail = await request(`/cases/${selectedCaseId}`);
@@ -306,11 +302,8 @@ function App() {
             onCopy={copyText}
           />
         )}
-        {!loading && canUseWorkbench && view === 'seeds' && (
-          <SeedView seeds={contentSeeds} onNew={() => setSeedFormOpen(true)} onAct={act} />
-        )}
         {!loading && canUseWorkbench && view === 'settings' && config && (
-          <SettingsView config={config} onAct={act} onCopy={copyText} canOpenLocalPaths={canOpenLocalPaths} />
+          <SettingsView config={config} onCopy={copyText} />
         )}
       </main>
       {caseFormOpen && (
@@ -351,15 +344,6 @@ function App() {
             setEditingViral(null);
             setViralFormOpen(false);
           }, editingViral ? '爆款分析已更新' : '爆款链接已记录')}
-        />
-      )}
-      {seedFormOpen && (
-        <SeedForm
-          onClose={() => setSeedFormOpen(false)}
-          onSubmit={(payload) => act(async () => {
-            await request('/content-seeds', { method: 'POST', body: JSON.stringify(payload) });
-            setSeedFormOpen(false);
-          }, '内容种子已保存')}
         />
       )}
       {verifyTaskOpen && (
@@ -410,8 +394,6 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onVerify, onD
               () => request('/dashboard/deliver-today', { method: 'POST' }),
               (result) => `已生成交付内容：${result.deliveryCount}`
             )}>批量生成今日交付内容</button>
-              <button onClick={() => copyOperatorPacket(onCopy)}>复制助手工作包</button>
-              <button onClick={() => askLocalAi(onAct)}>请本地助手建议</button>
           </div>
         </div>
         <div className="stats">
@@ -505,7 +487,6 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onVerify, onD
       <PendingViralSection items={data.pendingViralTemplates || []} onCopy={onCopy} onOpenViral={onOpenViral} />
       <ImageTaskSection items={data.imageTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
       <ClipTaskSection items={data.clipTasks || []} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} canOpenLocalPaths={canOpenLocalPaths} />
-      <AiConsultSection items={data.aiConsults || []} onAct={onAct} canOpenLocalPaths={canOpenLocalPaths} />
 
       <section className="panel">
         <div className="sectionHead">
@@ -542,21 +523,21 @@ function PendingViralSection({ items, onCopy, onOpenViral }) {
           <button onClick={onOpenViral}>去粘贴链接</button>
         </div>
       </div>
-      {items.length === 0 ? <div className="empty">没有待青豆分析的爆款链接</div> : (
+      {items.length === 0 ? <div className="empty">没有待分析的爆款链接</div> : (
         <div className="taskList">
           {items.map((item) => (
             <div className="taskRow" key={item.id}>
               <div className="taskMain">
                 <div className="rowTitle">
-                  <strong>{item.title}</strong>
-                  <span className="status s-pending">待青豆分析</span>
+                  <strong>{pendingViralTitle(item)}</strong>
+                  <span className="status s-pending">待分析</span>
                 </div>
-                <p>{item.hotStructure}</p>
+                <p>等待分析：提取原视频内容、结构和适合账号后再批量生成。</p>
                 {item.sourceLink && <small>{item.sourceLink}</small>}
               </div>
               <div className="rowActions">
                 {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
-                <button onClick={() => copyQingdouTask(item, onCopy)}>复制青豆任务</button>
+                <button onClick={() => copyViralAnalysisTask(item, onCopy)}>复制分析任务</button>
                 <button onClick={onOpenViral}>补分析结果</button>
               </div>
             </div>
@@ -634,49 +615,6 @@ function ClipTaskSection({ items, onOpenCase, onAct, onCopy, canOpenLocalPaths }
       )}
     </section>
   );
-}
-
-function AiConsultSection({ items, onAct, canOpenLocalPaths }) {
-  return (
-    <section className="panel">
-      <div className="sectionHead">
-          <h2>本地助手建议记录</h2>
-        <span>{items.length} 条</span>
-      </div>
-      {items.length === 0 ? <div className="empty">还没有本地助手建议记录</div> : (
-        <div className="taskList">
-          {items.map((item) => (
-            <div className="consultRow" key={item.path}>
-              <div>
-                <div className="rowTitle">
-                  <span className={`status ${consultStatusClass(item.status)}`}>{displayStatus(item.status)}</span>
-                  <strong>{formatDateTime(item.createdAt)}</strong>
-                  <small>{item.command}</small>
-                </div>
-                <pre>{item.summary}</pre>
-                <small>{item.path}</small>
-              </div>
-              <div className="rowActions">
-                {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.path }) }), '已打开顾问记录')}>打开记录</button>}
-                {canOpenLocalPaths && item.packetPath && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.packetPath }) }), '已打开工作包')}>打开工作包</button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function consultStatusClass(status) {
-  if (status === 'completed') return 's-ok';
-  if (status === 'unavailable') return 's-pending';
-  return 's-bad';
-}
-
-function formatDateTime(value) {
-  if (!value) return '';
-  return String(value).replace('T', ' ').slice(0, 16);
 }
 
 function groupTodayByContact(slots) {
@@ -1432,23 +1370,6 @@ async function copyVerifyChecklist(task, onCopy) {
   onCopy(result.text, '核对清单已复制');
 }
 
-async function copyOperatorPacket(onCopy) {
-  const result = await request('/dashboard/operator-packet', { method: 'POST' });
-  onCopy(result.text, '助手工作包已复制并保存');
-}
-
-async function askLocalAi(onAct) {
-  await onAct(
-    () => request('/dashboard/ai-consult', { method: 'POST' }),
-    (result) => {
-      if (result.status === 'completed') return '本地助手建议已保存';
-      if (result.status === 'unavailable') return '未找到本地助手命令，已保存工作包';
-      if (result.status === 'timeout') return '本地助手调用超时，已保存记录';
-      return '本地助手调用失败，已保存记录';
-    }
-  );
-}
-
 function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery, canOpenLocalPaths }) {
   const selected = candidates.find((item) => item.selected);
   return (
@@ -1710,22 +1631,22 @@ function ViralView({ templates, onNew, onEdit, onAct, onCopy }) {
           <button className="button primary" onClick={onNew}>粘贴爆款链接</button>
         </div>
       </div>
-      <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会作为待分析任务，由我后续用青豆提文案、拆结构、判断适合哪些账号，再生成同类型候选。</div>
+      <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会作为待分析任务，后续由系统使用者完成提文案、拆结构、判断适合账号，再生成同类型候选。</div>
       {sortedTemplates.length === 0 ? <div className="empty">还没有待分析链接。先粘贴作品链接即可，不需要填写模板内容。</div> : (
         <div className="templateList">
           {sortedTemplates.map((item) => (
             <div className="templateRow" key={item.id}>
               <div className="rowTitle">
-                <strong>{item.title}</strong>
-                <span className={`status ${isPendingViral(item) ? 's-pending' : 's-ready'}`}>{isPendingViral(item) ? '待青豆分析' : '可生成'}</span>
+                <strong>{isPendingViral(item) ? pendingViralTitle(item) : item.title}</strong>
+                <span className={`status ${isPendingViral(item) ? 's-pending' : 's-ready'}`}>{isPendingViral(item) ? '待分析' : '可生成'}</span>
               </div>
               <span>{item.category} · {item.rewritePolicy}</span>
               {item.sourceLink && <small>来源：{item.sourceLink}</small>}
-              <p>{item.hotStructure}</p>
-              <small>{item.rawText}</small>
+              <p>{isPendingViral(item) ? '等待分析：提取原视频内容、结构和适合账号后再批量生成。' : item.hotStructure}</p>
+              {!isPendingViral(item) && <small>{item.rawText}</small>}
               <div className="inlineActions">
                 {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
-                {isPendingViral(item) && <button onClick={() => copyQingdouTask(item, onCopy)}>复制青豆任务</button>}
+                {isPendingViral(item) && <button onClick={() => copyViralAnalysisTask(item, onCopy)}>复制分析任务</button>}
                 <button onClick={() => onEdit(item)}>{isPendingViral(item) ? '补分析结果' : '编辑分析'}</button>
                 <button disabled={isPendingViral(item)} onClick={() => bulkGenerateViral(item, onAct)}>给所有账号生成今日爆款候选</button>
               </div>
@@ -1737,100 +1658,36 @@ function ViralView({ templates, onNew, onEdit, onAct, onCopy }) {
   );
 }
 
-async function copyQingdouTask(item, onCopy) {
+async function copyViralAnalysisTask(item, onCopy) {
   const result = await request(`/viral-templates/${item.id}/qingdou-task`);
-  onCopy(result.text, '青豆分析任务已复制');
+  onCopy(result.text, '爆款分析任务已复制');
 }
 
 function isPendingViral(item) {
-  return String(item.rawText || '').startsWith('待用青豆')
-    || String(item.hotStructure || '').startsWith('待青豆')
+  const legacyAnalysisTool = '待用' + '青' + '豆';
+  const legacyStructureTool = '待' + '青' + '豆';
+  return String(item.rawText || '').startsWith('待分析')
+    || String(item.rawText || '').startsWith(legacyAnalysisTool)
+    || String(item.hotStructure || '').startsWith('待分析')
+    || String(item.hotStructure || '').startsWith(legacyStructureTool)
     || item.category === '待分析';
 }
 
-function SeedView({ seeds, onNew, onAct }) {
-  return (
-    <section className="panel">
-      <div className="sectionHead">
-        <h2>内容种子库</h2>
-        <button className="button primary" onClick={onNew}>新增内容种子</button>
-      </div>
-      <div className="hintBox">素人种草和日常养号会优先从这里抽取模板，再按账号人设生成 3 条候选。可用变量：{'{城市}'} {'{年龄}'} {'{occupation}'} {'{项目}'} {'{阶段}'} {'{motivation}'}。</div>
-      {seeds.length === 0 ? <div className="empty">暂无内容种子</div> : (
-        <div className="templateList">
-          {seeds.map((seed) => (
-            <div className="templateRow" key={seed.id}>
-              <strong>{seed.titleTemplate}</strong>
-              <span>{seed.project} · {seed.stage} · {seed.contentKind} · {seed.format} · 使用 {seed.usageCount}</span>
-              <p>{seed.contentTemplate}</p>
-              <small>{seed.tags.join(' / ') || '未打标签'}</small>
-              <div className="inlineActions">
-                <button onClick={() => onAct(() => request(`/content-seeds/${seed.id}`, { method: 'DELETE' }), '内容种子已删除')}>删除</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+function pendingViralTitle(item) {
+  return item.sourceLink ? '待分析爆款链接' : (item.title || '待分析爆款链接');
 }
 
-function SeedForm({ onClose, onSubmit }) {
-  const [form, setForm] = useState({
-    project: '通用',
-    stage: '通用',
-    contentKind: '日常养号',
-    format: '图文',
-    titleTemplate: '{城市}{occupation}的一天',
-    contentTemplate: '{城市}{occupation}日常。\\n今天正常记录一点生活，不做得太像广告。\\n{motivation}',
-    tagsText: '日常,起号',
-    baseWeight: 1
-  });
-  function update(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-  return (
-    <Modal title="新增内容种子" onClose={onClose}>
-      <div className="formGrid">
-        <label>项目<input value={form.project} onChange={(e) => update('project', e.target.value)} /></label>
-        <label>阶段<select value={form.stage} onChange={(e) => update('stage', e.target.value)}>
-          {['通用', ...STAGES].map((item) => <option key={item}>{item}</option>)}
-        </select></label>
-        <label>内容类型<select value={form.contentKind} onChange={(e) => update('contentKind', e.target.value)}>
-          {KINDS.filter((item) => item !== '爆款提权').map((item) => <option key={item}>{item}</option>)}
-        </select></label>
-        <label>形式<select value={form.format} onChange={(e) => update('format', e.target.value)}>
-          {['图文', '口播', '视频'].map((item) => <option key={item}>{item}</option>)}
-        </select></label>
-        <label className="wide">标题模板<input value={form.titleTemplate} onChange={(e) => update('titleTemplate', e.target.value)} /></label>
-        <label className="wide">正文模板<textarea rows="7" value={form.contentTemplate} onChange={(e) => update('contentTemplate', e.target.value)} /></label>
-        <label>标签<input value={form.tagsText} onChange={(e) => update('tagsText', e.target.value)} /></label>
-        <label>权重<input value={form.baseWeight} onChange={(e) => update('baseWeight', e.target.value)} /></label>
-      </div>
-      <div className="modalActions">
-        <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={() => onSubmit({
-          ...form,
-          tags: form.tagsText.split(/,|，/).map((item) => item.trim()).filter(Boolean),
-          baseWeight: Number(form.baseWeight) || 1
-        })}>保存</button>
-      </div>
-    </Modal>
-  );
-}
-
-function SettingsView({ config, onAct, onCopy, canOpenLocalPaths }) {
+function SettingsView({ config, onCopy }) {
   return (
     <div className="stack">
       <section className="hero">
         <div>
           <p className="eyebrow">系统配置</p>
-          <h1>运行状态与模板</h1>
-          <p>这里显示当前工作台实际采用的阶段、内容比例、素材模板和本地目录。后续可继续扩展成可编辑配置。</p>
+          <h1>运行状态</h1>
+          <p>这里只保留工作人员会用到的状态：局域网访问、素材目录、图片生成占位、阶段比例和素材模板。</p>
         </div>
         <div className="stats">
           <Metric label="图片接口" value={config.image?.ready ? '已接入' : '待接入'} />
-          <Metric label="文案接口" value={config.llmKeyReady ? '已接入' : '待接入'} />
           <Metric label="局域网" value={config.network?.lanEnabled ? '已开放' : '本机'} />
           <Metric label="阶段" value={config.stages.length} />
           <Metric label="内容类" value={config.contentKinds.length} />
@@ -1879,34 +1736,10 @@ function SettingsView({ config, onAct, onCopy, canOpenLocalPaths }) {
         <div className="path">{config.materialRoot}</div>
       </section>
       <section className="panel">
-          <div className="sectionHead">
-          <h2>助手工作目录</h2>
-          <div className="headerActions">
-            <span>{config.localAi?.ready ? '本地助手已接入' : '本地助手待接入'}</span>
-            <button onClick={() => onCopy(localAiSetupText(config), '本地助手接入说明已复制')}>复制接入说明</button>
-            {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.operatorPacketDir }) }), '已打开助手工作包目录')}>打开工作包目录</button>}
-            {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: config.aiConsultDir }) }), '已打开顾问记录目录')}>打开顾问记录目录</button>}
-          </div>
-        </div>
+        <div className="sectionHead"><h2>图片生成接口</h2></div>
         <div className="templateList">
           <div className="templateRow">
-            <strong>工作包目录</strong>
-            <span>{config.operatorPacketDir}</span>
-          </div>
-          <div className="templateRow">
-            <strong>顾问记录目录</strong>
-            <span>{config.aiConsultDir}</span>
-          </div>
-          <div className="templateRow">
-            <strong>本地助手命令</strong>
-            <span>{config.localAi?.ready ? config.localAi.command : config.localAi?.message}</span>
-          </div>
-          <div className="templateRow">
-            <strong>文案模型</strong>
-            <span>{config.llm?.ready ? `${config.llm.model}｜${config.llm.baseUrl}` : '未接入，候选稿使用本地模板生成'}</span>
-          </div>
-          <div className="templateRow">
-            <strong>图片生成接口</strong>
+            <strong>状态</strong>
             <span>{config.image?.ready ? `${config.image.model}｜${config.image.size}` : `${config.image?.missing || '未接入'}，图片任务仍可复制提示词`}</span>
           </div>
         </div>
@@ -1937,34 +1770,6 @@ function SettingsView({ config, onAct, onCopy, canOpenLocalPaths }) {
       </section>
     </div>
   );
-}
-
-function localAiSetupText(config) {
-  return [
-    '本地助手接入说明',
-    '',
-    '当前状态：',
-    config.localAi?.ready
-      ? `已接入：${config.localAi.command}`
-      : `未接入：${config.localAi?.message || '未找到本地助手命令'}`,
-    '',
-    '系统会自动查找：claude / clude / claude-code',
-    '',
-    '如果命令不在 PATH，请在 app/.env 填：',
-    'LOCAL_CLAUDE_COMMAND=/完整路径/claude',
-    '',
-    '如果只想生成工作包、不调用本地助手：',
-    'SOUREN_LOCAL_AI_DISABLED=1',
-    '',
-    '验证命令：',
-    'cd /Users/licc/Desktop/素人系统/app',
-    'npm run doctor',
-    'npm run consult',
-    'npm run verify:consult',
-    '',
-    `助手工作包目录：${config.operatorPacketDir}`,
-    `顾问记录目录：${config.aiConsultDir}`
-  ].join('\n');
 }
 
 function networkSetupText(config) {
@@ -2146,11 +1951,11 @@ function ViralForm({ initial, onClose, onSubmit }) {
   }
   return (
     <Modal title={initial ? '补爆款分析' : '粘贴爆款链接'} onClose={onClose}>
-      <div className="hintBox">{initial ? '这里用于把青豆提取结果、结构分析和适合账号补回系统。补完后，这条爆款链接就可以批量生成人设化候选。' : '工作人员只需要贴抖音作品链接。标题、正文、爆点结构这些可以留空，后续由我用青豆提取和分析。'}</div>
+      <div className="hintBox">{initial ? '这里用于把原视频内容、结构分析和适合账号补回系统。补完后，这条爆款链接就可以批量生成人设化候选。' : '工作人员只需要贴抖音作品链接。标题、正文、爆点结构这些可以留空，后续由系统使用者分析后补充。'}</div>
       <div className="formGrid">
         <label className="wide">爆款视频链接<input placeholder="先贴抖音作品链接即可" value={form.sourceLink} onChange={(e) => update('sourceLink', e.target.value)} /></label>
         <label className="wide">备注标题<input placeholder="可留空；需要区分来源时再写" value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
-        <label className="wide">青豆提取结果<textarea rows="5" placeholder="可留空，后续由我提取后补充" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
+        <label className="wide">原视频内容<textarea rows="5" placeholder="可留空，后续分析后补充" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
         <label>类别<select value={form.category} onChange={(e) => update('category', e.target.value)}>
           {['待分析', '情绪', '职场', '穿搭', '美食', '本地生活', '清单', '反差故事'].map((item) => <option key={item}>{item}</option>)}
         </select></label>

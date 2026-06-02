@@ -97,10 +97,11 @@ async function verifyRuntime() {
     await waitForServer(child);
     const health = await api('/health');
     assert(health.ok === true, 'health not ok');
-    assert(health.readiness?.total >= 10, 'health readiness summary missing');
+    assert(health.readiness?.total >= 8, 'health readiness summary missing');
     const readiness = await api('/readiness');
-    assert(readiness.summary.ready >= 8, 'readiness ready count too low');
-    assert(readiness.checks.some((item) => item.key === 'operator-packet' && item.status === 'ready'), 'operator packet readiness missing');
+    assert(readiness.summary.ready >= 7, 'readiness ready count too low');
+    assert(readiness.checks.some((item) => item.key === 'viral-analysis' && item.status === 'ready'), 'viral analysis readiness missing');
+    assert(!readiness.checks.some((item) => ['local-ai', 'llm-copy', 'github-sync', 'operator-packet'].includes(item.key)), 'legacy developer readiness should not be shown');
     if (WITH_CONSULT) {
       const consult = await api('/dashboard/ai-consult', { method: 'POST' });
       assert(['completed', 'unavailable', 'timeout', 'error'].includes(consult.status), 'assistant consult status invalid');
@@ -122,7 +123,7 @@ async function main() {
   await run('npm', ['run', 'client:check']);
   await run('npm', ['run', 'test:e2e']);
   await verifyRuntime();
-  verifyGitHubSync();
+  if (STRICT_GITHUB) verifyGitHubSync();
   console.log(WITH_CONSULT ? 'VERIFY CONSULT PASS' : 'VERIFY PASS');
 }
 

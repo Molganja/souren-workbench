@@ -4,9 +4,6 @@ import { spawn } from 'node:child_process';
 import http from 'node:http';
 
 const TEST_PORT = 5184;
-const TEST_AI_PORT = 5185;
-const TEST_LLM_APP_PORT = 5186;
-const TEST_LLM_PORT = 5187;
 const TEST_IMAGE_APP_PORT = 5188;
 const TEST_IMAGE_PORT = 5189;
 const TEST_AUTH_PORT = 5190;
@@ -15,8 +12,6 @@ const BASE = `${ORIGIN}/api`;
 const APP_DIR = path.resolve(import.meta.dirname, '..');
 const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
 const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
-const AI_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-ai');
-const LLM_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-llm');
 const IMAGE_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image');
 const AUTH_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-auth');
 
@@ -48,114 +43,6 @@ async function waitForServer(child, base = BASE) {
   throw new Error('server did not start');
 }
 
-async function localAiSuccessSmoke() {
-  fs.rmSync(path.join(AI_ROOT_DIR, 'data'), { recursive: true, force: true });
-  fs.rmSync(path.join(AI_ROOT_DIR, '素材库'), { recursive: true, force: true });
-  fs.mkdirSync(AI_ROOT_DIR, { recursive: true });
-  const readerCode = [
-    "let input='';",
-    "process.stdin.on('data', c => input += c);",
-    "process.stdin.on('end', () => {",
-    "  const ok = input.includes('素人系统运营工作包') && input.includes('当前代码进度') && input.includes('请优先读取工作包') && input.includes('app/server/index.js');",
-    "  console.log(ok ? 'LOCAL_AI_OK' : 'LOCAL_AI_MISSING');",
-    "});"
-  ].join('');
-  const localCommand = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(readerCode)}`;
-  const aiBase = `http://127.0.0.1:${TEST_AI_PORT}/api`;
-  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
-    cwd: APP_DIR,
-    env: { ...process.env, PORT: String(TEST_AI_PORT), SOUREN_ROOT_DIR: AI_ROOT_DIR, LOCAL_CLAUDE_COMMAND: localCommand, SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1' },
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
-  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
-  try {
-    await waitForServer(server, aiBase);
-    const health = await api('/health', {}, aiBase);
-    assert(health.localAi.ready === true, 'fake local AI should be ready');
-    const consult = await api('/dashboard/ai-consult', { method: 'POST' }, aiBase);
-    assert(consult.status === 'completed', 'fake local AI consult should complete');
-    assert(consult.stdout.includes('LOCAL_AI_OK'), 'fake local AI did not receive operator packet through stdin');
-    assert(fs.existsSync(consult.consultPath), 'completed AI consult record missing');
-  } finally {
-    server.kill('SIGTERM');
-    await sleep(300);
-    fs.rmSync(AI_ROOT_DIR, { recursive: true, force: true });
-  }
-}
-
-async function llmCandidateSmoke() {
-  fs.rmSync(path.join(LLM_ROOT_DIR, 'data'), { recursive: true, force: true });
-  fs.rmSync(path.join(LLM_ROOT_DIR, '素材库'), { recursive: true, force: true });
-  fs.mkdirSync(LLM_ROOT_DIR, { recursive: true });
-  let receivedPrompt = '';
-  const llmServer = http.createServer((req, res) => {
-    let body = '';
-    req.on('data', (chunk) => { body += chunk.toString(); });
-    req.on('end', () => {
-      receivedPrompt = body;
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              candidates: [
-                { variant: '稳妥版', title: '模型稳妥标题', publishText: '模型生成的稳妥版正文，带有真实生活记录感。', format: '图文', operatorInstruction: '模型稳妥执行说明' },
-                { variant: '互动版', title: '模型互动标题', publishText: '模型生成的互动版正文，结尾带评论区互动。', format: '图文', operatorInstruction: '模型互动执行说明' },
-                { variant: '爆款结构版', title: '模型爆款标题', publishText: '模型生成的爆款结构版正文，包含结构拆解和自然表达。', format: '口播', operatorInstruction: '模型爆款执行说明' }
-              ]
-            })
-          }
-        }]
-      }));
-    });
-  });
-  await new Promise((resolve) => llmServer.listen(TEST_LLM_PORT, '127.0.0.1', resolve));
-  const llmBase = `http://127.0.0.1:${TEST_LLM_APP_PORT}/api`;
-  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
-    cwd: APP_DIR,
-    env: {
-      ...process.env,
-      PORT: String(TEST_LLM_APP_PORT),
-      SOUREN_ROOT_DIR: LLM_ROOT_DIR,
-      SOUREN_LOCAL_AI_DISABLED: '1',
-      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
-      LLM_API_KEY: 'fake-key',
-      LLM_BASE_URL: `http://127.0.0.1:${TEST_LLM_PORT}/v1`,
-      LLM_MODEL: 'fake-copy-model',
-      DASHSCOPE_API_KEY: '',
-      IMAGE_API_KEY: '',
-      IMAGE_API_URL: ''
-    },
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
-  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
-  try {
-    await waitForServer(server, llmBase);
-    const config = await api('/config', {}, llmBase);
-    assert(config.llmKeyReady === true && config.llm.model === 'fake-copy-model', 'LLM config did not show ready');
-    const caze = await api('/cases', {
-      method: 'POST',
-      body: JSON.stringify({ weixinNick: '模型测试兼职', staff: '咨询模型', persona: { city: '成都', occupation: '上班族' } })
-    }, llmBase);
-    const slot = await api(`/cases/${caze.id}/slots`, {
-      method: 'POST',
-      body: JSON.stringify({ date: '2026-06-01', contentKind: '日常养号', stage: '起号期', goal: '模型生成候选验收' })
-    }, llmBase);
-    const drafts = await api(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }, llmBase);
-    assert(drafts.length === 3, 'LLM candidate count invalid');
-    assert(drafts.every((item) => item.sourceTemplateId === 'llm'), 'LLM candidates missing source marker');
-    assert(drafts.some((item) => item.title === '模型稳妥标题' && item.publishText.includes('模型生成')), 'LLM candidate text not saved');
-    assert(receivedPrompt.includes('模型生成候选验收') && receivedPrompt.includes('模型测试兼职'), 'LLM prompt missing slot or case context');
-  } finally {
-    server.kill('SIGTERM');
-    llmServer.close();
-    await sleep(300);
-    fs.rmSync(LLM_ROOT_DIR, { recursive: true, force: true });
-  }
-}
-
 async function imageGenerationSmoke() {
   fs.rmSync(path.join(IMAGE_ROOT_DIR, 'data'), { recursive: true, force: true });
   fs.rmSync(path.join(IMAGE_ROOT_DIR, '素材库'), { recursive: true, force: true });
@@ -180,14 +67,11 @@ async function imageGenerationSmoke() {
       ...process.env,
       PORT: String(TEST_IMAGE_APP_PORT),
       SOUREN_ROOT_DIR: IMAGE_ROOT_DIR,
-      SOUREN_LOCAL_AI_DISABLED: '1',
       SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
       IMAGE_API_KEY: 'fake-image-key',
       IMAGE_API_URL: `http://127.0.0.1:${TEST_IMAGE_PORT}/images/generate`,
       IMAGE_MODEL: 'fake-image-model',
-      IMAGE_SIZE: '1024x1024',
-      LLM_API_KEY: '',
-      DASHSCOPE_API_KEY: ''
+      IMAGE_SIZE: '1024x1024'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -284,10 +168,7 @@ async function main() {
       ...process.env,
       PORT: String(TEST_PORT),
       SOUREN_ROOT_DIR: ROOT_DIR,
-      SOUREN_LOCAL_AI_DISABLED: '1',
       SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
-      LLM_API_KEY: '',
-      DASHSCOPE_API_KEY: '',
       IMAGE_API_KEY: '',
       IMAGE_API_URL: ''
     },
@@ -327,9 +208,9 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({ sourceLink: 'https://www.douyin.com/video/link-only-smoke' })
     });
-    assert(linkOnlyViral.rawText.includes('待用青豆') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
-    const qingdouTask = await api(`/viral-templates/${linkOnlyViral.id}/qingdou-task`);
-    assert(qingdouTask.text.includes('https://www.douyin.com/video/link-only-smoke') && qingdouTask.text.includes('回填到系统'), 'qingdou task text missing');
+    assert(linkOnlyViral.rawText.includes('待分析') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
+    const viralAnalysisTask = await api(`/viral-templates/${linkOnlyViral.id}/qingdou-task`);
+    assert(viralAnalysisTask.text.includes('https://www.douyin.com/video/link-only-smoke') && viralAnalysisTask.text.includes('回填到系统'), 'viral analysis task text missing');
     const viralDashboard = await api('/dashboard');
     assert(viralDashboard.counts.pendingViral >= 1, 'dashboard pending viral count missing');
     assert(viralDashboard.pendingViralTemplates.some((item) => item.id === linkOnlyViral.id), 'dashboard pending viral list missing link-only template');
@@ -523,21 +404,6 @@ async function main() {
     assert(deliveryDashboardSlot.case.staff === '咨询D', 'dashboard missing contact staff');
     assert(deliveryDashboardSlot.selectedCandidate.operatorInstruction.includes('对接人：咨询D'), 'operator instruction missing contact staff');
     assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitReport), 'dashboard work split counts missing');
-    const operatorPacket = await api('/dashboard/operator-packet', { method: 'POST' });
-    assert(fs.existsSync(operatorPacket.path), 'operator packet file missing');
-    assert(operatorPacket.text.includes('素人系统运营工作包') && operatorPacket.text.includes('助手下一步优先级'), 'operator packet missing core sections');
-    assert(operatorPacket.text.includes('当前代码进度') && operatorPacket.text.includes('请优先读取') && operatorPacket.text.includes('app/server/index.js'), 'operator packet missing git/file context');
-    assert(operatorPacket.text.includes('发给 验收兼职改名') && operatorPacket.text.includes('对接 咨询D'), 'operator packet missing recipient routing');
-    const aiConsult = await api('/dashboard/ai-consult', { method: 'POST' });
-    assert(aiConsult.status === 'unavailable', 'disabled local AI consult should be unavailable');
-    assert(fs.existsSync(aiConsult.consultPath), 'AI consult record file missing');
-    assert(aiConsult.text.includes('本地助手建议记录') && aiConsult.text.includes(operatorPacket.path.slice(0, operatorPacket.path.lastIndexOf('/'))), 'AI consult record missing context');
-    const consultHistory = await api('/dashboard/ai-consults');
-    assert(consultHistory.some((item) => item.path === aiConsult.consultPath && item.status === 'unavailable'), 'AI consult history missing record');
-    const dashboardWithConsult = await api('/dashboard');
-    assert(dashboardWithConsult.aiConsults.some((item) => item.path === aiConsult.consultPath), 'dashboard missing AI consult history');
-    await localAiSuccessSmoke();
-    await llmCandidateSmoke();
     await imageGenerationSmoke();
     await authAccessSmoke();
 
@@ -615,21 +481,21 @@ async function main() {
     try {
       await api(`/viral-templates/${linkOnlyViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-04' }) });
     } catch (error) {
-      pendingRejected = /409/.test(error.message) || /青豆/.test(error.message);
+      pendingRejected = /409/.test(error.message) || /结构分析/.test(error.message);
     }
     assert(pendingRejected, 'pending link-only viral template allowed bulk generation');
     const analyzedViral = await api(`/viral-templates/${linkOnlyViral.id}`, {
       method: 'PATCH',
       body: JSON.stringify({
-        title: '青豆分析后的链接',
-        rawText: '青豆提取：真实生活开头，三段转折，评论提问。',
+        title: '分析后的爆款链接',
+        rawText: '原视频内容：真实生活开头，三段转折，评论提问。',
         category: '情绪',
         hotStructure: '生活场景开头 + 三段状态变化 + 评论区提问',
         suitablePersonas: ['成都'],
         rewritePolicy: '结构模仿'
       })
     });
-    assert(analyzedViral.title === '青豆分析后的链接' && analyzedViral.category === '情绪', 'viral analysis patch failed');
+    assert(analyzedViral.title === '分析后的爆款链接' && analyzedViral.category === '情绪', 'viral analysis patch failed');
     const analyzedBulk = await api(`/viral-templates/${analyzedViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-05' }) });
     assert(analyzedBulk.createdCount >= 1, 'analyzed viral link did not generate filtered slots');
 
@@ -638,8 +504,6 @@ async function main() {
     assert(exported.metrics.length === 1, 'export missing metrics');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
-    const manualBackup = await api('/backups', { method: 'POST', body: JSON.stringify({ reason: 'smoke-test' }) });
-    assert(fs.existsSync(manualBackup.backup.path), 'manual backup file missing');
     const importResult = await api('/import', { method: 'POST', body: JSON.stringify(exported) });
     assert(fs.existsSync(importResult.preImportBackup.path), 'pre-import backup file missing');
     let badImportRejected = false;
@@ -665,18 +529,19 @@ async function main() {
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');
-    assert(config.backups.length >= 2, 'config backup list missing');
-    assert(config.localAi && config.localAi.ready === false, 'config local AI status missing');
-    assert(config.operatorPacketDir && config.aiConsultDir, 'config AI work dirs missing');
-    assert(config.readiness?.summary?.total >= 10, 'config readiness summary missing');
+    assert(!('backups' in config), 'config should not expose backup list to workbench');
+    assert(!('localAi' in config), 'config should not expose local AI status to workbench');
+    assert(!('llm' in config) && !('llmKeyReady' in config), 'config should not expose copy model status to workbench');
+    assert(!('operatorPacketDir' in config) && !('aiConsultDir' in config), 'config should not expose assistant work dirs');
+    assert(config.readiness?.summary?.total >= 8, 'config readiness summary missing');
     assert(config.readiness.checks.some((item) => item.key === 'delivery-package' && item.status === 'ready'), 'readiness delivery package missing');
-    assert(config.readiness.checks.some((item) => item.key === 'local-ai' && item.status === 'waiting'), 'readiness local AI waiting missing');
-    assert(config.readiness.checks.some((item) => item.key === 'github-sync'), 'readiness github sync missing');
+    assert(config.readiness.checks.some((item) => item.key === 'viral-analysis' && item.status === 'ready'), 'readiness viral analysis missing');
+    assert(!config.readiness.checks.some((item) => ['local-ai', 'llm-copy', 'github-sync', 'operator-packet'].includes(item.key)), 'readiness should not expose legacy developer checks');
     const health = await api('/health');
-    assert(health.localAi && health.localAi.ready === false, 'health local AI status missing');
-    assert(health.readiness?.total >= 10, 'health readiness summary missing');
+    assert(health.readiness?.total >= 8, 'health readiness summary missing');
     const readiness = await api('/readiness');
-    assert(readiness.checks.some((item) => item.key === 'operator-packet' && item.status === 'ready'), 'readiness endpoint missing operator packet');
+    assert(readiness.checks.some((item) => item.key === 'viral-analysis' && item.status === 'ready'), 'readiness endpoint missing viral analysis');
+    assert(!readiness.checks.some((item) => ['local-ai', 'llm-copy', 'github-sync', 'operator-packet'].includes(item.key)), 'readiness endpoint exposed legacy checks');
 
     const finalDetail = await api(`/cases/${caze.id}`);
     assert(finalDetail.metrics.length === 1, 'case metrics missing');
@@ -687,8 +552,6 @@ async function main() {
     server.kill('SIGTERM');
     await sleep(300);
     fs.rmSync(ROOT_DIR, { recursive: true, force: true });
-    fs.rmSync(AI_ROOT_DIR, { recursive: true, force: true });
-    fs.rmSync(LLM_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(IMAGE_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(AUTH_ROOT_DIR, { recursive: true, force: true });
   }

@@ -1144,14 +1144,16 @@ function viralSuitableForCase(viral, caze) {
 }
 
 function isPendingViralTemplate(viral) {
-  return String(viral.rawText || '').startsWith('待用青豆')
+  return String(viral.rawText || '').startsWith('待分析')
+    || String(viral.rawText || '').startsWith('待用青豆')
+    || String(viral.hotStructure || '').startsWith('待分析')
     || String(viral.hotStructure || '').startsWith('待青豆')
     || viral.category === '待分析';
 }
 
 function qingdouTaskText(viral) {
   return [
-    '青豆/轻抖爆款分析任务',
+    '爆款链接分析任务',
     `链接：${viral.sourceLink || '未填'}`,
     `系统记录ID：${viral.id}`,
     '',
@@ -1165,7 +1167,7 @@ function qingdouTaskText(viral) {
     '',
     '回填到系统：',
     '标题 -> 备注标题',
-    '正文 -> 青豆提取结果',
+    '正文 -> 原视频内容',
     '类别 -> 情绪/职场/穿搭/美食/本地生活/清单/反差故事',
     '结构和建议 -> 分析结论',
     '适合/禁用关键词 -> 对应输入框',
@@ -1616,7 +1618,6 @@ function dashboard() {
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
-    aiConsults: recentAiConsults(),
     abnormalCases: caseHealthRows
       .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0)
       .sort((a, b) => (b.requiredGapCount + b.materialGaps.length + b.reasons.length) - (a.requiredGapCount + a.materialGaps.length + a.reasons.length))
@@ -1916,9 +1917,6 @@ function localAiStatus() {
 function systemReadiness() {
   const dbPath = path.join(DATA_DIR, 'souren.sqlite');
   const image = imageSettings();
-  const llm = llmSettings();
-  const ai = localAiStatus();
-  const github = gitSyncStatus();
   const network = networkSettings();
   const checks = [
     { key: 'local-web', label: '本地网页工作台', status: 'ready', detail: `http://127.0.0.1:${PORT}` },
@@ -1932,17 +1930,13 @@ function systemReadiness() {
     },
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
-    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已汇报、已核对、助手记录' },
+    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已汇报、已核对' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '对接人 + 抖音链接即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
     { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '默认人工回填；系统负责打开链接、给清单、记录播放/点赞/评论/粉丝' },
     { key: 'douyin-capture-mode', label: '抖音数据采集方式', status: 'ready', detail: '人工回填和浏览器协同为默认可用链路；自动采集只作为后续可选插件验收' },
-    { key: 'viral-qingdou', label: '爆款链接与青豆任务', status: 'ready', detail: '链接先入库，复制青豆提取任务后回填结构' },
-    { key: 'llm-copy', label: '文案模型生成', status: llm.ready ? 'ready' : 'waiting', detail: llm.ready ? `已接入 ${llm.model}` : '文案模型密钥为空，候选稿会使用本地模板生成' },
-    { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` },
-    { key: 'local-ai', label: '本地助手命令', status: ai.ready ? 'ready' : 'waiting', detail: ai.ready ? ai.command : ai.message },
-    { key: 'github-sync', label: '远端代码同步', status: github.status, detail: github.detail },
-    { key: 'operator-packet', label: '助手工作包和建议记录', status: 'ready', detail: `${OPERATOR_PACKET_DIR} / ${AI_CONSULT_DIR}` }
+    { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
+    { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
   ];
   return {
     summary: {
@@ -2237,7 +2231,6 @@ app.get('/api/cases/:id', (req, res) => {
 });
 
 app.get('/api/config', (_req, res) => {
-  const llm = llmSettings();
   const image = imageSettings();
   res.json({
     stages: STAGES,
@@ -2246,16 +2239,9 @@ app.get('/api/config', (_req, res) => {
     materialTemplates: MATERIAL_TEMPLATES,
     imageKeyReady: Boolean(image.apiKey),
     image: { ready: image.ready, apiUrlConfigured: Boolean(image.apiUrl), model: image.model, size: image.size, missing: image.missing },
-    llmKeyReady: llm.ready,
-    llm: { ready: llm.ready, baseUrl: llm.baseUrl, model: llm.model },
-    localAi: localAiStatus(),
     network: networkSettings(),
     readiness: systemReadiness(),
-    materialRoot: MATERIAL_ROOT,
-    operatorPacketDir: OPERATOR_PACKET_DIR,
-    aiConsultDir: AI_CONSULT_DIR,
-    backupDir: BACKUP_DIR,
-    backups: backupList().slice(0, 10)
+    materialRoot: MATERIAL_ROOT
   });
 });
 
@@ -2784,10 +2770,10 @@ app.post('/api/viral-templates', (req, res) => {
     [
       id,
       body.title || (linkOnly ? `待分析爆款链接 ${new Date().toISOString().slice(0, 10)}` : '未命名爆款模板'),
-      body.rawText || (linkOnly ? '待用青豆提取原视频文案' : ''),
+      body.rawText || (linkOnly ? '待分析：待提取原视频内容' : ''),
       body.sourceLink || '',
       body.category || (linkOnly ? '待分析' : '情绪'),
-      body.hotStructure || (linkOnly ? '待青豆提取后补充：标题、正文、爆点结构、适合人设和下一步建议' : '开头提出共鸣问题，中段列出3个细节，结尾引导评论'),
+      body.hotStructure || (linkOnly ? '待分析后补充：标题、正文、爆点结构、适合人设和下一步建议' : '开头提出共鸣问题，中段列出3个细节，结尾引导评论'),
       JSON.stringify(body.suitablePersonas || []),
       JSON.stringify(body.forbiddenPersonas || []),
       body.rewritePolicy || (linkOnly ? '仅参考' : '结构模仿'),
@@ -2831,8 +2817,8 @@ app.get('/api/viral-templates/:id/qingdou-task', (req, res) => {
 app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
   const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
   if (!viral) return res.status(404).json({ error: 'viral template not found' });
-  if (viral.rawText.startsWith('待用青豆') || viral.hotStructure.startsWith('待青豆')) {
-    return res.status(409).json({ error: '这个爆款链接还没完成青豆提取和结构分析，先不要批量生成' });
+  if (isPendingViralTemplate(viral)) {
+    return res.status(409).json({ error: '这个爆款链接还没完成内容提取和结构分析，先不要批量生成' });
   }
   const body = req.body || {};
   const cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase);
