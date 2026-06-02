@@ -1185,7 +1185,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
           />
         )}
         <div className="filters">
-          <input placeholder="搜索微信昵称 / 抖音链接 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input placeholder="搜索微信昵称 / 抖音链接 / 案例编号 / 项目" value={query} onChange={(e) => setQuery(e.target.value)} />
           <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
             {healthOptions.map((item) => <option key={item}>{item}</option>)}
           </select>
@@ -1329,7 +1329,7 @@ function DeleteCaseModal({ item, onClose, onDelete }) {
   const ready = confirmText.trim() === '删除';
   return (
     <Modal title="删除案例" onClose={onClose}>
-      <div className="hintBox dangerHint">删除后，这个账号不会再进入首页队列；本地案例素材目录也会同步删除。</div>
+      <div className="hintBox dangerHint">删除后，这个账号不会再进入首页队列；本地素材副本也会同步删除。</div>
       <div className="templateList">
         <div className="templateRow">
           <strong>微信昵称</strong>
@@ -1338,10 +1338,6 @@ function DeleteCaseModal({ item, onClose, onDelete }) {
         <div className="templateRow">
           <strong>抖音</strong>
           <span>{douyinDisplay(item)}</span>
-        </div>
-        <div className="templateRow">
-          <strong>本地案例素材目录</strong>
-          <span>{item.localCaseDir || '未记录'}</span>
         </div>
       </div>
       <div className="formGrid">
@@ -1360,7 +1356,7 @@ function deleteCase(item, onAct, onDone) {
     const result = await request(`/cases/${item.id}`, { method: 'DELETE' });
     onDone?.();
     return result;
-  }, (result) => result.removedDir ? '案例已删除，本地素材目录已同步删除' : '案例已删除，本地目录原本不存在');
+  }, (result) => result.removedDir ? '案例已删除，本地素材副本已同步删除' : '案例已删除，本地素材副本原本不存在');
 }
 
 function caseCanResume(caze = {}) {
@@ -1393,11 +1389,10 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueue
         <div>
           <p className="eyebrow">{caze.caseCode}</p>
           <h1>{caze.weixinNick}</h1>
-          <p>{caze.project} · {personaText(caze.persona)}</p>
+          <p>{caze.project} · 抖音：{douyinDisplay(caze)}</p>
           {healthReasons.length > 0 && <p className="healthLine">当前提示：{healthReasons.join(' / ')}</p>}
           {healthActions.length > 0 && <p className="healthLine">建议动作：{healthActions.join(' / ')}</p>}
           <p className="path">共享原始素材：{caze.sourceMaterialDir || '未填写'}</p>
-          <p className="path">素材目录：{caze.localCaseDir}</p>
         </div>
         <div className="headerActions">
           <button onClick={() => setEditOpen(true)}>编辑案例</button>
@@ -2491,7 +2486,7 @@ function ViralBulkForm({ template, onClose, onSubmit }) {
   const [date, setDate] = useState(today());
   return (
     <Modal title="生成爆款候选" onClose={onClose}>
-      <div className="hintBox">系统只会给可投放账号生成候选；暂停、休眠、当天已有任务或不适合的人设会自动跳过。</div>
+      <div className="hintBox">系统只会给可投放账号生成候选；暂停、休眠、当天已有任务或不适合的账号会自动跳过。</div>
       <div className="formGrid">
         <label className="wide">爆款来源<input value={template.sourceLink || template.title || '已分析爆款'} readOnly /></label>
         <label>生成日期<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
@@ -2541,7 +2536,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
   const caseFormMissingRequired = !form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim();
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      <div className="hintBox">{isCreate ? '新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。四项都必须填，系统会自动建立目录、近期排期和采集链路。' : '编辑时只改账号必需信息：微信、抖音、项目和共享素材路径。四项都必须填，人设和阶段由系统内部维护。'}</div>
+      <div className="hintBox">{isCreate ? '新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。四项都必须填，系统会自动建立目录、近期排期和采集链路。' : '编辑时只改账号必需信息：微信、抖音、项目和共享素材路径。四项都必须填，其余内容由系统自动维护。'}</div>
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
@@ -2612,7 +2607,7 @@ function Modal({ title, children, onClose }) {
 }
 
 function personaText(persona = {}) {
-  return [persona.city, persona.age ? `${persona.age}岁` : '', persona.occupation, persona.tone].filter(Boolean).join(' · ') || '未填写人设';
+  return [persona.city, persona.age ? `${persona.age}岁` : '', persona.occupation, persona.tone].filter(Boolean).join(' · ') || '内部参考未生成';
 }
 
 createRoot(document.getElementById('root')).render(<App />);

@@ -369,14 +369,24 @@ if (serverSource.includes('图片任务必须有明确用途') && mainSource.inc
 else fail('图片任务仍存在泛化入口或默认用途');
 
 const oldDeletedDirMarker = '_' + 'deleted';
-if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也会同步删除')) ok('删除案例会同步删除本地案例目录');
+if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地素材副本也会同步删除')) ok('删除案例会同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
 if (mainSource.includes('新建时只填四项') && mainSource.includes('caseFormMissingRequired') && !mainSource.includes('disabled={isCreate &&') && !mainSource.includes('RANDOM_CASE_PROFILES') && !mainSource.includes('randomCaseDefaults') && !mainSource.includes('随机换一组') && !mainSource.includes('douyinId: initial') && mainSource.includes("!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim()")) ok('新建和编辑案例前端只保留四项录入，并要求微信、抖音、项目和共享素材路径');
 else fail('新建案例仍暴露随机人设选择或允许缺少微信名');
 
 if (
+  !mainSource.includes('搜索微信昵称 / 抖音链接 / 案例编号 / 项目 / 人设') &&
+  !mainSource.includes('本地案例素材目录') &&
+  !mainSource.includes('素材目录：') &&
+  !mainSource.includes('不适合的人设') &&
+  mainSource.includes('共享原始素材：')
+) ok('日常案例页不展示内部人设或本地素材副本路径');
+else fail('日常案例页仍暴露内部人设或本地素材副本路径');
+
+if (
   mainSource.includes('编辑时只改账号必需信息') &&
+  !mainSource.includes('人设和阶段由系统内部维护') &&
   !mainSource.includes('编辑时只改对接必需信息') &&
   !mainSource.includes('updatePersona') &&
   !mainSource.includes('<label>城市') &&
@@ -404,7 +414,11 @@ const staleOperatorDocs = [
   '如果本机没有写权限',
   '待爆款分析链接只保留打开原链接和补分析结果',
   '适合/禁用关键词 -> 对应输入框',
-  '填写完成后再点“给可投放账号生成爆款候选”'
+  '填写完成后再点“给可投放账号生成爆款候选”',
+  '本地案例素材目录',
+  '账号人设',
+  '人设关键词',
+  '填人设'
 ];
 const leakedOperatorDocs = staleOperatorDocs.filter((label) => [readmeSource, sopSource].some((source) => source.includes(label)));
 if (!leakedOperatorDocs.length) ok('SOP 和 README 不再保留手工分析、手工采集或远端权限旧口径');
