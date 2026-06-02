@@ -27,11 +27,6 @@ const REVIEW_ACTIONS = [
   ['approved', '标记通过'],
   ['rejected', '标记驳回']
 ];
-const CLIP_ACTIONS = [
-  ['completed', '标记完成'],
-  ['review', '待确认'],
-  ['rejected', '退回处理']
-];
 
 async function request(path, options = {}) {
   const isFormData = options.body instanceof FormData;
@@ -122,6 +117,7 @@ function App() {
   const [bulkCaseOpen, setBulkCaseOpen] = useState(false);
   const [viralFormOpen, setViralFormOpen] = useState(false);
   const [deliverySlotOpen, setDeliverySlotOpen] = useState(null);
+  const [clipTaskOpen, setClipTaskOpen] = useState(null);
 
   async function refresh() {
     const [dash, reviewData, scheduleData, caseRows, viralRows, configData] = await Promise.all([
@@ -246,7 +242,7 @@ function App() {
           <AccessGate session={session} onLogin={(code) => act(() => login(code), '已进入工作台')} />
         )}
         {!loading && canUseWorkbench && view === 'dashboard' && dashboard && (
-          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
+          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} onClipTask={setClipTaskOpen} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'review' && review && (
           <ReviewView data={review} onOpenCase={openCase} />
@@ -258,7 +254,7 @@ function App() {
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'case' && caseDetail && (
-          <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} activeQueueItem={activeQueueItem} />
+          <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} onDelivery={setDeliverySlotOpen} onClipTask={setClipTaskOpen} canOpenLocalPaths={canOpenLocalPaths} activeQueueItem={activeQueueItem} />
         )}
         {!loading && canUseWorkbench && view === 'viral' && (
           <ViralView
@@ -311,12 +307,20 @@ function App() {
           activeQueueItem={activeQueueItem}
         />
       )}
+      {clipTaskOpen && (
+        <ClipTaskModal
+          task={clipTaskOpen}
+          onClose={() => setClipTaskOpen(null)}
+          onAct={act}
+          activeQueueItem={activeQueueItem}
+        />
+      )}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
 
-function Dashboard({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
+function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask, canOpenLocalPaths }) {
   const accountGroups = groupTodayByAccount(data.todaySlots);
   const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
   const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
@@ -341,6 +345,7 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
         onOpenCase={onOpenCase}
         onAct={onAct}
         onDelivery={onDelivery}
+        onClipTask={onClipTask}
         canOpenLocalPaths={canOpenLocalPaths}
       />
 
@@ -586,7 +591,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
   return items.sort((a, b) => b.priority - a.priority);
 }
 
-function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
+function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTask, canOpenLocalPaths }) {
   const activeItem = items[0];
   const queuedItems = items.slice(1);
   return (
@@ -616,6 +621,7 @@ function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, canOpenLo
               onOpenCase={onOpenCase}
               onAct={onAct}
               onDelivery={onDelivery}
+              onClipTask={onClipTask}
               canOpenLocalPaths={canOpenLocalPaths}
             />
           </div>
@@ -656,7 +662,7 @@ function PriorityFocusMeta({ caze }) {
   );
 }
 
-function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
+function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, onClipTask, canOpenLocalPaths }) {
   if (item.alert) {
     return (
       <div className="rowActions">
@@ -744,8 +750,8 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, canOpenLoc
   if (item.clipTask) {
     return (
       <div className="rowActions">
-        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>查看任务</button>
-        <button onClick={() => onAct(() => request(`/clip-tasks/${item.clipTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) }), '剪辑任务已标记：已完成')}>标记完成</button>
+        <button onClick={() => onClipTask(item.clipTask)}>查看剪辑要求</button>
+        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
       </div>
     );
   }
@@ -1326,7 +1332,7 @@ function caseCanResume(caze = {}) {
   return ['失联暂停', '已放弃', '停用'].includes(caze.healthStatus);
 }
 
-function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, activeQueueItem }) {
+function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, canOpenLocalPaths, activeQueueItem }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], monitor = {}, videos = [], viralAlerts = [], metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const canRunMaterialActions = activeQueueMatchesCaseMaterial(activeQueueItem, caze);
@@ -1476,7 +1482,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
                 <ClipTaskRow
                   key={task.id}
                   task={task}
-                  onAct={onAct}
+                  onClipTask={onClipTask}
                   activeQueueItem={activeQueueItem}
                 />
               ))}
@@ -1578,20 +1584,69 @@ async function generateImageTask(task, onAct) {
   );
 }
 
-function ClipTaskRow({ task, onAct, activeQueueItem }) {
+function ClipTaskRow({ task, onClipTask, activeQueueItem }) {
   const isActiveQueueClip = activeQueueMatchesClip(activeQueueItem, task);
+  const briefLines = String(task.brief || '').split('\n');
+  const previewLines = briefLines.slice(0, 8).join('\n');
+  const hiddenLines = Math.max(briefLines.length - 8, 0);
   return (
     <div className="assetRow">
       <strong>{task.title}</strong>
       <span>{displayStatus(task.status)}</span>
-      {task.brief && <pre className="taskBrief">{task.brief.split('\n').slice(0, 14).join('\n')}</pre>}
+      {task.brief && <pre className="taskBrief">{previewLines}{hiddenLines > 0 ? `\n\n完整剪辑要求还有 ${hiddenLines} 行，排到队首后点「查看完整要求」。` : ''}</pre>}
       <div className="inlineActions">
-        {isActiveQueueClip && CLIP_ACTIONS.map(([status, label]) => (
-          <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
-        ))}
+        {isActiveQueueClip && <button onClick={() => onClipTask(task)}>查看完整要求</button>}
         {!isActiveQueueClip && <span className="lockedNote">排到今日队列队首后处理</span>}
       </div>
     </div>
+  );
+}
+
+function ClipTaskModal({ task, onClose, onAct, activeQueueItem }) {
+  const [recipeViewed, setRecipeViewed] = useState(false);
+  const isActiveQueueClip = activeQueueMatchesClip(activeQueueItem, task);
+  const brief = task.brief || '暂无剪辑要求';
+  const caze = task.case || {};
+  const completeReady = isActiveQueueClip && recipeViewed;
+  const patchClipStatus = (status, payload = {}) => onAct(async () => {
+    const result = await request(`/clip-tasks/${task.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, ...payload })
+    });
+    onClose();
+    return result;
+  }, `剪辑任务已标记：${displayStatus(status)}`);
+  return (
+    <Modal title="剪辑任务" onClose={onClose}>
+      <div className="deliveryHeader">
+        <div>
+          <strong>{task.title}</strong>
+          <span>只处理当前队首剪辑任务｜微信：{caze.weixinNick || '未命名兼职'}｜抖音：{douyinDisplay(caze)}</span>
+        </div>
+        <span className={`status ${statusClass(task.status)}`}>{displayStatus(task.status)}</span>
+      </div>
+      {!isActiveQueueClip && (
+        <div className="readonlyNotice">这条不是今日操作队列的当前剪辑任务，只读查看；请回到首页按队首顺序处理。</div>
+      )}
+      <div className="textPanel clipBriefPanel">
+        <div className="rowTitle">
+          <strong>固定剪辑配方和素材说明</strong>
+          {isActiveQueueClip && <button className={recipeViewed ? 'activeSmall' : ''} onClick={() => setRecipeViewed(true)}>{recipeViewed ? '已看完配方' : '我已看完固定配方'}</button>}
+        </div>
+        <pre>{brief}</pre>
+      </div>
+      {isActiveQueueClip && (
+        <div className={`handoffGuard ${completeReady ? 'ready' : ''}`}>
+          {completeReady ? '已确认剪辑配方，可以按实际结果标记状态。' : '先看完整剪辑配方，再标记完成，避免剪错或漏看素材要求。'}
+        </div>
+      )}
+      <div className="modalActions">
+        <button onClick={onClose}>关闭</button>
+        {isActiveQueueClip && <button onClick={() => patchClipStatus('review')}>待确认</button>}
+        {isActiveQueueClip && <button onClick={() => patchClipStatus('rejected')}>退回处理</button>}
+        {isActiveQueueClip && <button className="primary" disabled={!completeReady} onClick={() => patchClipStatus('completed', { recipeConfirmed: true })}>已按配方完成</button>}
+      </div>
+    </Modal>
   );
 }
 

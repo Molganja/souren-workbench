@@ -4319,12 +4319,16 @@ app.patch('/api/clip-tasks/:id', (req, res) => {
   const task = rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [req.params.id]));
   if (!task) return res.status(404).json({ error: 'clip task not found' });
   const body = req.body || {};
+  const nextStatus = body.status ?? task.status;
+  if (nextStatus === 'completed' && task.status !== 'completed' && body.recipeConfirmed !== true) {
+    return res.status(409).json({ error: '完成剪辑前必须先确认已看完固定剪辑配方' });
+  }
   run(
     `UPDATE clip_tasks SET title = ?, brief = ?, status = ?, updated_at = ? WHERE id = ?`,
     [
       body.title ?? task.title,
       body.brief ?? task.brief,
-      body.status ?? task.status,
+      nextStatus,
       now(),
       task.id
     ]

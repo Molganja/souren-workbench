@@ -764,10 +764,17 @@ async function main() {
     assert(clip.brief.includes('固定剪辑配方') && clip.brief.includes('不临时改结构'), 'clip brief missing fixed edit recipe');
     assert(clip.brief.includes('不需要上传成片') && !clip.brief.includes('final.mp4 放回'), 'clip brief still asks for final video upload');
     assert(!('outputDir' in clip), 'clip task still exposes a local output directory');
+    let clipCompletedWithoutRecipeRejected = false;
+    try {
+      await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) });
+    } catch (error) {
+      clipCompletedWithoutRecipeRejected = /固定剪辑配方/.test(error.message);
+    }
+    assert(clipCompletedWithoutRecipeRejected, 'clip task completed without viewing fixed recipe');
     const clipDashboard = await api('/dashboard');
     assert(clipDashboard.counts.clipTasks >= 1, 'dashboard clip task count missing');
     assert(clipDashboard.clipTasks.some((item) => item.id === clip.id && item.case?.id === caze.id), 'dashboard clip task list missing case task');
-    const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) });
+    const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed', recipeConfirmed: true }) });
     assert(reviewedClip.status === 'completed', 'clip status update failed');
     const clipDashboardAfter = await api('/dashboard');
     assert(!clipDashboardAfter.clipTasks.some((item) => item.id === clip.id), 'completed clip task still shown as pending');

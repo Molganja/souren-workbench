@@ -210,6 +210,9 @@ else fail('交付链路仍可能被直接改成异常');
 if (serverSource.includes('alreadyExisting') && serverSource.includes('SELECT * FROM clip_tasks WHERE plan_slot_id = ?') && mainSource.includes('existingClipTask') && mainSource.includes('剪辑任务已建')) ok('同一排期不会重复创建剪辑任务');
 else fail('同一排期仍可能重复创建剪辑任务');
 
+if (mainSource.includes('ClipTaskModal') && mainSource.includes('我已看完固定配方') && mainSource.includes('recipeConfirmed: true') && !mainSource.includes('CLIP_ACTIONS') && serverSource.includes('完成剪辑前必须先确认已看完固定剪辑配方') && smokeSource.includes('clipCompletedWithoutRecipeRejected')) ok('剪辑任务必须先查看完整固定配方才能标记完成');
+else fail('剪辑任务仍可能不看配方直接标记完成');
+
 if (serverSource.includes('剪辑任务必须绑定具体排期') && mainSource.includes('来自具体排期') && !mainSource.includes('新建剪辑任务') && !mainSource.includes('临时剪辑任务')) ok('剪辑任务只能从具体排期创建');
 else fail('剪辑任务仍存在临时建单入口');
 
