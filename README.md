@@ -41,11 +41,10 @@ npm run client
 
 ```bash
 cd /Users/licc/Desktop/素人系统/app
-npm run client:mac
-npm run client:package:check
+npm run client:verify
 ```
 
-输出目录是 `app/release/`。客户端包不会带真实 `.env`、数据库或素材；运行时会在本机自己的工作数据目录里创建数据和素材库。Mac `.app` 会用 Electron 内置 Node 启动本地后端并打开工作台窗口，不需要工作人员手动启动服务。`client:package:check` 会实际启动打包后的 `.app`，确认内置后端和独立工作数据目录可用。
+输出目录是 `app/release/`。客户端包不会带真实 `.env`、数据库或素材；运行时会在本机自己的工作数据目录里创建数据和素材库。Mac `.app` 会用 Electron 内置 Node 启动本地后端并打开工作台窗口，不需要工作人员手动启动服务。`client:verify` 会先生成 `.app`，再实际启动打包后的客户端，确认内置后端和独立工作数据目录可用。
 
 ## 数据和素材
 

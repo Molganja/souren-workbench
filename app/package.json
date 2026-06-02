@@ -15,6 +15,7 @@
     "client:check": "node --no-warnings scripts/desktop-check.js",
     "client:mac": "npm run build && electron-builder --mac dir",
     "client:package:check": "node --no-warnings scripts/desktop-package-smoke.js",
+    "client:verify": "npm run client:mac && npm run client:package:check",
     "client:dist": "npm run build && electron-builder --mac dmg",
     "start": "node --no-warnings server/index.js",
     "check": "npm run build",

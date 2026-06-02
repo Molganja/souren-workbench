@@ -22,8 +22,8 @@ else fail('package.json main 未指向 electron/main.cjs');
 if (fs.existsSync(electronMain)) ok(`存在 ${path.relative(ROOT_DIR, electronMain)}`);
 else fail('缺少 Electron 主进程文件');
 
-if (pkg.scripts?.client && pkg.scripts?.['client:mac']) ok('客户端启动和 Mac 打包脚本已配置');
-else fail('缺少 client / client:mac 脚本');
+if (pkg.scripts?.client && pkg.scripts?.['client:mac'] && pkg.scripts?.['client:verify']) ok('客户端启动、Mac 打包和打包验收脚本已配置');
+else fail('缺少 client / client:mac / client:verify 脚本');
 
 if (pkg.devDependencies?.electron && pkg.devDependencies?.['electron-builder']) ok('Electron 依赖已安装');
 else fail('缺少 Electron 或 electron-builder 依赖');
