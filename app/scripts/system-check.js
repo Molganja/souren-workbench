@@ -113,6 +113,9 @@ else fail('首页仍可能从概览或异常账号绕过队首打开账号');
 if (mainSource.includes('const accountGroups = groupQueueByAccount(priorityActions)') && !mainSource.includes('const accountGroups = groupTodayByAccount(data.todaySlots)') && mainSource.includes('actionCounts') && mainSource.includes('同账号动作') && mainSource.includes('个待处理账号')) ok('首页账号概览按操作队列聚合，不只看排期槽位');
 else fail('首页账号概览仍可能只按今日排期显示，漏掉素材同步、剪辑或爆款互动');
 
+if (serverSource.includes('function caseIntakeIssue') && serverSource.includes('intakeIssues: intakeIssueRows') && serverSource.includes("kind: '补登记'") && serverSource.includes('缺少抖音链接') && serverSource.includes('缺少共享原始素材路径') && mainSource.includes('item.intakeIssue') && smokeSource.includes('legacy missing account did not enter intake issue queue')) ok('旧账号缺抖音或共享素材路径会进入补登记队列');
+else fail('缺登记资料的旧账号仍可能躲在异常列表之外，不进入首页队列');
+
 if (serverSource.includes('dashboardQueueHead') && serverSource.includes('当前队首不是准备类任务') && !serverSource.includes('for (const slot of dueSlots)')) ok('后台准备接口也只处理当前队首');
 else fail('后台准备接口仍可能批量推进今日队列');
 
@@ -246,6 +249,9 @@ else fail('交付后仍可能重生成交付或改候选');
 
 if (serverSource.includes('canPatchSlotStatus') && serverSource.includes("nextStatus === '异常'") && mainSource.includes('canMarkException') && mainSource.includes("['待生成', '候选待选', '已锁定', '素材阻塞'].includes(slot.status)")) ok('交付链路状态不能被异常按钮打回');
 else fail('交付链路仍可能被直接改成异常');
+
+if (serverSource.includes('const nextSourceMaterialDir') && serverSource.includes('normalizeSourceMaterialDir(body.sourceMaterialDir') && smokeSource.includes('case edit allowed a missing shared source directory')) ok('编辑案例时明确提交共享素材路径也会校验目录');
+else fail('编辑案例仍可能保存不存在的共享素材路径');
 
 if (serverSource.includes('alreadyExisting') && serverSource.includes('SELECT * FROM clip_tasks WHERE plan_slot_id = ?') && mainSource.includes('existingClipTask') && mainSource.includes('剪辑任务已建')) ok('同一排期不会重复创建剪辑任务');
 else fail('同一排期仍可能重复创建剪辑任务');

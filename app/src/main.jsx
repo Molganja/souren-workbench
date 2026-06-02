@@ -492,6 +492,20 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       slot
     });
   });
+  (data.intakeIssues || []).forEach((row) => {
+    items.push({
+      id: row.id,
+      priority: 84,
+      kind: '补登记',
+      status: row.status,
+      statusClass: 'bad',
+      title: row.title || `${row.case?.weixinNick || '未知账号'} 登记资料缺失`,
+      detail: row.detail || (row.issues || []).join(' / '),
+      note: row.action || '打开案例，编辑微信、抖音主页和共享原始素材路径。',
+      case: row.case,
+      intakeIssue: row
+    });
+  });
   (data.pendingChoose || []).forEach((slot) => {
     items.push({
       id: `choose-${slot.id}`,
@@ -704,6 +718,13 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, onClipTask
       </div>
     );
   }
+  if (item.intakeIssue) {
+    return (
+      <div className="rowActions">
+        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>补资料</button>
+      </div>
+    );
+  }
   if (item.slot?.status === '待生成') {
     return (
       <div className="rowActions">
@@ -830,6 +851,7 @@ function accountStatusSummary(group) {
 
 function nextActionText(item) {
   if (item.alert) return '安排助理号/阑尾号评论区互动';
+  if (item.intakeIssue) return '打开案例补齐微信、抖音主页和共享素材路径';
   if (item.materialSync) return item.materialSync.status === '目录不可用' ? '检查共享素材路径' : '同步共享素材';
   if (item.monitorAction) return monitorActionSlotLabel(item.monitorAction.kind) || item.monitorAction.action || '处理账号策略';
   if (item.clipTask) return '打开固定剪辑配方，剪完或安排发布后标记完成';

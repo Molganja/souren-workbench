@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import { DatabaseSync } from 'node:sqlite';
 
 const TEST_PORT = 5184;
 const TEST_IMAGE_APP_PORT = 5188;
@@ -405,6 +406,45 @@ async function main() {
     assert(!(archivedKey in deletedCase), 'case delete still returned a retained local directory');
     const afterDelete = await api('/cases');
     assert(afterDelete.length === 1 && afterDelete[0].id === bulk.cases[0].id, 'case delete failed');
+
+    const legacyDir = makeSharedSourceDir(ROOT_DIR, '历史缺资料账号');
+    fs.writeFileSync(path.join(legacyDir, '历史-D1.jpg'), 'fake legacy material');
+    const legacyCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '历史缺资料账号',
+        douyinUrl: 'https://www.douyin.com/user/legacy-intake-smoke',
+        project: '吸脂',
+        sourceMaterialDir: legacyDir
+      })
+    });
+    const legacyDb = new DatabaseSync(path.join(ROOT_DIR, 'data', 'souren.sqlite'));
+    legacyDb.exec('PRAGMA foreign_keys = ON;');
+    legacyDb.prepare('UPDATE cases SET douyin_url = ?, source_material_dir = ?, updated_at = ? WHERE id = ?').run('', '', new Date().toISOString(), legacyCase.id);
+    legacyDb.close();
+    const intakeDashboard = await api('/dashboard');
+    const intakeIssue = intakeDashboard.intakeIssues.find((item) => item.caseId === legacyCase.id);
+    assert(intakeIssue?.issues.includes('缺少抖音链接') && intakeIssue.issues.includes('缺少共享原始素材路径'), 'legacy missing account did not enter intake issue queue');
+    assert(intakeDashboard.counts.intakeIssues >= 1, 'dashboard missing intake issue count');
+    let invalidSourcePatchRejected = false;
+    try {
+      await api(`/cases/${legacyCase.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/user/legacy-fixed-smoke', sourceMaterialDir: path.join(ROOT_DIR, '不存在的编辑共享目录') })
+      });
+    } catch (error) {
+      invalidSourcePatchRejected = /共享原始素材路径不存在/.test(error.message);
+    }
+    assert(invalidSourcePatchRejected, 'case edit allowed a missing shared source directory');
+    const fixedLegacyCase = await api(`/cases/${legacyCase.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/user/legacy-fixed-smoke', sourceMaterialDir: legacyDir })
+    });
+    assert(fixedLegacyCase.douyinUrl.includes('legacy-fixed-smoke') && fixedLegacyCase.sourceMaterialDir === legacyDir, 'case edit did not restore intake fields');
+    const fixedIntakeDashboard = await api('/dashboard');
+    assert(!fixedIntakeDashboard.intakeIssues.some((item) => item.caseId === legacyCase.id), 'fixed legacy account still appears in intake issue queue');
+    await api(`/cases/${legacyCase.id}`, { method: 'DELETE' });
+
     const queueGenerated = await api('/dashboard/generate-today', { method: 'POST' });
     assert(queueGenerated.slotCount <= 1 && queueGenerated.candidateCount <= 3, 'dashboard generate should only process the queue head');
     assert(queueGenerated.processedId === null || queueGenerated.slots.every((item) => item.id === queueGenerated.processedId), 'dashboard generate processed a non-head slot');

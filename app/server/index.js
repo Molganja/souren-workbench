@@ -3288,6 +3288,18 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   const latest = metrics[0];
   const prev = metrics[1];
 
+  if (!String(caze.weixinNick || '').trim()) {
+    reasons.push('缺少兼职微信昵称');
+    actions.push('编辑案例，补齐兼职微信昵称');
+  }
+  if (!String(caze.douyinUrl || '').trim()) {
+    reasons.push('缺少抖音链接');
+    actions.push('编辑案例，补齐抖音主页或作品链接');
+  }
+  if (!String(caze.sourceMaterialDir || '').trim()) {
+    reasons.push('缺少共享原始素材路径');
+    actions.push('编辑案例，填写共享盘/服务器里的原始素材目录');
+  }
   if (monitor.activeViralAlerts?.length) {
     reasons.push('出现爆款作品');
     actions.push('安排助理号/阑尾号互动，优先顶评论、回复咨询问题并承接转化');
@@ -3331,6 +3343,24 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
 
   const status = reasons.length === 0 ? '健康' : reasons.includes('播放下滑') ? '偏冷' : reasons[0];
   return { status, reasons, actions: Array.from(new Set(actions)), gaps };
+}
+
+function caseIntakeIssue(caze = {}) {
+  const issues = [];
+  if (!String(caze.weixinNick || '').trim()) issues.push('缺少兼职微信昵称');
+  if (!String(caze.douyinUrl || '').trim()) issues.push('缺少抖音链接');
+  if (!String(caze.sourceMaterialDir || '').trim()) issues.push('缺少共享原始素材路径');
+  if (!issues.length) return null;
+  return {
+    id: `intake-${caze.id}`,
+    caseId: caze.id,
+    status: '待补资料',
+    issues,
+    title: `${caze.weixinNick || '未命名账号'} 登记资料缺失`,
+    detail: issues.join(' / '),
+    action: '打开案例，点“编辑案例”，补齐微信、抖音主页和共享原始素材路径。',
+    case: caze
+  };
 }
 
 function inferStage(filePath) {
@@ -3529,6 +3559,11 @@ function dashboard() {
     .filter((item) => ['待同步', '目录不可用'].includes(item.status))
     .sort((a, b) => b.unsyncedCount - a.unsyncedCount)
     .slice(0, 30);
+  const intakeIssueRows = cases
+    .filter((caze) => !pausedCaseIds.has(caze.id))
+    .map(caseIntakeIssue)
+    .filter(Boolean)
+    .slice(0, 30);
   const caseHealthRows = cases.map((caze) => {
     const caseSlots = slots.filter((s) => s.caseId === caze.id);
     const caseAssets = assets.filter((a) => a.caseId === caze.id);
@@ -3583,6 +3618,7 @@ function dashboard() {
       monitoredAccounts: monitor.totals.monitoredAccounts,
       dueCollection: monitor.totals.dueCollection,
       pendingViral: viralTemplates.filter(isPendingViralTemplate).length,
+      intakeIssues: intakeIssueRows.length,
       imageTasks: openImageTasks.length,
       imageWaitingKey: openImageTasks.filter((item) => item.status === 'waiting_key').length,
       clipTasks: openClipTasks.length,
@@ -3603,6 +3639,7 @@ function dashboard() {
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
+    intakeIssues: intakeIssueRows,
     materialSync: materialSyncRows,
     abnormalCases: caseHealthRows
       .filter((caze) => !pausedCaseIds.has(caze.id))
@@ -3627,6 +3664,9 @@ function dashboardQueueHead(data = {}) {
   (data.todaySlots || []).filter((slot) => slot.status === '已锁定').forEach((slot) => {
     items.push({ id: `locked-${slot.id}`, priority: 88, kind: '生成交付', slot });
   });
+  (data.intakeIssues || []).forEach((row) => {
+    items.push({ id: row.id, priority: 84, kind: '补登记', intakeIssue: row });
+  });
   (data.pendingChoose || []).forEach((slot) => {
     items.push({ id: `choose-${slot.id}`, priority: 82, kind: '选候选', slot });
   });
@@ -3648,7 +3688,7 @@ function dashboardQueueHead(data = {}) {
     items.push({ id: `clip-${task.id}`, priority: 42, kind: '剪辑任务', clipTask: task });
   });
   (data.todaySlots || []).filter((slot) => slot.status === '已派发').forEach((slot) => {
-    items.push({ id: `sent-${slot.id}`, priority: 35, kind: '等确认', slot });
+    items.push({ id: `sent-${slot.id}`, priority: 35, kind: '待完成', slot });
   });
   return items.sort((a, b) => b.priority - a.priority)[0] || null;
 }
@@ -3918,32 +3958,39 @@ app.post('/api/cases/bulk', (req, res) => {
 });
 
 app.patch('/api/cases/:id', (req, res) => {
-  const caze = caseById(req.params.id);
-  if (!caze) return res.status(404).json({ error: 'case not found' });
-  const body = req.body || {};
-  const nextDouyinUrl = body.douyinUrl !== undefined || body.douyin_url !== undefined
-    ? normalizeDouyinUrl(body.douyinUrl ?? body.douyin_url)
-    : caze.douyinUrl;
-  if (!nextDouyinUrl) return res.status(400).json({ error: '必须填写有效的抖音主页或作品链接' });
-  const nextHealthStatus = body.healthStatus ?? caze.healthStatus;
-  run(
-    `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
-    [
-      body.weixinNick ?? caze.weixinNick,
-      body.douyinId ?? caze.douyinId,
-      nextDouyinUrl,
-      body.project ?? caze.project,
-      JSON.stringify(body.persona ?? caze.persona),
-      body.sourceMaterialDir ?? body.source_material_dir ?? caze.sourceMaterialDir,
-      nextHealthStatus,
-      now(),
-      req.params.id
-    ]
-  );
-  const updated = caseById(req.params.id);
-  const pauseMaintenance = caseIsPaused(updated) ? pauseCaseWork(updated) : null;
-  writeCaseManifest(updated);
-  res.json({ ...caseById(req.params.id), pauseMaintenance });
+  try {
+    const caze = caseById(req.params.id);
+    if (!caze) return res.status(404).json({ error: 'case not found' });
+    const body = req.body || {};
+    const nextDouyinUrl = body.douyinUrl !== undefined || body.douyin_url !== undefined
+      ? normalizeDouyinUrl(body.douyinUrl ?? body.douyin_url)
+      : caze.douyinUrl;
+    if (!nextDouyinUrl) return res.status(400).json({ error: '必须填写有效的抖音主页或作品链接' });
+    const nextSourceMaterialDir = body.sourceMaterialDir !== undefined || body.source_material_dir !== undefined
+      ? normalizeSourceMaterialDir(body.sourceMaterialDir ?? body.source_material_dir)
+      : caze.sourceMaterialDir;
+    const nextHealthStatus = body.healthStatus ?? caze.healthStatus;
+    run(
+      `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
+      [
+        body.weixinNick ?? caze.weixinNick,
+        body.douyinId ?? caze.douyinId,
+        nextDouyinUrl,
+        body.project ?? caze.project,
+        JSON.stringify(body.persona ?? caze.persona),
+        nextSourceMaterialDir,
+        nextHealthStatus,
+        now(),
+        req.params.id
+      ]
+    );
+    const updated = caseById(req.params.id);
+    const pauseMaintenance = caseIsPaused(updated) ? pauseCaseWork(updated) : null;
+    writeCaseManifest(updated);
+    res.json({ ...caseById(req.params.id), pauseMaintenance });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.post('/api/cases/:id/resume', (req, res) => {
