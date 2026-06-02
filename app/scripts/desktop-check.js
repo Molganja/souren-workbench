@@ -42,8 +42,8 @@ const electronMainText = fs.readFileSync(electronMain, 'utf8');
 if (electronMainText.includes('import(serverUrl)') && electronMainText.includes('pathToFileURL')) ok('桌面端使用 Electron 内置 Node 启动后端');
 else fail('桌面端未使用 Electron 内置 Node 启动后端');
 
-if (!electronMainText.includes('SOUREN_NODE_BIN')) ok('桌面端不依赖外部 node 命令');
-else fail('桌面端仍依赖外部 node 命令');
+if (electronMainText.includes('SOUREN_ROOT_DIR') && electronMainText.includes('SOUREN_DESKTOP')) ok('桌面端会写入独立工作数据目录');
+else fail('桌面端未配置独立工作数据目录');
 
 const electronCli = path.join(APP_DIR, 'node_modules', '.bin', process.platform === 'win32' ? 'electron.cmd' : 'electron');
 const electronPackage = path.join(APP_DIR, 'node_modules', 'electron', 'package.json');

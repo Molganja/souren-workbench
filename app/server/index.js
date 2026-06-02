@@ -68,8 +68,6 @@ const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const ALLOWED_OPEN_ROOTS = [ROOT_DIR, SHARED_MATERIAL_ROOT, CASE_LIBRARY_ROOT];
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
-const LEGACY_VIRAL_RAW_PREFIX = '待用' + '青' + '豆';
-const LEGACY_VIRAL_STRUCTURE_PREFIX = '待' + '青' + '豆';
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
@@ -82,16 +80,11 @@ const STATUS_LABELS = {
   unavailable: '未接入',
   error: '异常',
   timeout: '超时',
-  pending: '历史待处理',
-  checking: '历史处理中',
-  verified: '历史已处理',
   active: '待互动',
   handled: '已处理',
   waiting_collector: '等待采集器',
   waiting_chrome: '等待Chrome采集',
   submitted: '已提交采集',
-  mismatch: '不匹配',
-  not_found: '未找到',
   unknown: '未知',
   ready: '已就绪',
   waiting: '待接入',
@@ -743,9 +736,7 @@ function pickContentSeed(slot, caze) {
 
 function latestReadyViral() {
   const rows = all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral);
-  return rows.find((item) => !String(item.rawText || '').startsWith(LEGACY_VIRAL_RAW_PREFIX)
-    && !String(item.hotStructure || '').startsWith(LEGACY_VIRAL_STRUCTURE_PREFIX)
-    && item.category !== '待分析') || null;
+  return rows.find((item) => !isPendingViralTemplate(item)) || null;
 }
 
 function draftText(kind, variant, caze, slot, viral, seed) {
@@ -1367,9 +1358,7 @@ function viralSuitableForCase(viral, caze) {
 
 function isPendingViralTemplate(viral) {
   return String(viral.rawText || '').startsWith('待分析')
-    || String(viral.rawText || '').startsWith(LEGACY_VIRAL_RAW_PREFIX)
     || String(viral.hotStructure || '').startsWith('待分析')
-    || String(viral.hotStructure || '').startsWith(LEGACY_VIRAL_STRUCTURE_PREFIX)
     || viral.category === '待分析';
 }
 
@@ -1387,14 +1376,14 @@ function viralAnalysisTaskText(viral) {
     '5. 适合人设关键词：城市、职业、项目、语气等',
     '6. 禁用人设关键词：不适合套用的账号类型',
     '',
-    '回填到系统：',
+    '记录到系统：',
     '标题 -> 备注标题',
     '正文 -> 原视频内容',
     '类别 -> 情绪/职场/穿搭/美食/本地生活/清单/反差故事',
     '结构和建议 -> 分析结论',
     '适合/禁用关键词 -> 对应输入框',
     '',
-    '回填后再点“给所有账号生成今日爆款候选”。'
+    '填写完成后再点“给所有账号生成今日爆款候选”。'
   ].join('\n');
 }
 
@@ -2089,7 +2078,7 @@ function monitorActionQueue(monitor = {}) {
         kind: '账号采集',
         title: item.latestSnapshot ? '超过24小时未采集' : '首次采集账号数据',
         reason: item.latestSnapshot ? `上次采集：${item.lastCollectedAt}` : '这个账号还没有粉丝和作品数据',
-        action: '登记采集清单；主机端用已登录抖音的 Chrome 打开主页，再通过采集回填入口写回粉丝和作品数据。',
+        action: '系统会登记采集清单；主机端用已登录抖音的 Chrome 采集主页和作品数据后写回后台。',
         case: caze,
         latestSnapshot: item.latestSnapshot,
         topVideo: item.topVideo
@@ -2212,10 +2201,10 @@ function buildChromeCollectionText(queue) {
   const endpoint = `${networkSettings().localUrl}/api/douyin-monitor/ingest`;
   const lines = [
     `Chrome抖音采集清单｜${queue.generatedAt}`,
-    `回填接口：POST ${endpoint}`,
+    `后台写入接口：POST ${endpoint}`,
     '',
     '采集方式：用已登录抖音的 Chrome 打开账号主页，读取账号粉丝/关注/获赞/作品数，并记录最近作品的播放、点赞、评论、转发、收藏。',
-    '回填要求：优先回到网页底部折叠的「后台采集状态」填写；JSON 模板只作为自动回填备用。系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
+    '写入要求：主机端采集程序按 JSON 模板写入后台；工作人员不需要在网页里逐条填写。系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
     ''
   ];
   if (!queue.targets.length) {
@@ -2226,7 +2215,7 @@ function buildChromeCollectionText(queue) {
     lines.push(`${index + 1}. ${target.weixinNick}｜${target.caseCode}｜${target.project}`);
     lines.push(`抖音主页：${target.douyinUrl}`);
     lines.push(`上次采集：${target.lastCollectedAt || '未采集'}｜最新粉丝：${target.latestSnapshot?.fans ?? '未采集'}｜最高播放：${target.topVideo?.latestSnapshot?.plays ?? '未采集'}`);
-    lines.push('回填JSON模板：');
+    lines.push('写入JSON模板：');
     lines.push(JSON.stringify(target.ingestPayloadTemplate, null, 2));
     lines.push('');
   });
@@ -2289,7 +2278,7 @@ function registerChromeCollectionQueue(options = {}) {
         null,
         'waiting_chrome',
         'chrome-agent',
-        '已生成 Chrome 采集清单，等待主机端用已登录抖音的 Chrome 打开主页并回填账号/作品数据',
+        '已生成 Chrome 采集清单，等待主机端用已登录抖音的 Chrome 打开主页并写入账号/作品数据',
         now(),
         now()
       ]
@@ -2337,7 +2326,7 @@ async function enqueueDouyinCollection(source = 'manual') {
     const status = DOUYIN_COLLECTOR_URL ? 'waiting' : 'waiting_chrome';
     const note = DOUYIN_COLLECTOR_URL
       ? '已登记采集任务，正在提交给抖音采集器'
-      : '已按 24 小时周期登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 回填账号和作品数据';
+      : '已按 24 小时周期登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 写入账号和作品数据';
     run(
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
@@ -2799,7 +2788,7 @@ function systemReadiness() {
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
-    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并通过采集回填入口写回数据' },
+    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并写回后台' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
     { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
@@ -3229,7 +3218,7 @@ function createDeliveryForSlot(slot) {
     '',
     '完成口径：',
     '1. 兼职或剪辑人员确认已按要求发布/交付后，系统标记「已完成」',
-    '2. 账号主页数据由系统按 24 小时周期采集，不需要工作人员逐条回填'
+    '2. 账号主页数据由系统按 24 小时周期采集，不需要工作人员逐条填写'
   ].join('\n'));
   fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);

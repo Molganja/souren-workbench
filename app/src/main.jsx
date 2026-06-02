@@ -29,11 +29,6 @@ const STATUS_LABELS = {
   waiting_collector: '等待采集器',
   waiting_chrome: '等待Chrome采集',
   submitted: '已提交采集',
-  pending: '历史待处理',
-  checking: '历史处理中',
-  verified: '历史已处理',
-  mismatch: '不匹配',
-  not_found: '未找到',
   unknown: '未知'
 };
 const REVIEW_ACTIONS = [
@@ -70,10 +65,10 @@ function statusClass(status) {
   if (['已派发'].includes(status)) return 'report';
   if (['已完成'].includes(status)) return 'ok';
   if (['素材阻塞', '异常'].includes(status)) return 'bad';
-  if (['waiting_key', 'draft', 'waiting_edit', 'pending', 'unavailable', 'waiting_chrome'].includes(status)) return 'wait';
-  if (['generating', 'review', 'checking'].includes(status)) return 'report';
-  if (['approved', 'completed', 'verified'].includes(status)) return 'ok';
-  if (['rejected', 'mismatch', 'not_found', 'error', 'timeout', 'unknown'].includes(status)) return 'bad';
+  if (['waiting_key', 'draft', 'waiting_edit', 'unavailable', 'waiting_chrome'].includes(status)) return 'wait';
+  if (['generating', 'review'].includes(status)) return 'report';
+  if (['approved', 'completed'].includes(status)) return 'ok';
+  if (['rejected', 'error', 'timeout', 'unknown'].includes(status)) return 'bad';
   return 'bad';
 }
 
@@ -640,7 +635,6 @@ function MonitorActionSection({ title = '账号策略动作', empty = '暂无需
 function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
   const accounts = monitor?.accounts || [];
   const due = accounts.filter((item) => item.dueCollection).slice(0, 8);
-  const [ingestAccount, setIngestAccount] = useState(null);
   return (
     <section className="panel backstagePanel">
       <details>
@@ -672,7 +666,6 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
                   <small>{item.topVideo ? `最高播放 ${formatNumber(item.topVideo.latestSnapshot?.plays)}｜${item.topVideo.title || '未命名作品'}` : `最近采集：${shortTime(item.lastCollectedAt)}`}</small>
                   <div className="inlineActions compactActions">
                     {item.case.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
-                    <button onClick={() => setIngestAccount(item)}>采集回填入口</button>
                   </div>
                 </div>
               ))}
@@ -680,16 +673,6 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
           )}
         </div>
       </details>
-      {ingestAccount && (
-        <DouyinIngestForm
-          account={ingestAccount}
-          onClose={() => setIngestAccount(null)}
-          onSubmit={(payload) => onAct(async () => {
-            await request('/douyin-monitor/ingest', { method: 'POST', body: JSON.stringify(payload) });
-            setIngestAccount(null);
-          }, '账号数据已回填')}
-        />
-      )}
     </section>
   );
 }
@@ -970,118 +953,6 @@ async function copyChromeCollectionQueue(onCopy) {
   const result = await request('/douyin-monitor/chrome-queue?limit=80');
   await onCopy(result.text, 'Chrome采集清单已复制');
   return result;
-}
-
-function emptyDouyinVideo() {
-  return { url: '', title: '', publishTime: '', plays: '', likes: '', comments: '', shares: '', favorites: '' };
-}
-
-function addNumberField(target, key, value) {
-  if (value === undefined || value === null || value === '') return;
-  const number = Number(value);
-  if (Number.isFinite(number)) target[key] = number;
-}
-
-function DouyinIngestForm({ account, onClose, onSubmit }) {
-  const caze = account?.case || {};
-  const [form, setForm] = useState(() => ({
-    collectedAt: new Date().toISOString(),
-    fans: '',
-    following: '',
-    totalLikes: '',
-    totalWorks: '',
-    note: 'Chrome 登录态采集',
-    videos: [emptyDouyinVideo()]
-  }));
-  function update(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-  function updateVideo(index, key, value) {
-    setForm((prev) => ({
-      ...prev,
-      videos: prev.videos.map((item, current) => current === index ? { ...item, [key]: value } : item)
-    }));
-  }
-  function addVideo() {
-    setForm((prev) => ({ ...prev, videos: [...prev.videos, emptyDouyinVideo()] }));
-  }
-  function removeVideo(index) {
-    setForm((prev) => ({ ...prev, videos: prev.videos.length <= 1 ? prev.videos : prev.videos.filter((_, current) => current !== index) }));
-  }
-  function submit() {
-    const accountPayload = {};
-    addNumberField(accountPayload, 'fans', form.fans);
-    addNumberField(accountPayload, 'following', form.following);
-    addNumberField(accountPayload, 'totalLikes', form.totalLikes);
-    addNumberField(accountPayload, 'totalWorks', form.totalWorks);
-    const videos = form.videos
-      .map((video) => {
-        const payload = {
-          url: video.url.trim(),
-          title: video.title.trim(),
-          publishTime: video.publishTime.trim()
-        };
-        addNumberField(payload, 'plays', video.plays);
-        addNumberField(payload, 'likes', video.likes);
-        addNumberField(payload, 'comments', video.comments);
-        addNumberField(payload, 'shares', video.shares);
-        addNumberField(payload, 'favorites', video.favorites);
-        return payload;
-      })
-      .filter((video) => video.url);
-    onSubmit({
-      caseId: caze.id,
-      collectedAt: form.collectedAt || new Date().toISOString(),
-      source: 'chrome-agent-web',
-      account: accountPayload,
-      videos,
-      note: form.note
-    });
-  }
-  return (
-    <Modal title="写回抖音采集结果" onClose={onClose}>
-      <div className="hintBox">
-        账号：{caze.weixinNick || '未命名'}。这是后台采集写回入口：用已登录抖音的 Chrome 打开主页后，把看到的数据写回系统；日常交付不需要使用。
-      </div>
-      <div className="formGrid">
-        <label className="wide">抖音主页<input value={caze.douyinUrl || ''} readOnly /></label>
-        <label>采集时间<input value={form.collectedAt} onChange={(e) => update('collectedAt', e.target.value)} /></label>
-        <label>粉丝数<input value={form.fans} onChange={(e) => update('fans', e.target.value)} placeholder="例如：1260" /></label>
-        <label>关注数<input value={form.following} onChange={(e) => update('following', e.target.value)} /></label>
-        <label>总获赞<input value={form.totalLikes} onChange={(e) => update('totalLikes', e.target.value)} /></label>
-        <label>作品数<input value={form.totalWorks} onChange={(e) => update('totalWorks', e.target.value)} /></label>
-        <label className="wide">备注<input value={form.note} onChange={(e) => update('note', e.target.value)} /></label>
-      </div>
-      <div className="sectionHead inlineSectionHead">
-        <h2>最近作品数据</h2>
-        <button onClick={addVideo}>加一条作品</button>
-      </div>
-      <div className="videoIngestList">
-        {form.videos.map((video, index) => (
-          <div className="videoIngestCard" key={index}>
-            <div className="rowTitle">
-              <strong>作品 {index + 1}</strong>
-              {form.videos.length > 1 && <button onClick={() => removeVideo(index)}>删除</button>}
-            </div>
-            <div className="formGrid">
-              <label className="wide">作品链接<input value={video.url} onChange={(e) => updateVideo(index, 'url', e.target.value)} placeholder="https://www.douyin.com/video/..." /></label>
-              <label className="wide">标题/首句<input value={video.title} onChange={(e) => updateVideo(index, 'title', e.target.value)} /></label>
-              <label>发布时间<input value={video.publishTime} onChange={(e) => updateVideo(index, 'publishTime', e.target.value)} placeholder="例如：2026-06-02" /></label>
-              <label>播放<input value={video.plays} onChange={(e) => updateVideo(index, 'plays', e.target.value)} /></label>
-              <label>点赞<input value={video.likes} onChange={(e) => updateVideo(index, 'likes', e.target.value)} /></label>
-              <label>评论<input value={video.comments} onChange={(e) => updateVideo(index, 'comments', e.target.value)} /></label>
-              <label>转发<input value={video.shares} onChange={(e) => updateVideo(index, 'shares', e.target.value)} /></label>
-              <label>收藏<input value={video.favorites} onChange={(e) => updateVideo(index, 'favorites', e.target.value)} /></label>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="modalActions">
-        <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={submit}>写回系统</button>
-      </div>
-    </Modal>
-  );
 }
 
 function PendingViralSection({ items, onCopy, onOpenViral }) {
@@ -2030,7 +1901,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
 
       <section className="panel">
         <div className="sectionHead"><h2>账号监控</h2><span>{videos.length} 条作品</span></div>
-        {!monitor.latestSnapshot && videos.length === 0 ? <div className="empty">填写抖音主页后，底部后台采集区可生成 Chrome 采集清单；回填后这里显示粉丝和作品数据</div> : (
+        {!monitor.latestSnapshot && videos.length === 0 ? <div className="empty">填写抖音主页后，后台采集完成会在这里显示粉丝和作品数据</div> : (
           <div className="metricTable">
             <div className="metricHeader"><span>初始粉丝</span><span>最新粉丝</span><span>粉丝变化</span><span>作品数</span><span>最近采集</span><span>采集状态</span></div>
             <div className="metricLine">
@@ -2361,12 +2232,8 @@ async function copyViralAnalysisTask(item, onCopy) {
 }
 
 function isPendingViral(item) {
-  const legacyAnalysisTool = '待用' + '青' + '豆';
-  const legacyStructureTool = '待' + '青' + '豆';
   return String(item.rawText || '').startsWith('待分析')
-    || String(item.rawText || '').startsWith(legacyAnalysisTool)
     || String(item.hotStructure || '').startsWith('待分析')
-    || String(item.hotStructure || '').startsWith(legacyStructureTool)
     || item.category === '待分析';
 }
 

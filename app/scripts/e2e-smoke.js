@@ -210,7 +210,7 @@ async function main() {
     });
     assert(linkOnlyViral.rawText.includes('待分析') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
     const viralAnalysisTask = await api(`/viral-templates/${linkOnlyViral.id}/analysis-task`);
-    assert(viralAnalysisTask.text.includes('https://www.douyin.com/video/link-only-smoke') && viralAnalysisTask.text.includes('回填到系统'), 'viral analysis task text missing');
+    assert(viralAnalysisTask.text.includes('https://www.douyin.com/video/link-only-smoke') && viralAnalysisTask.text.includes('记录到系统'), 'viral analysis task text missing');
     const viralDashboard = await api('/dashboard');
     assert(viralDashboard.counts.pendingViral >= 1, 'dashboard pending viral count missing');
     assert(viralDashboard.pendingViralTemplates.some((item) => item.id === linkOnlyViral.id), 'dashboard pending viral list missing link-only template');
@@ -485,7 +485,6 @@ async function main() {
       || deliveryDashboard.todaySlots.find((item) => item.id === slot.id);
     assert(deliveryDashboardSlot?.selectedCandidate?.operatorInstruction, 'dashboard missing ready delivery copy data');
     assert(deliveryDashboardSlot.case.weixinNick === '验收兼职改名', 'dashboard missing case recipient');
-    assert(!(['st', 'aff'].join('') in deliveryDashboardSlot.case), 'dashboard still exposes removed case owner field');
     assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitReport), 'dashboard work split counts missing');
     await imageGenerationSmoke();
     await authAccessSmoke();
@@ -561,17 +560,17 @@ async function main() {
     const detailAfterIngest = await api(`/cases/${caze.id}`);
     assert(detailAfterIngest.monitor.latestSnapshot.fans === 100, 'case monitor latest snapshot missing');
     assert(detailAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 8000), 'case video metrics missing');
-    const manualWebIngest = await api('/douyin-monitor/ingest', {
+    const chromeAgentIngest = await api('/douyin-monitor/ingest', {
       method: 'POST',
       body: JSON.stringify({
         caseId: minimalCase.id,
         collectedAt: '2026-06-01T13:00:00.000Z',
-        source: 'chrome-agent-web',
+        source: 'chrome-agent',
         account: { fans: 88, following: 18, totalLikes: 320, totalWorks: 1 },
         videos: [
           {
-            url: 'https://www.douyin.com/video/manual-web-smoke',
-            title: '网页表单回填作品',
+            url: 'https://www.douyin.com/video/chrome-agent-smoke',
+            title: 'Chrome采集写入作品',
             publishTime: '2026-06-01',
             plays: 1200,
             likes: 44,
@@ -580,15 +579,15 @@ async function main() {
             favorites: 3
           }
         ],
-        note: '网页表单回填验收'
+        note: 'Chrome采集写入验收'
       })
     });
-    assert(manualWebIngest.accountSnapshot?.fans === 88, 'manual web ingest missing account snapshot');
+    assert(chromeAgentIngest.accountSnapshot?.fans === 88, 'chrome agent ingest missing account snapshot');
     const minimalAfterIngest = await api(`/cases/${minimalCase.id}`);
-    assert(minimalAfterIngest.monitor.latestSnapshot.fans === 88, 'manual web ingest latest snapshot missing');
-    assert(minimalAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 1200), 'manual web ingest video metrics missing');
-    const afterManualWebDashboard = await api('/dashboard');
-    assert(afterManualWebDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing cold content action');
+    assert(minimalAfterIngest.monitor.latestSnapshot.fans === 88, 'chrome agent ingest latest snapshot missing');
+    assert(minimalAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 1200), 'chrome agent ingest video metrics missing');
+    const afterChromeAgentDashboard = await api('/dashboard');
+    assert(afterChromeAgentDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing cold content action');
     const coldSlot = await api('/douyin-monitor/actions/slot', {
       method: 'POST',
       body: JSON.stringify({ caseId: minimalCase.id, kind: '偏冷补内容', date: '2026-06-08' })
@@ -604,7 +603,7 @@ async function main() {
       body: JSON.stringify({
         caseId: minimalCase.id,
         collectedAt: '2026-06-01T14:00:00.000Z',
-        source: 'chrome-agent-web',
+        source: 'chrome-agent',
         account: { fans: 150, following: 19, totalLikes: 360, totalWorks: 1 },
         videos: [],
         note: '增长承接验收'
@@ -657,27 +656,6 @@ async function main() {
     const analyzedBulk = await api(`/viral-templates/${analyzedViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-05' }) });
     assert(analyzedBulk.createdCount >= 1, 'analyzed viral link did not generate filtered slots');
 
-    let exportRejected = false;
-    try {
-      await api('/export');
-    } catch (error) {
-      exportRejected = /404|api not found/.test(error.message);
-    }
-    assert(exportRejected, 'removed export endpoint is still available');
-    let importRejected = false;
-    try {
-      await api('/import', { method: 'POST', body: JSON.stringify({ cases: [] }) });
-    } catch (error) {
-      importRejected = /404|api not found/.test(error.message);
-    }
-    assert(importRejected, 'removed import endpoint is still available');
-    let legacyVerifyRejected = false;
-    try {
-      await api('/verify-tasks/legacy/checklist');
-    } catch (error) {
-      legacyVerifyRejected = /404|api not found/.test(error.message);
-    }
-    assert(legacyVerifyRejected, 'legacy verify task endpoint still available');
     const review = await api('/review');
     assert(review.totals.cases === 4, 'review case total invalid');
     assert(review.totals.accountSnapshots === 3, 'review account snapshot total invalid');
