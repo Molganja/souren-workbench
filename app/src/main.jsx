@@ -252,6 +252,7 @@ function App() {
     <div className="nav">
       <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>今日中控台</button>
       <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>排期规划</button>
+      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}>数据复盘</button>
       <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
       <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款链接</button>
       <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>系统配置</button>

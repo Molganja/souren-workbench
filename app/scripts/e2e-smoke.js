@@ -655,15 +655,20 @@ async function main() {
     const analyzedBulk = await api(`/viral-templates/${analyzedViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-05' }) });
     assert(analyzedBulk.createdCount >= 1, 'analyzed viral link did not generate filtered slots');
 
-    const exported = await api('/export');
-    assert(exported.cases.length === 4, 'export missing cases');
-    assert(exported.accountSnapshots.length === 3, 'export missing account snapshots');
-    assert(exported.douyinVideos.length === 2, 'export missing douyin videos');
-    assert(exported.videoSnapshots.length === 2, 'export missing video snapshots');
-    assert(exported.viralAlerts.length === 1, 'export missing viral alerts');
-    assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
-    assert(exported.clipTasks.length === 1, 'export missing clip task');
-    assert(!(['verify', 'Tasks'].join('') in exported), 'export still exposes legacy review tasks');
+    let exportRejected = false;
+    try {
+      await api('/export');
+    } catch (error) {
+      exportRejected = /404|api not found/.test(error.message);
+    }
+    assert(exportRejected, 'removed export endpoint is still available');
+    let importRejected = false;
+    try {
+      await api('/import', { method: 'POST', body: JSON.stringify({ cases: [] }) });
+    } catch (error) {
+      importRejected = /404|api not found/.test(error.message);
+    }
+    assert(importRejected, 'removed import endpoint is still available');
     let legacyVerifyRejected = false;
     try {
       await api('/verify-tasks/legacy/checklist');
@@ -671,23 +676,6 @@ async function main() {
       legacyVerifyRejected = /404|api not found/.test(error.message);
     }
     assert(legacyVerifyRejected, 'legacy verify task endpoint still available');
-    const importResult = await api('/import', { method: 'POST', body: JSON.stringify(exported) });
-    assert(importResult.imported === true && importResult.cases === exported.cases.length, 'import did not report imported cases');
-    let badImportRejected = false;
-    try {
-      await api('/import', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...exported,
-          planSlots: [{ ...exported.planSlots[0], id: 'bad_slot_fk', caseId: 'missing_case' }]
-        })
-      });
-    } catch (error) {
-      badImportRejected = /导入失败/.test(error.message);
-    }
-    assert(badImportRejected, 'bad import was not rejected');
-    const afterBadImportCases = await api('/cases');
-    assert(afterBadImportCases.length === 4, 'bad import changed existing cases');
     const review = await api('/review');
     assert(review.totals.cases === 4, 'review case total invalid');
     assert(review.totals.accountSnapshots === 3, 'review account snapshot total invalid');
