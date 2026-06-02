@@ -812,8 +812,15 @@ async function main() {
     assert(imageTask.status === 'waiting_key' || imageTask.status === 'draft', 'image task status invalid');
     await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
 
+    const pausedViralCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ weixinNick: '暂停爆款验收兼职', douyinUrl: 'https://www.douyin.com/user/paused-viral-smoke', project: '吸脂', healthStatus: '失联暂停' })
+    });
     const viralBulk = await api(`/viral-templates/${viral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-02' }) });
     assert(viralBulk.createdCount === 4, 'viral bulk generation failed');
+    assert(viralBulk.skipped.some((item) => item.caseId === pausedViralCase.id && item.reason.includes('暂停')), 'viral bulk did not skip paused account');
+    assert(!viralBulk.slots.some((item) => item.caseId === pausedViralCase.id), 'viral bulk created slot for paused account');
+    await api(`/cases/${pausedViralCase.id}`, { method: 'DELETE' });
     const filteredBulk = await api(`/viral-templates/${filteredViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-03' }) });
     assert(filteredBulk.createdCount >= 1 && filteredBulk.skippedCount >= 1, 'viral persona filter bulk generation failed');
     let pendingRejected = false;

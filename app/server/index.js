@@ -1527,7 +1527,7 @@ function viralAnalysisTaskText(viral) {
     '结构和建议 -> 分析结论',
     '适合/禁用关键词 -> 对应输入框',
     '',
-    '填写完成后再点“给所有账号生成今日爆款候选”。'
+    '填写完成后再点“给可投放账号生成爆款候选”。'
   ].join('\n');
 }
 
@@ -4133,22 +4133,45 @@ app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
     return res.status(409).json({ error: '这个爆款链接还没完成内容提取和结构分析，先不要批量生成' });
   }
   const body = req.body || {};
+  const targetDate = body.date || new Date().toISOString().slice(0, 10);
   const cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase);
   const created = [];
+  const skipped = [];
   cases.forEach((caze) => {
-    if (!viralSuitableForCase(viral, caze)) return;
+    if (!viralSuitableForCase(viral, caze)) {
+      skipped.push({ caseId: caze.id, weixinNick: caze.weixinNick, reason: '人设或项目不适合' });
+      return;
+    }
+    const postingStrategy = postingStrategyForCase(caze);
+    if (postingStrategy.intervalDays <= 0 || caseIsPaused(caze)) {
+      skipped.push({ caseId: caze.id, weixinNick: caze.weixinNick, reason: postingStrategy.reason || '账号已暂停，不生成爆款任务' });
+      return;
+    }
+    if (!shouldCreateSlotForDate(caze, targetDate, postingStrategy)) {
+      skipped.push({ caseId: caze.id, weixinNick: caze.weixinNick, reason: postingStrategy.reason || '当前日期不在这个账号的投放频率内' });
+      return;
+    }
+    const goal = `爆款提权：按「${viral.title}」做人设化改写`;
+    const existing = rowSlot(get(
+      'SELECT * FROM plan_slots WHERE case_id = ? AND date = ? AND content_kind = ? AND goal = ? LIMIT 1',
+      [caze.id, targetDate, '爆款提权', goal]
+    ));
+    if (existing) {
+      skipped.push({ caseId: caze.id, weixinNick: caze.weixinNick, reason: '已有同一天同爆款任务' });
+      return;
+    }
     const slot = createSlotForCase(caze, {
-      date: body.date || new Date().toISOString().slice(0, 10),
+      date: targetDate,
       timeWindow: body.timeWindow || '19:00-21:00',
       contentKind: '爆款提权',
       stage: caze.stage,
       status: '候选待选',
-      goal: `爆款提权：按「${viral.title}」做人设化改写`
+      goal
     });
     ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral, null));
     created.push(slotById(slot.id));
   });
-  res.json({ createdCount: created.length, skippedCount: cases.length - created.length, slots: created });
+  res.json({ createdCount: created.length, skippedCount: skipped.length, slots: created, skipped });
 });
 
 app.patch('/api/assets/:id', (req, res) => {

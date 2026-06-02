@@ -272,7 +272,7 @@ function App() {
           <AccessGate session={session} onLogin={(code) => act(() => login(code), '已进入工作台')} />
         )}
         {!loading && canUseWorkbench && view === 'dashboard' && dashboard && (
-          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onOpenViral={() => setView('viral')} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
+          <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'review' && review && (
           <ReviewView data={review} onOpenCase={openCase} />
@@ -358,7 +358,7 @@ function App() {
   );
 }
 
-function Dashboard({ data, onOpenCase, onAct, onOpenViral, onDelivery, canOpenLocalPaths }) {
+function Dashboard({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
   const accountGroups = groupTodayByAccount(data.todaySlots);
   const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
   const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
@@ -387,7 +387,6 @@ function Dashboard({ data, onOpenCase, onAct, onOpenViral, onDelivery, canOpenLo
         items={priorityActions}
         onOpenCase={onOpenCase}
         onAct={onAct}
-        onOpenViral={onOpenViral}
         onDelivery={onDelivery}
         canOpenLocalPaths={canOpenLocalPaths}
       />
@@ -570,19 +569,6 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       monitorAction: item
     });
   });
-  (data.pendingViralTemplates || []).forEach((item) => {
-    items.push({
-      id: `viral-template-${item.id}`,
-      priority: 48,
-      kind: '爆款分析',
-      status: '待分析',
-      statusClass: 'wait',
-      title: pendingViralTitle(item),
-      detail: item.sourceLink || '未填写链接',
-      note: '打开爆款链接页补分析结果，完成后再批量生成人设化内容。',
-      viralTemplate: item
-    });
-  });
   (data.clipTasks || []).forEach((task) => {
     items.push({
       id: `clip-${task.id}`,
@@ -614,7 +600,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
   return items.sort((a, b) => b.priority - a.priority);
 }
 
-function PriorityActionSection({ items, onOpenCase, onAct, onOpenViral, onDelivery, canOpenLocalPaths }) {
+function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
   const activeItem = items[0];
   const queuedItems = items.slice(1);
   return (
@@ -642,7 +628,6 @@ function PriorityActionSection({ items, onOpenCase, onAct, onOpenViral, onDelive
               item={activeItem}
               onOpenCase={onOpenCase}
               onAct={onAct}
-              onOpenViral={onOpenViral}
               onDelivery={onDelivery}
               canOpenLocalPaths={canOpenLocalPaths}
             />
@@ -667,7 +652,7 @@ function summarizeQueuedKinds(items = []) {
   return Object.entries(counts).map(([kind, count]) => `${kind} ${count}`).join(' / ');
 }
 
-function PriorityActionButtons({ item, onOpenCase, onAct, onOpenViral, onDelivery, canOpenLocalPaths }) {
+function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
   if (item.alert) {
     return (
       <div className="rowActions">
@@ -750,14 +735,6 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onOpenViral, onDeliver
           () => request('/douyin-monitor/actions/slot', { method: 'POST', body: JSON.stringify({ caseId: item.case.id, kind: item.monitorAction.kind }) }),
           (result) => result.created ? `已生成：${result.slot.date} ${result.slot.contentKind}` : `已有对应排期：${result.slot.date} ${result.slot.contentKind}`
         )}>{monitorActionSlotLabel(item.monitorAction.kind)}</button>}
-      </div>
-    );
-  }
-  if (item.viralTemplate) {
-    return (
-      <div className="rowActions">
-        {item.viralTemplate.sourceLink && <a className="button" href={item.viralTemplate.sourceLink} target="_blank">打开链接</a>}
-        <button onClick={onOpenViral}>补分析</button>
       </div>
     );
   }
@@ -1752,7 +1729,7 @@ function ViralView({ templates, onNew, onEdit, onAct }) {
           <button className="button primary" onClick={onNew}>粘贴爆款链接</button>
         </div>
       </div>
-      <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会进入待分析状态，完成内容提取、结构拆解和适合账号判断后，才能批量生成同类型候选。</div>
+      <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会进入待分析状态，不占用今日操作队列；完成内容提取、结构拆解和适合账号判断后，只给可投放账号生成同类型候选。</div>
       {sortedTemplates.length === 0 ? <div className="empty">还没有待分析链接。先粘贴作品链接即可，不需要填写模板内容。</div> : (
         <div className="templateList">
           {sortedTemplates.map((item) => (
@@ -1768,7 +1745,7 @@ function ViralView({ templates, onNew, onEdit, onAct }) {
               <div className="inlineActions">
                 {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
                 <button onClick={() => onEdit(item)}>{isPendingViral(item) ? '补分析结果' : '编辑分析'}</button>
-                <button disabled={isPendingViral(item)} onClick={() => bulkGenerateViral(item, onAct)}>给所有账号生成今日爆款候选</button>
+                <button disabled={isPendingViral(item)} onClick={() => bulkGenerateViral(item, onAct)}>给可投放账号生成爆款候选</button>
               </div>
             </div>
           ))}
@@ -2014,7 +1991,7 @@ function bulkGenerateViral(template, onAct) {
       method: 'POST',
       body: JSON.stringify({ date })
     }),
-    '已给所有账号生成爆款候选'
+    (result) => `已生成 ${result.createdCount} 个爆款候选，跳过 ${result.skippedCount || 0} 个账号`
   );
 }
 

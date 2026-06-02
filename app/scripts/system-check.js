@@ -71,6 +71,9 @@ else fail('缺少失联账号暂停逻辑');
 if (serverSource.includes('/api/cases/:id/resume') && serverSource.includes('已取消') && mainSource.includes('恢复账号')) ok('失联暂停账号支持一键恢复');
 else fail('缺少失联暂停账号恢复闭环');
 
+if (serverSource.includes('给可投放账号生成爆款候选') && serverSource.includes('已有同一天同爆款任务') && !mainSource.includes("kind: '爆款分析'")) ok('爆款批量生成只进入可投放账号且不占用今日队列');
+else fail('爆款批量生成仍可能制造无效任务或占用今日队列');
+
 if (serverSource.includes('兼职须知') && serverSource.includes('固定发布说明') && mainSource.includes('兼职须知（首次发送）')) ok('交付内容内置固定发布说明和兼职须知');
 else fail('缺少固定发布说明或兼职须知');
 
