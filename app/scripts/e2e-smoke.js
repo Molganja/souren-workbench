@@ -7,12 +7,15 @@ const TEST_PORT = 5184;
 const TEST_AI_PORT = 5185;
 const TEST_LLM_APP_PORT = 5186;
 const TEST_LLM_PORT = 5187;
+const TEST_IMAGE_APP_PORT = 5188;
+const TEST_IMAGE_PORT = 5189;
 const BASE = `http://127.0.0.1:${TEST_PORT}/api`;
 const APP_DIR = path.resolve(import.meta.dirname, '..');
 const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
 const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
 const AI_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-ai');
 const LLM_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-llm');
+const IMAGE_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -117,7 +120,9 @@ async function llmCandidateSmoke() {
       LLM_API_KEY: 'fake-key',
       LLM_BASE_URL: `http://127.0.0.1:${TEST_LLM_PORT}/v1`,
       LLM_MODEL: 'fake-copy-model',
-      DASHSCOPE_API_KEY: ''
+      DASHSCOPE_API_KEY: '',
+      IMAGE_API_KEY: '',
+      IMAGE_API_URL: ''
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -148,6 +153,69 @@ async function llmCandidateSmoke() {
   }
 }
 
+async function imageGenerationSmoke() {
+  fs.rmSync(path.join(IMAGE_ROOT_DIR, 'data'), { recursive: true, force: true });
+  fs.rmSync(path.join(IMAGE_ROOT_DIR, '素材库'), { recursive: true, force: true });
+  fs.mkdirSync(IMAGE_ROOT_DIR, { recursive: true });
+  let receivedBody = '';
+  const imageServer = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk.toString(); });
+    req.on('end', () => {
+      receivedBody = body;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        data: [{ b64_json: Buffer.from('fake generated image').toString('base64') }]
+      }));
+    });
+  });
+  await new Promise((resolve) => imageServer.listen(TEST_IMAGE_PORT, '127.0.0.1', resolve));
+  const imageBase = `http://127.0.0.1:${TEST_IMAGE_APP_PORT}/api`;
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: {
+      ...process.env,
+      PORT: String(TEST_IMAGE_APP_PORT),
+      SOUREN_ROOT_DIR: IMAGE_ROOT_DIR,
+      SOUREN_LOCAL_AI_DISABLED: '1',
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
+      IMAGE_API_KEY: 'fake-image-key',
+      IMAGE_API_URL: `http://127.0.0.1:${TEST_IMAGE_PORT}/images/generate`,
+      IMAGE_MODEL: 'fake-image-model',
+      IMAGE_SIZE: '1024x1024',
+      LLM_API_KEY: '',
+      DASHSCOPE_API_KEY: ''
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  try {
+    await waitForServer(server, imageBase);
+    const config = await api('/config', {}, imageBase);
+    assert(config.image.ready === true && config.image.model === 'fake-image-model', 'image config did not show ready');
+    const caze = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ weixinNick: '图片生成兼职', staff: '咨询图片', persona: { city: '成都', occupation: '上班族' } })
+    }, imageBase);
+    const task = await api('/image-tasks', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: caze.id, purpose: '封面图', prompt: '图片生成接口验收提示词' })
+    }, imageBase);
+    assert(task.status === 'draft', 'image task should be draft when image API is ready');
+    const generated = await api(`/image-tasks/${task.id}/generate`, { method: 'POST' }, imageBase);
+    assert(generated.task.status === 'review', 'generated image task not moved to review');
+    assert(generated.files.length === 1 && fs.existsSync(generated.files[0]), 'generated image file missing');
+    assert(generated.assets.some((asset) => asset?.source === 'AI生成'), 'generated image asset not inserted');
+    assert(receivedBody.includes('图片生成接口验收提示词') && receivedBody.includes('fake-image-model'), 'image API did not receive prompt or model');
+  } finally {
+    server.kill('SIGTERM');
+    imageServer.close();
+    await sleep(300);
+    fs.rmSync(IMAGE_ROOT_DIR, { recursive: true, force: true });
+  }
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -166,7 +234,9 @@ async function main() {
       SOUREN_LOCAL_AI_DISABLED: '1',
       SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
       LLM_API_KEY: '',
-      DASHSCOPE_API_KEY: ''
+      DASHSCOPE_API_KEY: '',
+      IMAGE_API_KEY: '',
+      IMAGE_API_URL: ''
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -379,6 +449,10 @@ async function main() {
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');
     assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');
+    const deliveryView = await api(`/slots/${slot.id}/delivery-view`);
+    assert(deliveryView.texts.operatorInstruction.includes('对接人：咨询D'), 'delivery view missing operator instruction');
+    assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
+    assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
     const deliveryDashboard = await api('/dashboard');
     const deliveryDashboardSlot = deliveryDashboard.readyDelivery.find((item) => item.id === slot.id)
       || deliveryDashboard.todaySlots.find((item) => item.id === slot.id);
@@ -388,19 +462,20 @@ async function main() {
     assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitReport), 'dashboard work split counts missing');
     const operatorPacket = await api('/dashboard/operator-packet', { method: 'POST' });
     assert(fs.existsSync(operatorPacket.path), 'operator packet file missing');
-    assert(operatorPacket.text.includes('素人系统运营工作包') && operatorPacket.text.includes('Codex 下一步优先级'), 'operator packet missing core sections');
+    assert(operatorPacket.text.includes('素人系统运营工作包') && operatorPacket.text.includes('助手下一步优先级'), 'operator packet missing core sections');
     assert(operatorPacket.text.includes('当前代码进度') && operatorPacket.text.includes('请优先读取') && operatorPacket.text.includes('app/server/index.js'), 'operator packet missing git/file context');
     assert(operatorPacket.text.includes('发给 验收兼职改名') && operatorPacket.text.includes('对接 咨询D'), 'operator packet missing recipient routing');
     const aiConsult = await api('/dashboard/ai-consult', { method: 'POST' });
     assert(aiConsult.status === 'unavailable', 'disabled local AI consult should be unavailable');
     assert(fs.existsSync(aiConsult.consultPath), 'AI consult record file missing');
-    assert(aiConsult.text.includes('本地AI顾问记录') && aiConsult.text.includes(operatorPacket.path.slice(0, operatorPacket.path.lastIndexOf('/'))), 'AI consult record missing context');
+    assert(aiConsult.text.includes('本地助手建议记录') && aiConsult.text.includes(operatorPacket.path.slice(0, operatorPacket.path.lastIndexOf('/'))), 'AI consult record missing context');
     const consultHistory = await api('/dashboard/ai-consults');
     assert(consultHistory.some((item) => item.path === aiConsult.consultPath && item.status === 'unavailable'), 'AI consult history missing record');
     const dashboardWithConsult = await api('/dashboard');
     assert(dashboardWithConsult.aiConsults.some((item) => item.path === aiConsult.consultPath), 'dashboard missing AI consult history');
     await localAiSuccessSmoke();
     await llmCandidateSmoke();
+    await imageGenerationSmoke();
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -414,6 +489,9 @@ async function main() {
     assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '04-剪辑要求.txt')), 'video delivery missing edit brief');
     assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '07-成片回收说明.txt')), 'video delivery missing final video return note');
     assert(videoDelivery.copiedAssets.some((asset) => asset.fileName.startsWith('08-')), 'video delivery asset numbering did not avoid task files');
+    const videoDeliveryView = await api(`/slots/${videoSlot.id}/delivery-view`);
+    assert(videoDeliveryView.isVideo === true && videoDeliveryView.editing.finalVideoPath.endsWith('final.mp4'), 'video delivery view missing editing output path');
+    assert(videoDeliveryView.texts.editBrief.includes('剪辑要求'), 'video delivery view missing edit brief');
 
     const batchDeliverySlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -547,6 +625,7 @@ async function main() {
     fs.rmSync(ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(AI_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(LLM_ROOT_DIR, { recursive: true, force: true });
+    fs.rmSync(IMAGE_ROOT_DIR, { recursive: true, force: true });
   }
 }
 

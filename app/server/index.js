@@ -25,6 +25,7 @@ const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const OPERATOR_PACKET_DIR = path.join(DATA_DIR, 'operator-packets');
 const AI_CONSULT_DIR = path.join(DATA_DIR, 'ai-consults');
 const DEFAULT_LLM_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const DEFAULT_IMAGE_MODEL = 'image-v2';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -35,10 +36,10 @@ const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const ALLOWED_OPEN_ROOTS = [ROOT_DIR];
-const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review'];
+const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
 const STATUS_LABELS = {
-  waiting_key: '待填图片密钥',
+  waiting_key: '待接入图片接口',
   draft: '待生成',
   generating: '生成中',
   review: '待审核',
@@ -70,6 +71,16 @@ function llmSettings() {
   const model = process.env.LLM_MODEL || process.env.DASHSCOPE_MODEL || 'deepseek-v4-flash';
   const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 45000);
   return { ready: Boolean(apiKey), apiKey, baseUrl, model, timeoutMs };
+}
+
+function imageSettings() {
+  const apiKey = process.env.IMAGE_API_KEY || '';
+  const apiUrl = String(process.env.IMAGE_API_URL || process.env.IMAGE_GENERATE_URL || '').trim();
+  const model = process.env.IMAGE_MODEL || DEFAULT_IMAGE_MODEL;
+  const size = process.env.IMAGE_SIZE || '1024x1024';
+  const timeoutMs = Number(process.env.IMAGE_TIMEOUT_MS || 90000);
+  const missing = !apiKey ? '未填写图片密钥' : !apiUrl ? '未填写图片接口地址' : '';
+  return { ready: Boolean(apiKey && apiUrl), apiKey, apiUrl, model, size, timeoutMs, missing };
 }
 
 const STAGE_RATIOS = {
@@ -295,9 +306,22 @@ function rowImageTask(row) {
     sourceMaterials: parseJson(row.source_materials, []),
     outputDir: row.output_dir,
     status: row.status,
+    generatedFiles: generatedImageFilesForTask(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function generatedImageFilesForTask(row) {
+  if (!row?.output_dir || !fs.existsSync(row.output_dir)) return [];
+  return fs.readdirSync(row.output_dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .filter((entry) => entry.name.startsWith(`${row.id}-生成图片-`) && IMAGE_EXT.has(path.extname(entry.name).toLowerCase()))
+    .map((entry) => {
+      const full = path.join(row.output_dir, entry.name);
+      return { name: entry.name, path: full, url: fileUrl(full), kind: '图片' };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 }
 
 function rowClipTask(row) {
@@ -364,6 +388,12 @@ function openLocalPath(target, callback) {
   if (process.platform === 'darwin') return execFile('open', [target], callback);
   if (process.platform === 'win32') return execFile('cmd', ['/c', 'start', '', target], callback);
   return execFile('xdg-open', [target], callback);
+}
+
+function fileUrl(filePath) {
+  const resolved = assertInsideRoot(filePath);
+  const rel = path.relative(ROOT_DIR, resolved);
+  return `/files/${rel.split(path.sep).map(encodeURIComponent).join('/')}`;
 }
 
 function caseById(id) {
@@ -785,6 +815,197 @@ function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
   ].join('\n');
 }
 
+function imageExtensionFromContentType(contentType) {
+  const type = String(contentType || '').toLowerCase();
+  if (type.includes('jpeg') || type.includes('jpg')) return '.jpg';
+  if (type.includes('webp')) return '.webp';
+  if (type.includes('gif')) return '.gif';
+  return '.png';
+}
+
+function imageExtensionFromUrl(url) {
+  try {
+    const ext = path.extname(new URL(url).pathname).toLowerCase();
+    return IMAGE_EXT.has(ext) && ext !== '.heic' ? ext : '.png';
+  } catch {
+    return '.png';
+  }
+}
+
+function decodeImageBase64(value) {
+  const raw = String(value || '').trim();
+  if (!raw) throw new Error('图片接口返回了空图片数据');
+  const match = raw.match(/^data:([^;]+);base64,(.+)$/);
+  const payload = match ? match[2] : raw;
+  const buffer = Buffer.from(payload, 'base64');
+  if (!buffer.length) throw new Error('图片接口返回的图片数据无法解码');
+  return {
+    buffer,
+    ext: match ? imageExtensionFromContentType(match[1]) : '.png'
+  };
+}
+
+function collectImageResponseItems(body) {
+  const roots = [
+    body,
+    ...(Array.isArray(body?.data) ? body.data : []),
+    ...(Array.isArray(body?.images) ? body.images : []),
+    ...(Array.isArray(body?.output) ? body.output : []),
+    ...(Array.isArray(body?.outputs) ? body.outputs : []),
+    ...(Array.isArray(body?.result?.images) ? body.result.images : [])
+  ].filter(Boolean);
+  const items = [];
+  roots.forEach((item) => {
+    if (typeof item === 'string') {
+      if (/^https?:\/\//.test(item)) items.push({ url: item });
+      else items.push({ b64: item });
+      return;
+    }
+    const b64 = item.b64_json || item.base64 || item.image_base64 || item.image;
+    const url = item.url || item.image_url;
+    if (b64) items.push({ b64 });
+    if (url) items.push({ url });
+  });
+  return items;
+}
+
+async function materializeImageItem(item, task, index, signal) {
+  fs.mkdirSync(task.outputDir, { recursive: true });
+  let buffer;
+  let ext = '.png';
+  if (item.b64) {
+    const decoded = decodeImageBase64(item.b64);
+    buffer = decoded.buffer;
+    ext = decoded.ext;
+  } else if (item.url) {
+    const res = await fetch(item.url, { signal });
+    if (!res.ok) throw new Error(`下载生成图片失败：${res.status}`);
+    buffer = Buffer.from(await res.arrayBuffer());
+    ext = imageExtensionFromContentType(res.headers.get('content-type')) || imageExtensionFromUrl(item.url);
+  } else {
+    throw new Error('图片接口返回格式无法识别');
+  }
+  const filePath = path.join(task.outputDir, `${task.id}-生成图片-${index}${ext}`);
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+}
+
+function insertGeneratedImageAsset(task, filePath) {
+  run(
+    `INSERT OR IGNORE INTO assets (id, case_id, path, kind, stage, source, usage, review_status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uid('asset'),
+      task.caseId,
+      filePath,
+      '图片',
+      task.purpose,
+      'AI生成',
+      task.purpose,
+      '待处理',
+      now()
+    ]
+  );
+  return rowAsset(get('SELECT * FROM assets WHERE case_id = ? AND path = ?', [task.caseId, filePath]));
+}
+
+function writeImageTaskBrief(task, extraLines = []) {
+  fs.mkdirSync(task.outputDir, { recursive: true });
+  fs.writeFileSync(path.join(task.outputDir, `${task.id}-图片任务说明.txt`), [
+    `任务ID：${task.id}`,
+    `状态：${displayStatus(task.status)}`,
+    `用途：${task.purpose}`,
+    `保存目录：${task.outputDir}`,
+    '',
+    '正向提示词：',
+    task.prompt,
+    '',
+    '反向提示词：',
+    task.negativePrompt || '',
+    ...extraLines
+  ].join('\n'));
+}
+
+async function generateImageFiles(task) {
+  const settings = imageSettings();
+  if (!settings.ready) {
+    run('UPDATE image_tasks SET status = ?, updated_at = ? WHERE id = ?', ['waiting_key', now(), task.id]);
+    const updated = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id]));
+    writeImageTaskBrief(updated, ['', `提示：${settings.missing}，当前只能复制提示词。`]);
+    const err = new Error(`${settings.missing}，请先在 app/.env 填 IMAGE_API_KEY 和 IMAGE_API_URL`);
+    err.status = 409;
+    throw err;
+  }
+
+  run('UPDATE image_tasks SET status = ?, updated_at = ? WHERE id = ?', ['generating', now(), task.id]);
+  const generatingTask = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id]));
+  writeImageTaskBrief(generatingTask);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), settings.timeoutMs);
+  try {
+    const res = await fetch(settings.apiUrl, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${settings.apiKey}`
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        prompt: task.prompt,
+        negative_prompt: task.negativePrompt || '',
+        size: settings.size,
+        n: 1,
+        response_format: 'b64_json'
+      })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.error?.message || body?.message || `图片接口失败：${res.status}`);
+    const items = collectImageResponseItems(body);
+    if (!items.length) throw new Error('图片接口没有返回图片文件');
+    const files = [];
+    const assets = [];
+    for (let i = 0; i < Math.min(items.length, 4); i += 1) {
+      const filePath = await materializeImageItem(items[i], task, i + 1, controller.signal);
+      files.push(filePath);
+      assets.push(insertGeneratedImageAsset(task, filePath));
+    }
+    run('UPDATE image_tasks SET status = ?, updated_at = ? WHERE id = ?', ['review', now(), task.id]);
+    const updated = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id]));
+    fs.writeFileSync(path.join(updated.outputDir, `${updated.id}-生成结果.txt`), [
+      `任务ID：${updated.id}`,
+      `状态：${displayStatus(updated.status)}`,
+      `生成时间：${now()}`,
+      `模型：${settings.model}`,
+      '',
+      '生成文件：',
+      ...files.map((file, index) => `${index + 1}. ${file}`),
+      '',
+      '下一步：在系统或素材清单里确认图片，适合使用就标记“已通过”或把素材标记“可用”。'
+    ].join('\n'));
+    writeImageTaskBrief(updated, ['', '生成文件：', ...files.map((file, index) => `${index + 1}. ${file}`)]);
+    return { task: updated, files, assets };
+  } catch (error) {
+    const status = error.name === 'AbortError' ? 'timeout' : 'draft';
+    run('UPDATE image_tasks SET status = ?, updated_at = ? WHERE id = ?', [status, now(), task.id]);
+    const updated = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id]));
+    fs.writeFileSync(path.join(updated.outputDir, `${updated.id}-生成失败.txt`), [
+      `任务ID：${updated.id}`,
+      `失败时间：${now()}`,
+      `错误：${error.name === 'AbortError' ? '图片接口超时' : error.message}`,
+      '',
+      '下一步：检查图片接口地址、密钥、模型名；也可以先复制提示词手动生成。'
+    ].join('\n'));
+    writeImageTaskBrief(updated, ['', `最近生成失败：${error.name === 'AbortError' ? '图片接口超时' : error.message}`]);
+    const err = new Error(error.name === 'AbortError' ? '图片接口超时，请稍后重试' : error.message);
+    err.status = error.name === 'AbortError' ? 504 : 502;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function personaMatchTokens(caze) {
   const p = caze.persona || {};
   return [caze.weixinNick, caze.project, caze.stage, p.city, p.age ? `${p.age}岁` : '', p.occupation, p.tone, p.motivation]
@@ -866,7 +1087,7 @@ function materialIntakeText(caze, gaps = []) {
 
 function imagePromptText(task) {
   return [
-    'Image 生成任务',
+    '图片生成任务',
     `任务ID：${task.id}`,
     `用途：${task.purpose}`,
     `状态：${displayStatus(task.status)}`,
@@ -959,7 +1180,7 @@ function materialGaps(project, assets) {
           ? '已有素材'
           : item.required
             ? `请把${item.label}放入 00-原始素材 或 01-已筛选素材 后重新扫描`
-            : `可补充${item.label}，或创建 Image/剪辑任务作为辅助`
+            : `可补充${item.label}，或创建图片/剪辑任务作为辅助`
     };
   });
 }
@@ -990,7 +1211,7 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today) {
   }
   if (requiredMissing > 0) {
     reasons.push(`必补素材 ${requiredMissing} 项`);
-    actions.push('优先处理必补素材缺口，缺口旁可创建 Image/剪辑任务');
+    actions.push('优先处理必补素材缺口，缺口旁可创建图片/剪辑任务');
   }
   if (recentGrass >= 4 && recentViral === 0) {
     reasons.push('种草偏密，需要爆款提权');
@@ -1349,7 +1570,7 @@ function slotNextAction(slot) {
 
 function slotPacketLine(slot) {
   const caze = slot.case || {};
-  return `- 发给 ${caze.weixinNick || '未命名兼职'}｜对接 ${caze.staff || '未填对接人'}｜账号 ${caze.douyinId || '未填抖音号'}｜${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.status}｜${slotNextAction(slot)}${slot.deliveryDir ? `｜交付包 ${slot.deliveryDir}` : ''}`;
+  return `- 发给 ${caze.weixinNick || '未命名兼职'}｜对接 ${caze.staff || '未填对接人'}｜账号 ${caze.douyinId || '未填抖音号'}｜${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.status}｜${slotNextAction(slot)}${slot.deliveryDir ? '｜交付内容已生成' : ''}`;
 }
 
 function gitOutput(args) {
@@ -1390,15 +1611,15 @@ function gitSnapshot() {
 
 function gitSyncStatus() {
   if (process.env.SOUREN_GITHUB_SYNC_CHECK_DISABLED === '1') {
-    return { status: 'waiting', detail: 'GitHub 同步检查已在当前环境禁用' };
+    return { status: 'waiting', detail: '远端代码同步检查已在当前环境禁用' };
   }
   const remote = gitOutput(['remote', 'get-url', 'origin']);
-  if (!remote) return { status: 'warning', detail: 'GitHub remote 未配置' };
+  if (!remote) return { status: 'warning', detail: '远端代码仓库未配置' };
   const local = gitOutput(['rev-parse', 'HEAD']);
   const remoteHead = gitOutput(['ls-remote', '--heads', 'origin', 'main']).split(/\s+/)[0] || '';
-  if (!local || !remoteHead) return { status: 'warning', detail: `无法读取 GitHub main，同步状态未知：${remote}` };
-  if (local === remoteHead) return { status: 'ready', detail: `GitHub main 已同步 ${local.slice(0, 7)}` };
-  return { status: 'warning', detail: `GitHub main 未同步，本地 ${local.slice(0, 7)}，远端 ${remoteHead.slice(0, 7)}；需要认证后 push` };
+  if (!local || !remoteHead) return { status: 'warning', detail: `无法读取远端主分支，同步状态未知：${remote}` };
+  if (local === remoteHead) return { status: 'ready', detail: `远端主分支已同步 ${local.slice(0, 7)}` };
+  return { status: 'warning', detail: `远端主分支未同步，本地 ${local.slice(0, 7)}，远端 ${remoteHead.slice(0, 7)}；需要认证后上传` };
 }
 
 function operatorPacketMarkdown(data) {
@@ -1420,7 +1641,7 @@ function operatorPacketMarkdown(data) {
   if (data.counts.sentWaitReport) priorities.push(`催回传：${data.counts.sentWaitReport} 个已派发任务`);
   if (data.counts.pendingVerify) priorities.push(`抖音核对：${data.counts.pendingVerify} 个待核对`);
   if (data.counts.pendingViral) priorities.push(`青豆分析爆款链接：${data.counts.pendingViral} 条待分析`);
-  if (data.counts.imageTasks) priorities.push(`处理 Image 任务：${data.counts.imageTasks} 个打开任务`);
+  if (data.counts.imageTasks) priorities.push(`处理图片任务：${data.counts.imageTasks} 个打开任务`);
   if (data.counts.clipTasks) priorities.push(`处理剪辑任务：${data.counts.clipTasks} 个打开任务`);
 
   const lines = [
@@ -1431,10 +1652,10 @@ function operatorPacketMarkdown(data) {
     `真实案例素材目录：${MATERIAL_ROOT}`,
     `数据库：${path.join(DATA_DIR, 'souren.sqlite')}`,
     '',
-    '## 给本地AI的审阅指令',
+    '## 给本地助手的审阅指令',
     '',
     '- 请优先读取“当前代码进度”里的关键文件路径。',
-    '- 结合今日链路、异常账号、素材缺口和 AI 顾问记录，判断下一步。',
+    '- 结合今日链路、异常账号、素材缺口和助手建议记录，判断下一步。',
     '- 如果无法读取某个文件，请明确说出文件路径和原因。',
     '',
     '## 当前代码进度',
@@ -1465,7 +1686,7 @@ function operatorPacketMarkdown(data) {
     `- 图片任务：${data.counts.imageTasks || 0}`,
     `- 剪辑任务：${data.counts.clipTasks || 0}`,
     '',
-    '## Codex 下一步优先级',
+    '## 助手下一步优先级',
     '',
     ...(priorities.length ? priorities.map((item, index) => `${index + 1}. ${item}`) : ['当前没有打开任务。']),
     '',
@@ -1569,12 +1790,12 @@ function localAiStatus() {
   const command = localAssistantCommand();
   return command
     ? { ready: true, command: command.label }
-    : { ready: false, command: null, message: '未找到 claude / clude / claude-code，可安装本地命令或设置 LOCAL_CLAUDE_COMMAND' };
+    : { ready: false, command: null, message: '未找到本地助手命令，可安装 claude/clude 命令或设置 LOCAL_CLAUDE_COMMAND' };
 }
 
 function systemReadiness() {
   const dbPath = path.join(DATA_DIR, 'souren.sqlite');
-  const imageReady = Boolean(process.env.IMAGE_API_KEY);
+  const image = imageSettings();
   const llm = llmSettings();
   const ai = localAiStatus();
   const github = gitSyncStatus();
@@ -1582,16 +1803,17 @@ function systemReadiness() {
     { key: 'local-web', label: '本地网页工作台', status: 'ready', detail: `http://127.0.0.1:${PORT}` },
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
-    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已汇报、已核对、AI顾问记录' },
+    { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已汇报、已核对、助手记录' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '对接人 + 抖音链接即可先建链路' },
     { key: 'delivery-package', label: '微信交付包', status: 'ready', detail: '写入收件人、对接人、发布文案、素材顺序和回传要求' },
-    { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '记录作品链接、核对清单、播放/点赞/评论/粉丝' },
+    { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '默认人工回填；系统负责打开链接、给清单、记录播放/点赞/评论/粉丝' },
+    { key: 'douyin-capture-mode', label: '抖音数据采集方式', status: 'ready', detail: '人工回填和浏览器协同为默认可用链路；自动采集只作为后续可选插件验收' },
     { key: 'viral-qingdou', label: '爆款链接与青豆任务', status: 'ready', detail: '链接先入库，复制青豆提取任务后回填结构' },
     { key: 'llm-copy', label: '文案模型生成', status: llm.ready ? 'ready' : 'waiting', detail: llm.ready ? `已接入 ${llm.model}` : '文案模型密钥为空，候选稿会使用本地模板生成' },
-    { key: 'image-key', label: '图片生成密钥', status: imageReady ? 'ready' : 'waiting', detail: imageReady ? '图片生成密钥已配置' : '图片生成密钥为空，图片任务会显示“待填图片密钥”' },
-    { key: 'local-ai', label: '本地 clude/Claude 顾问', status: ai.ready ? 'ready' : 'waiting', detail: ai.ready ? ai.command : ai.message },
-    { key: 'github-sync', label: 'GitHub main 同步', status: github.status, detail: github.detail },
-    { key: 'operator-packet', label: 'AI 工作包和顾问记录', status: 'ready', detail: `${OPERATOR_PACKET_DIR} / ${AI_CONSULT_DIR}` }
+    { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` },
+    { key: 'local-ai', label: '本地助手命令', status: ai.ready ? 'ready' : 'waiting', detail: ai.ready ? ai.command : ai.message },
+    { key: 'github-sync', label: '远端代码同步', status: github.status, detail: github.detail },
+    { key: 'operator-packet', label: '助手工作包和建议记录', status: 'ready', detail: `${OPERATOR_PACKET_DIR} / ${AI_CONSULT_DIR}` }
   ];
   return {
     summary: {
@@ -1626,7 +1848,7 @@ function runLocalAssistant(input, timeoutMs = 60000) {
       status: 'unavailable',
       command: null,
       stdout: '',
-      stderr: '未找到 claude / clude / claude-code。可安装本地命令，或设置 LOCAL_CLAUDE_COMMAND。'
+      stderr: '未找到本地助手命令。可安装 claude/clude 命令，或设置 LOCAL_CLAUDE_COMMAND。'
     });
   }
   return new Promise((resolve) => {
@@ -1640,7 +1862,7 @@ function runLocalAssistant(input, timeoutMs = 60000) {
       if (settled) return;
       settled = true;
       child.kill('SIGTERM');
-      resolve({ status: 'timeout', command: command.label, stdout, stderr: `${stderr}\n本地 AI 顾问调用超时。`.trim() });
+      resolve({ status: 'timeout', command: command.label, stdout, stderr: `${stderr}\n本地助手调用超时。`.trim() });
     }, timeoutMs);
     child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
@@ -1665,9 +1887,9 @@ async function writeAiConsult() {
   const result = await runLocalAssistant(consultPrompt(packet.text));
   fs.mkdirSync(AI_CONSULT_DIR, { recursive: true });
   const stamp = now().replace(/[: ]/g, '-').replace(/\./g, '-');
-  const consultPath = path.join(AI_CONSULT_DIR, `${stamp}_本地AI顾问.md`);
+  const consultPath = path.join(AI_CONSULT_DIR, `${stamp}_本地助手建议.md`);
   const text = [
-    '# 本地AI顾问记录',
+    '# 本地助手建议记录',
     '',
     `时间：${now()}`,
     `状态：${result.status}`,
@@ -1688,11 +1910,13 @@ async function writeAiConsult() {
 
 app.get('/api/health', (_req, res) => {
   const llm = llmSettings();
+  const image = imageSettings();
   res.json({
     ok: true,
     rootDir: ROOT_DIR,
     materialRoot: MATERIAL_ROOT,
-    imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
+    imageKeyReady: Boolean(image.apiKey),
+    image: { ready: image.ready, apiUrlConfigured: Boolean(image.apiUrl), model: image.model, size: image.size, missing: image.missing },
     llmKeyReady: llm.ready,
     llm: { ready: llm.ready, baseUrl: llm.baseUrl, model: llm.model },
     localAi: localAiStatus(),
@@ -1879,12 +2103,14 @@ app.get('/api/cases/:id', (req, res) => {
 
 app.get('/api/config', (_req, res) => {
   const llm = llmSettings();
+  const image = imageSettings();
   res.json({
     stages: STAGES,
     contentKinds: CONTENT_KINDS,
     stageRatios: STAGE_RATIOS,
     materialTemplates: MATERIAL_TEMPLATES,
-    imageKeyReady: Boolean(process.env.IMAGE_API_KEY),
+    imageKeyReady: Boolean(image.apiKey),
+    image: { ready: image.ready, apiUrlConfigured: Boolean(image.apiUrl), model: image.model, size: image.size, missing: image.missing },
     llmKeyReady: llm.ready,
     llm: { ready: llm.ready, baseUrl: llm.baseUrl, model: llm.model },
     localAi: localAiStatus(),
@@ -2066,7 +2292,7 @@ function createDeliveryForSlot(slot) {
   });
   const assetLines = copied.length
     ? copied.map((item) => `${item.order}. ${item.fileName}｜${item.kind}｜${item.stage}｜${item.source}\n   原路径：${item.originalPath}`).join('\n')
-    : '本次未复制素材，请先在案例详情扫描并标记可用素材，或创建 Image/剪辑任务补齐。';
+    : '本次未复制素材，请先在案例详情扫描并标记可用素材，或创建图片/剪辑任务补齐。';
   if (!copied.length) {
     fs.writeFileSync(path.join(deliveryDir, '00-素材阻塞说明.txt'), [
       `案例：${caze.caseCode} / ${caze.weixinNick}`,
@@ -2120,12 +2346,96 @@ function createDeliveryForSlot(slot) {
   return { deliveryDir, copiedAssets: copied, slot: slotById(slot.id) };
 }
 
+function readDeliveryText(deliveryDir, fileName) {
+  const filePath = path.join(deliveryDir, fileName);
+  if (!fs.existsSync(filePath)) return '';
+  return fs.readFileSync(filePath, 'utf8');
+}
+
+function deliveryFileKind(fileName) {
+  const ext = path.extname(fileName).toLowerCase();
+  if (IMAGE_EXT.has(ext)) return '图片';
+  if (VIDEO_EXT.has(ext)) return '视频';
+  if (TEXT_EXT.has(ext)) return '文案';
+  return '文件';
+}
+
+function deliveryViewForSlot(slot) {
+  if (!slot) return null;
+  const caze = caseById(slot.caseId);
+  const candidate = slot.selectedCandidateId
+    ? rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId]))
+    : null;
+  const deliveryDir = slot.deliveryDir;
+  if (!caze || !candidate || !deliveryDir || !fs.existsSync(deliveryDir)) return null;
+  const files = fs.readdirSync(deliveryDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const full = path.join(deliveryDir, entry.name);
+      const stat = fs.statSync(full);
+      const kind = deliveryFileKind(entry.name);
+      return {
+        name: entry.name,
+        path: full,
+        url: fileUrl(full),
+        kind,
+        size: stat.size,
+        updatedAt: stat.mtime.toISOString()
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+  const mediaFiles = files.filter((item) => ['图片', '视频'].includes(item.kind));
+  const sourceAssets = all('SELECT * FROM assets WHERE case_id = ? AND review_status IN (?, ?) ORDER BY created_at DESC LIMIT 30', [caze.id, '可用', '待处理'])
+    .map(rowAsset)
+    .filter((asset) => fs.existsSync(asset.path))
+    .map((asset) => ({
+      ...asset,
+      url: fileUrl(asset.path)
+    }));
+  const videoDelivery = isVideoDelivery(candidate.format);
+  return {
+    slot,
+    case: caze,
+    candidate,
+    deliveryDir,
+    isVideo: videoDelivery,
+    texts: {
+      checklist: readDeliveryText(deliveryDir, '00-微信发送清单.txt'),
+      operatorInstruction: readDeliveryText(deliveryDir, '01-发给兼职文案.txt'),
+      publishText: readDeliveryText(deliveryDir, '02-抖音发布文案.txt'),
+      voiceover: readDeliveryText(deliveryDir, '03-口播字幕文案.txt'),
+      editBrief: readDeliveryText(deliveryDir, '04-剪辑要求.txt'),
+      assetOrder: readDeliveryText(deliveryDir, '05-素材顺序清单.txt'),
+      publishRules: readDeliveryText(deliveryDir, '06-发布要求.txt'),
+      finalVideoNote: readDeliveryText(deliveryDir, '07-成片回收说明.txt'),
+      blockedNote: readDeliveryText(deliveryDir, '00-素材阻塞说明.txt')
+    },
+    files,
+    mediaFiles,
+    sourceAssets,
+    editing: videoDelivery ? {
+      sourceDir: caze.localCaseDir,
+      deliveryDir,
+      finalVideoPath: path.join(deliveryDir, 'final.mp4'),
+      coverPath: path.join(deliveryDir, 'cover.jpg')
+    } : null
+  };
+}
+
 app.post('/api/slots/:id/delivery', (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   const result = createDeliveryForSlot(slot);
   if (!result) return res.status(400).json({ error: 'select a candidate first' });
   res.json(result);
+});
+
+app.get('/api/slots/:id/delivery-view', (req, res) => {
+  const slot = slotById(req.params.id);
+  if (!slot) return res.status(404).json({ error: 'slot not found' });
+  const view = deliveryViewForSlot(slot);
+  if (!view) return res.status(404).json({ error: '还没有可查看的交付内容，请先生成交付包' });
+  res.json(view);
 });
 
 app.post('/api/image-tasks', (req, res) => {
@@ -2139,7 +2449,7 @@ app.post('/api/image-tasks', (req, res) => {
   const sourceMaterials = body.sourceMaterials || [];
   const prompt = body.prompt || imagePromptFor(caze, slot, purpose, sourceMaterials);
   const negativePrompt = body.negativePrompt || '过度精修，夸张效果，水印，低清晰度，错误文字，变形肢体，不符合账号人设的场景';
-  const status = process.env.IMAGE_API_KEY ? 'draft' : 'waiting_key';
+  const status = imageSettings().ready ? 'draft' : 'waiting_key';
   const id = uid('image');
   run(
     `INSERT INTO image_tasks
@@ -2159,19 +2469,9 @@ app.post('/api/image-tasks', (req, res) => {
       now()
     ]
   );
-  fs.writeFileSync(path.join(outputDir, `${id}-图片任务说明.txt`), [
-    `任务ID：${id}`,
-    `状态：${displayStatus(status)}`,
-    `用途：${purpose}`,
-    `保存目录：${outputDir}`,
-    '',
-    '正向提示词：',
-    prompt,
-    '',
-    '反向提示词：',
-    negativePrompt
-  ].join('\n'));
-  res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [id])));
+  const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [id]));
+  writeImageTaskBrief(task);
+  res.json(task);
 });
 
 app.patch('/api/image-tasks/:id', (req, res) => {
@@ -2196,6 +2496,16 @@ app.get('/api/image-tasks/:id/prompt', (req, res) => {
   const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
   if (!task) return res.status(404).json({ error: 'image task not found' });
   res.json({ text: imagePromptText(task) });
+});
+
+app.post('/api/image-tasks/:id/generate', async (req, res) => {
+  const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
+  if (!task) return res.status(404).json({ error: 'image task not found' });
+  try {
+    res.json(await generateImageFiles(task));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.post('/api/clip-tasks', (req, res) => {

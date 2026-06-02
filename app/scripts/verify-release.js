@@ -64,7 +64,7 @@ function gitOutput(args) {
 function verifyGitHubSync() {
   const remote = gitOutput(['remote', 'get-url', 'origin']);
   if (!remote) {
-    const message = 'WARN GitHub remote 未配置';
+    const message = 'WARN 远端代码仓库未配置';
     if (STRICT_GITHUB) throw new Error(message);
     console.log(message);
     return;
@@ -72,10 +72,10 @@ function verifyGitHubSync() {
   const local = gitOutput(['rev-parse', 'HEAD']);
   const remoteHead = gitOutput(['ls-remote', '--heads', 'origin', 'main']).split(/\s+/)[0] || '';
   if (local && remoteHead && local === remoteHead) {
-    console.log(`OK GitHub main 已同步 ${local.slice(0, 7)}`);
+    console.log(`OK 远端主分支已同步 ${local.slice(0, 7)}`);
     return;
   }
-  const message = `WARN GitHub main 未同步，本地 ${local.slice(0, 7) || 'unknown'}，远端 ${remoteHead.slice(0, 7) || 'unknown'}；当前 shell 缺少 GitHub 写权限时需要手动认证后 push。`;
+  const message = `WARN 远端主分支未同步，本地 ${local.slice(0, 7) || 'unknown'}，远端 ${remoteHead.slice(0, 7) || 'unknown'}；当前 shell 缺少写权限时需要手动认证后上传。`;
   if (STRICT_GITHUB) throw new Error(message);
   console.log(message);
 }
@@ -103,10 +103,10 @@ async function verifyRuntime() {
     assert(readiness.checks.some((item) => item.key === 'operator-packet' && item.status === 'ready'), 'operator packet readiness missing');
     if (WITH_CONSULT) {
       const consult = await api('/dashboard/ai-consult', { method: 'POST' });
-      assert(['completed', 'unavailable', 'timeout', 'error'].includes(consult.status), 'AI consult status invalid');
-      assert(consult.consultPath && fs.existsSync(consult.consultPath), 'AI consult record missing');
-      assert(consult.packetPath && fs.existsSync(consult.packetPath), 'AI consult packet missing');
-      console.log(`OK local AI consult attempted: ${consult.status}`);
+      assert(['completed', 'unavailable', 'timeout', 'error'].includes(consult.status), 'assistant consult status invalid');
+      assert(consult.consultPath && fs.existsSync(consult.consultPath), 'assistant consult record missing');
+      assert(consult.packetPath && fs.existsSync(consult.packetPath), 'assistant consult packet missing');
+      console.log(`OK local assistant consult attempted: ${consult.status}`);
     }
     console.log('OK runtime health/readiness verified');
   } finally {

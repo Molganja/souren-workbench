@@ -49,7 +49,7 @@ async function main() {
   const child = await ensureServer();
   try {
     const result = await api('/dashboard/ai-consult', { method: 'POST' });
-    console.log(`AI consult status: ${result.status}`);
+    console.log(`assistant consult status: ${result.status}`);
     console.log(`Packet: ${result.packetPath}`);
     console.log(`Record: ${result.consultPath}`);
     if (result.command) console.log(`Command: ${result.command}`);

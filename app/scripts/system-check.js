@@ -50,17 +50,17 @@ ok(`数据目录可写 ${dataDir}`);
 ok(`素材目录可写 ${materialDir}`);
 
 if (fs.existsSync(path.join(APP_DIR, '.env'))) ok('已存在 .env');
-else warn('未创建 .env；Image/LLM key 会保持为空，但系统仍可运行');
+else warn('未创建 .env；图片/文案接口会保持未接入，但系统仍可运行');
 
 if (fs.existsSync(path.join(APP_DIR, 'node_modules'))) ok('node_modules 已安装');
 else warn('node_modules 不存在；启动脚本会自动 npm install');
 
 if (process.env.LOCAL_CLAUDE_COMMAND) {
-  ok(`本地AI命令已通过 LOCAL_CLAUDE_COMMAND 配置：${process.env.LOCAL_CLAUDE_COMMAND}`);
+  ok(`本地助手命令已通过 LOCAL_CLAUDE_COMMAND 配置：${process.env.LOCAL_CLAUDE_COMMAND}`);
 } else {
   const localAi = execFileSync('/bin/zsh', ['-lc', 'command -v claude || command -v clude || command -v claude-code || true'], { encoding: 'utf8' }).trim();
-  if (localAi) ok(`本地AI命令可用 ${localAi.split('\n')[0]}`);
-  else warn('未找到 claude / clude / claude-code；本地AI顾问会保存工作包和未安装记录');
+  if (localAi) ok(`本地助手命令可用 ${localAi.split('\n')[0]}`);
+  else warn('未找到 claude / clude / claude-code；本地助手会保存工作包和未安装记录');
 }
 
 if (process.exitCode) process.exit(process.exitCode);
