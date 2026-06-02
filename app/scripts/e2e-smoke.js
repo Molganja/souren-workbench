@@ -243,6 +243,17 @@ async function main() {
   try {
     await waitForServer(server);
 
+    let blankViralRejected = false;
+    try {
+      await api('/viral-templates', {
+        method: 'POST',
+        body: JSON.stringify({ sourceLink: '   ' })
+      });
+    } catch (error) {
+      blankViralRejected = /爆款视频链接/.test(error.message);
+    }
+    assert(blankViralRejected, 'blank viral link created a template');
+
     const viral = await api('/viral-templates', {
       method: 'POST',
       body: JSON.stringify({
@@ -533,6 +544,9 @@ async function main() {
         sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '休眠验收兼职')
       })
     });
+    const sleepBeforeIngest = await api(`/cases/${sleepCase.id}`);
+    const sleepPreparedSlot = sleepBeforeIngest.slots[0];
+    await api(`/slots/${sleepPreparedSlot.id}/generate-candidates`, { method: 'POST' });
     const sleepIngest = await api('/douyin-monitor/ingest', {
       method: 'POST',
       body: JSON.stringify({
@@ -548,6 +562,7 @@ async function main() {
       })
     });
     assert(sleepIngest.scheduleMaintenance?.prunedCount > 0, 'sleeping ingest did not immediately remove future pending slots');
+    assert(sleepIngest.scheduleMaintenance?.canceledCount >= 1, 'sleeping ingest did not cancel prepared unsent slots');
     const sleepMonitor = await api('/douyin-monitor');
     const sleepAccount = sleepMonitor.accounts.find((item) => item.case?.id === sleepCase.id);
     assert(sleepAccount?.activityTier === '休眠', 'three cold videos should mark account sleeping');
@@ -556,7 +571,8 @@ async function main() {
     const sleepDashboard = await api('/dashboard');
     assert(!sleepDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === sleepCase.id), 'sleeping account should not show cold content action');
     const sleepDetail = await api(`/cases/${sleepCase.id}`);
-    assert(sleepDetail.slots.length === 0, 'sleeping account should not auto generate future slots');
+    assert(!sleepDetail.slots.some((item) => ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'].includes(item.status)), 'sleeping account should not keep active operator slots');
+    assert(sleepDetail.slots.some((item) => item.id === sleepPreparedSlot.id && item.status === '已取消'), 'sleeping account should cancel prepared unsent slot');
     const sleepActionSlot = await api('/douyin-monitor/actions/slot', {
       method: 'POST',
       body: JSON.stringify({ caseId: sleepCase.id, kind: '偏冷补内容' })

@@ -71,6 +71,7 @@ const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
 const PLAN_SLOT_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常', '已取消'];
 const ACTIVE_OPERATOR_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'];
 const PAUSE_CANCEL_SLOT_STATUSES = ACTIVE_OPERATOR_STATUSES;
+const STRATEGY_CANCEL_SLOT_STATUSES = ['候选待选', '已锁定', '素材阻塞', '可交付', '异常'];
 const DELIVERY_GENERATION_STATUSES = ['已锁定', '素材阻塞', '异常'];
 const CANDIDATE_SELECT_STATUSES = ['候选待选'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
@@ -1004,21 +1005,23 @@ function generateSlotsForCase(caze, input = {}) {
 
 function maintainRollingSchedule(cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase), input = {}) {
   const days = Math.max(0, Number(input.days ?? ROLLING_SCHEDULE_DAYS));
-  if (!days) return { days, createdCount: 0, prunedCount: 0, touchedCases: 0, created: [] };
+  if (!days) return { days, createdCount: 0, prunedCount: 0, canceledCount: 0, touchedCases: 0, created: [] };
   const startDate = input.startDate || new Date().toISOString().slice(0, 10);
   const created = [];
   let prunedCount = 0;
+  let canceledCount = 0;
   let touchedCases = 0;
   cases.forEach((caze) => {
     const postingStrategy = postingStrategyForCase(caze);
     prunedCount += prunePendingSlotsForStrategy(caze, postingStrategy, startDate);
+    canceledCount += cancelPreparedSlotsForStrategy(caze, postingStrategy, startDate);
     const rows = generateSlotsForCase(caze, { days, startDate, postingStrategy });
     if (rows.length) {
       touchedCases += 1;
       created.push(...rows);
     }
   });
-  return { days, startDate, createdCount: created.length, prunedCount, touchedCases, created };
+  return { days, startDate, createdCount: created.length, prunedCount, canceledCount, touchedCases, created };
 }
 
 function normalizeDouyinUrl(value) {
@@ -2238,18 +2241,36 @@ function prunePendingSlotsForStrategy(caze, postingStrategy = {}, startDate = ne
   return pruned;
 }
 
+function cancelPreparedSlotsForStrategy(caze, postingStrategy = {}, startDate = new Date().toISOString().slice(0, 10)) {
+  if (!caze?.id) return 0;
+  const placeholders = STRATEGY_CANCEL_SLOT_STATUSES.map(() => '?').join(', ');
+  const slots = all(
+    `SELECT * FROM plan_slots WHERE case_id = ? AND date >= ? AND status IN (${placeholders}) ORDER BY date ASC`,
+    [caze.id, startDate, ...STRATEGY_CANCEL_SLOT_STATUSES]
+  ).map(rowSlot);
+  let canceled = 0;
+  slots.forEach((slot) => {
+    if (shouldCreateSlotForDate(caze, slot.date, postingStrategy)) return;
+    run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['已取消', now(), slot.id]);
+    canceled += 1;
+  });
+  return canceled;
+}
+
 function reconcilePendingScheduleForCase(caze, input = {}) {
-  if (!caze?.id) return { startDate: '', days: 0, prunedCount: 0, createdCount: 0, postingStrategy: null };
+  if (!caze?.id) return { startDate: '', days: 0, prunedCount: 0, canceledCount: 0, createdCount: 0, postingStrategy: null };
   const current = caseById(caze.id);
   const startDate = input.startDate || new Date().toISOString().slice(0, 10);
   const days = Math.max(0, Number(input.days ?? ROLLING_SCHEDULE_DAYS));
   const postingStrategy = postingStrategyForCase(current);
   const prunedCount = prunePendingSlotsForStrategy(current, postingStrategy, startDate);
+  const canceledCount = cancelPreparedSlotsForStrategy(current, postingStrategy, startDate);
   const created = generateSlotsForCase(current, { days, startDate, postingStrategy });
   return {
     startDate,
     days,
     prunedCount,
+    canceledCount,
     createdCount: created.length,
     postingStrategy
   };
@@ -4399,22 +4420,32 @@ app.delete('/api/content-seeds/:id', (req, res) => {
 
 app.post('/api/viral-templates', (req, res) => {
   const body = req.body || {};
+  const sourceLink = String(body.sourceLink || '').trim();
+  const rawText = String(body.rawText || '').trim();
+  const hotStructure = String(body.hotStructure || '').trim();
+  const title = String(body.title || '').trim();
+  const category = String(body.category || '').trim();
+  const rewritePolicy = String(body.rewritePolicy || '').trim();
+  const hasAnalysis = Boolean(rawText || hotStructure);
+  if (!sourceLink && !hasAnalysis) {
+    return res.status(400).json({ error: '请先粘贴爆款视频链接，或由系统写入完整分析内容' });
+  }
   const id = uid('viral');
-  const linkOnly = Boolean(body.sourceLink) && !String(body.rawText || '').trim();
+  const linkOnly = Boolean(sourceLink) && !hasAnalysis;
   run(
     `INSERT INTO viral_templates
     (id, title, raw_text, source_link, category, hot_structure, suitable_personas, forbidden_personas, rewrite_policy, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
-      body.title || (linkOnly ? `待分析爆款链接 ${new Date().toISOString().slice(0, 10)}` : '未命名爆款模板'),
-      body.rawText || (linkOnly ? '待分析：待提取原视频内容' : ''),
-      body.sourceLink || '',
-      body.category || (linkOnly ? '待分析' : '情绪'),
-      body.hotStructure || (linkOnly ? '待分析后补充：标题、正文、爆点结构、适合人设和下一步建议' : '开头提出共鸣问题，中段列出3个细节，结尾引导评论'),
+      title || (linkOnly ? `待分析爆款链接 ${new Date().toISOString().slice(0, 10)}` : '未命名爆款模板'),
+      rawText || (linkOnly ? '待分析：待提取原视频内容' : ''),
+      sourceLink,
+      category || (linkOnly ? '待分析' : '情绪'),
+      hotStructure || (linkOnly ? '待分析后补充：标题、正文、爆点结构、适合人设和下一步建议' : '开头提出共鸣问题，中段列出3个细节，结尾引导评论'),
       JSON.stringify(body.suitablePersonas || []),
       JSON.stringify(body.forbiddenPersonas || []),
-      body.rewritePolicy || (linkOnly ? '仅参考' : '结构模仿'),
+      rewritePolicy || (linkOnly ? '仅参考' : '结构模仿'),
       now(),
       now()
     ]

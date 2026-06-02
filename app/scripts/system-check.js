@@ -44,6 +44,7 @@ required.forEach((file) => {
 const mainSource = fs.readFileSync(path.join(APP_DIR, 'src', 'main.jsx'), 'utf8');
 const styleSource = fs.readFileSync(path.join(APP_DIR, 'src', 'styles.css'), 'utf8');
 const dbSource = fs.readFileSync(path.join(APP_DIR, 'server', 'db.js'), 'utf8');
+const serverSource = fs.readFileSync(path.join(APP_DIR, 'server', 'index.js'), 'utf8');
 const smokeSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'e2e-smoke.js'), 'utf8');
 const readmeSource = [
   fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8'),
@@ -67,6 +68,9 @@ const leakedViralAnalysisFields = viralAnalysisFields.filter((label) => mainSour
 if (!mainSource.includes('onEdit={(item)') && !mainSource.includes('editingViral') && !leakedViralAnalysisFields.length && mainSource.includes('等待系统分析')) ok('爆款链接前台只收链接，不要求工作人员填写分析字段');
 else fail(`爆款链接前台仍暴露分析字段：${leakedViralAnalysisFields.join('、') || '编辑入口'}`);
 
+if (mainSource.includes('disabled={!ready}') && mainSource.includes('sourceLink: form.sourceLink.trim()') && serverSource.includes('请先粘贴爆款视频链接') && smokeSource.includes('blankViralRejected')) ok('空爆款链接不会生成假模板');
+else fail('空爆款链接仍可能生成假模板');
+
 if (!mainSource.includes('window.prompt') && mainSource.includes('LibraryCaseForm') && mainSource.includes('ViralBulkForm')) ok('案例登记和爆款生成不再使用浏览器临时输入框');
 else fail('前台仍存在浏览器临时输入框，或缺少正式登记/生成弹窗');
 
@@ -88,7 +92,6 @@ else fail('前台仍把必填抖音链接显示成旧抖音号口径');
 if (mainSource.includes('activeCaseId') && mainSource.includes('排到今日队列队首后打开') && mainSource.includes('isActiveQueueCase')) ok('首页账号概览和异常账号不能打开非队首账号');
 else fail('首页仍可能从概览或异常账号绕过队首打开账号');
 
-const serverSource = fs.readFileSync(path.join(APP_DIR, 'server', 'index.js'), 'utf8');
 if (serverSource.includes('dashboardQueueHead') && serverSource.includes('当前队首不是准备类任务') && !serverSource.includes('for (const slot of dueSlots)')) ok('后台准备接口也只处理当前队首');
 else fail('后台准备接口仍可能批量推进今日队列');
 
@@ -152,8 +155,8 @@ else fail('爆款批量生成仍可能制造无效任务或占用今日队列');
 if (serverSource.includes('nextOpenStrategyDate') && serverSource.includes('existingStrategySlot') && serverSource.includes('账号已暂停或休眠，先不生成新的排期') && serverSource.includes('当天已有排期，先不额外加任务')) ok('账号策略动作按投放频率找空档，不给暂停或休眠账号造任务');
 else fail('账号策略动作仍可能给暂停、休眠或已有排期账号制造新任务');
 
-if (serverSource.includes('reconcilePendingScheduleForCase') && serverSource.includes('scheduleMaintenance') && serverSource.includes('prunePendingSlotsForStrategy(current, postingStrategy')) ok('采集写入后会立即按账号策略裁剪未来待生成任务');
-else fail('采集写入后仍可能留下旧的未来待生成任务');
+if (serverSource.includes('reconcilePendingScheduleForCase') && serverSource.includes('scheduleMaintenance') && serverSource.includes('prunePendingSlotsForStrategy(current, postingStrategy') && serverSource.includes('cancelPreparedSlotsForStrategy(current, postingStrategy') && smokeSource.includes('sleeping ingest did not cancel prepared unsent slots')) ok('采集写入后会按账号策略裁剪未来待生成任务并撤下未派发旧任务');
+else fail('采集写入后仍可能留下旧的未来待生成或已准备未派发任务');
 
 if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)') && serverSource.includes('item.collectionPolicy?.intervalHours != null')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
 else fail('Chrome采集清单缺少活跃度优先排序');

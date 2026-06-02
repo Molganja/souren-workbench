@@ -2427,8 +2427,9 @@ function ViralForm({ onClose, onSubmit }) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
   function submit() {
-    onSubmit({ sourceLink: form.sourceLink });
+    onSubmit({ sourceLink: form.sourceLink.trim() });
   }
+  const ready = Boolean(form.sourceLink.trim());
   return (
     <Modal title="粘贴爆款链接" onClose={onClose}>
       <div className="hintBox">工作人员只需要贴抖音作品链接，系统会先记录为待分析任务。</div>
@@ -2437,7 +2438,7 @@ function ViralForm({ onClose, onSubmit }) {
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={submit}>记录链接</button>
+        <button className="primary" disabled={!ready} onClick={submit}>记录链接</button>
       </div>
     </Modal>
   );
