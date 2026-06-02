@@ -69,6 +69,7 @@ app.use('/shared-files', requireWorkbenchAccess);
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
 const PLAN_SLOT_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常', '已取消'];
+const ACTIVE_OPERATOR_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'];
 const DELIVERY_GENERATION_STATUSES = ['已锁定', '素材阻塞', '异常'];
 const CANDIDATE_SELECT_STATUSES = ['候选待选'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
@@ -2681,12 +2682,24 @@ function buildChromeCollectionText(queue) {
     lines.push(`${index + 1}. ${target.weixinNick}｜${target.caseCode}｜${target.project}`);
     lines.push(`抖音主页：${target.douyinUrl}`);
     lines.push(`上次采集：${target.lastCollectedAt || '未采集'}｜最新粉丝：${target.latestSnapshot?.fans ?? '未采集'}｜最高播放：${target.topVideo?.latestSnapshot?.plays ?? '未采集'}`);
-    lines.push(`活跃度：${target.activityTier || '未判断'}｜排期：${target.postingStrategy?.mode || '默认'}｜采集：${target.collectionPolicy?.intervalHours == null ? '不采集' : `${target.collectionPolicy.intervalHours}小时`}｜${target.collectionPolicy?.reason || ''}`);
+    lines.push(`活跃度：${target.activityTier || '未判断'}｜采集优先级：${target.collectionPriority || 0}｜排期：${target.postingStrategy?.mode || '默认'}｜采集：${target.collectionPolicy?.intervalHours == null ? '不采集' : `${target.collectionPolicy.intervalHours}小时`}｜${target.collectionPolicy?.reason || ''}`);
     lines.push('写入JSON模板：');
     lines.push(JSON.stringify(target.ingestPayloadTemplate, null, 2));
     lines.push('');
   });
   return lines.join('\n');
+}
+
+function collectionPriorityFor(item = {}) {
+  if (!item.case?.douyinUrl || item.collectionPolicy?.intervalHours == null) return 0;
+  if (!item.latestSnapshot) return 100;
+  if (item.activeViralAlerts?.length) return 98;
+  if (item.activityTier === '起量') return 95;
+  if (item.activityTier === '活跃') return 80;
+  if (item.activityTier === '偏冷') return 45;
+  if (item.activityTier === '观察') return 35;
+  if (item.activityTier === '休眠') return 10;
+  return 25;
 }
 
 function chromeCollectionQueue(options = {}) {
@@ -2698,6 +2711,8 @@ function chromeCollectionQueue(options = {}) {
     .filter((item) => includeFresh || item.dueCollection || item.collectionQueued)
     .sort((a, b) => {
       if (a.dueCollection !== b.dueCollection) return a.dueCollection ? -1 : 1;
+      const byPriority = collectionPriorityFor(b) - collectionPriorityFor(a);
+      if (byPriority) return byPriority;
       return String(a.lastCollectedAt || '').localeCompare(String(b.lastCollectedAt || ''));
     })
     .slice(0, limit)
@@ -2717,6 +2732,7 @@ function chromeCollectionQueue(options = {}) {
         fanDelta: item.fanDelta,
         topVideo: item.topVideo,
         activityTier: item.activityTier,
+        collectionPriority: collectionPriorityFor(item),
         postingStrategy: item.postingStrategy,
         collectionPolicy: item.collectionPolicy,
         collectionQueued: item.collectionQueued,
@@ -3131,7 +3147,7 @@ function dashboard() {
     .filter(Boolean));
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
-  const operatorStatuses = new Set(OPERATOR_FLOW.map(([status]) => status));
+  const operatorStatuses = new Set(ACTIVE_OPERATOR_STATUSES);
   const dueSlots = slots.filter((s) => s.date <= today && operatorStatuses.has(s.status) && !pausedCaseIds.has(s.caseId));
   const dueCaseIds = new Set(dueSlots.map((slot) => slot.caseId));
   const materialSyncRows = cases

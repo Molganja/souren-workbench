@@ -456,7 +456,7 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({
         caseId: sleepCase.id,
-        collectedAt: '2026-06-01T16:00:00.000Z',
+        collectedAt: '2026-05-20T16:00:00.000Z',
         source: 'chrome-agent',
         account: { fans: 52, following: 10, totalLikes: 120, totalWorks: 3 },
         videos: [
@@ -480,6 +480,27 @@ async function main() {
       body: JSON.stringify({ caseId: sleepCase.id, kind: '偏冷补内容' })
     });
     assert(sleepActionSlot.created === false && !sleepActionSlot.slot && sleepActionSlot.reason.includes('暂停'), 'sleeping account strategy action should not create a slot');
+    const hotQueueCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ weixinNick: '起量采集验收兼职', douyinUrl: 'https://www.douyin.com/user/hot-queue-smoke', project: '吸脂' })
+    });
+    await api('/douyin-monitor/ingest', {
+      method: 'POST',
+      body: JSON.stringify({
+        caseId: hotQueueCase.id,
+        collectedAt: '2026-05-20T17:00:00.000Z',
+        source: 'chrome-agent',
+        account: { fans: 300, following: 12, totalLikes: 3000, totalWorks: 4 },
+        videos: [
+          { videoId: 'hot-queue-video-1', url: 'https://www.douyin.com/video/hot-queue-1', title: '起量采集排序', publishTime: '2026-05-20', plays: 9000, likes: 620, comments: 90 }
+        ]
+      })
+    });
+    const priorityChromeQueue = await api('/douyin-monitor/chrome-queue?includeFresh=1&limit=200');
+    const hotQueueIndex = priorityChromeQueue.targets.findIndex((item) => item.caseId === hotQueueCase.id);
+    const sleepQueueIndex = priorityChromeQueue.targets.findIndex((item) => item.caseId === sleepCase.id);
+    assert(hotQueueIndex >= 0 && sleepQueueIndex >= 0 && hotQueueIndex < sleepQueueIndex, 'chrome collection queue should prioritize active or hot accounts before sleeping accounts');
+    assert(priorityChromeQueue.targets[hotQueueIndex].collectionPriority > priorityChromeQueue.targets[sleepQueueIndex].collectionPriority, 'chrome collection queue missing activity priority scores');
 
     const lostCase = await api('/cases', {
       method: 'POST',
@@ -511,6 +532,7 @@ async function main() {
     assert(resumedLostDetail.monitor.activityTier !== '失联暂停', 'resumed account still marked lost');
     await api(`/cases/${throttleCase.id}`, { method: 'DELETE' });
     await api(`/cases/${sleepCase.id}`, { method: 'DELETE' });
+    await api(`/cases/${hotQueueCase.id}`, { method: 'DELETE' });
     await api(`/cases/${lostCase.id}`, { method: 'DELETE' });
     const noAssetSlot = minimalDetail.slots[0];
     const noAssetDrafts = await api(`/slots/${noAssetSlot.id}/generate-candidates`, { method: 'POST' });
@@ -797,7 +819,8 @@ async function main() {
     assert(repeatGuideView.shouldSendFreelancerGuide === false, 'later delivery still asks to send freelancer guide');
     assert(!repeatGuideView.texts.freelancerGuide && repeatGuideView.texts.freelancerGuideNote.includes('后续不重复发'), 'later delivery should only keep a guide status note');
     const completedDashboard = await api('/dashboard');
-    assert(completedDashboard.todaySlots.some((item) => item.id === slot.id && item.status === '已完成'), 'dashboard today chain dropped completed slot');
+    assert(!completedDashboard.todaySlots.some((item) => item.id === slot.id), 'completed slot should disappear from dashboard today queue');
+    assert(!completedDashboard.readyDelivery.some((item) => item.id === slot.id), 'completed slot should disappear from delivery queue');
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
     assert(monitorQueued.createdCount >= 2, 'monitor run did not register Chrome collection tasks');
     assert(monitorQueued.monitor.totals.collectionQueued >= 2 && monitorQueued.monitor.totals.waitingChrome >= 2, 'monitor run did not mark queued Chrome collection');

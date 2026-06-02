@@ -98,6 +98,9 @@ else fail('客户端缺少一条命令打包验收脚本');
 if (mainSource.includes('今天发完了') && !mainSource.includes('今天没有必须处理的动作')) ok('今日队列清空后有明确完工状态');
 else fail('今日队列清空状态仍不明确');
 
+if (serverSource.includes('ACTIVE_OPERATOR_STATUSES') && serverSource.includes("'已派发', '异常'") && !serverSource.includes("ACTIVE_OPERATOR_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成'")) ok('已完成任务不再留在今日操作队列');
+else fail('已完成任务仍可能留在今日操作队列');
+
 if (serverSource.includes('固定剪辑配方') && serverSource.includes('不临时改结构')) ok('视频交付和剪辑任务内置固定剪辑配方');
 else fail('缺少固定剪辑配方');
 
@@ -126,6 +129,9 @@ else fail('爆款批量生成仍可能制造无效任务或占用今日队列');
 
 if (serverSource.includes('nextOpenStrategyDate') && serverSource.includes('existingStrategySlot') && serverSource.includes('账号已暂停或休眠，先不生成新的排期') && serverSource.includes('当天已有排期，先不额外加任务')) ok('账号策略动作按投放频率找空档，不给暂停或休眠账号造任务');
 else fail('账号策略动作仍可能给暂停、休眠或已有排期账号制造新任务');
+
+if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
+else fail('Chrome采集清单缺少活跃度优先排序');
 
 if (!mainSource.includes('打开抖音主页') && !mainSource.includes('target="_blank">打开主页</a>')) ok('前台不要求工作人员手动打开抖音主页');
 else fail('前台仍暴露手动打开抖音主页入口');
