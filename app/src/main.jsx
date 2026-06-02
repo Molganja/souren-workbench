@@ -1100,6 +1100,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [library, setLibrary] = useState(null);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [registerCandidate, setRegisterCandidate] = useState(null);
   const filtered = cases.filter((item) => {
     const q = query.trim().toLowerCase();
     const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.douyinUrl} ${item.project} ${personaText(item.persona)}`.toLowerCase();
@@ -1133,7 +1134,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
             library={library}
             loading={libraryLoading}
             onReload={loadCaseLibrary}
-            onRegister={(item) => registerLibraryCase(item, onAct, loadCaseLibrary)}
+            onRegister={setRegisterCandidate}
             onOpenCase={onOpenCase}
             onAct={onAct}
             canOpenLocalPaths={canOpenLocalPaths}
@@ -1159,6 +1160,16 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
               </div>
             ))}
           </div>
+        )}
+        {registerCandidate && (
+          <LibraryCaseForm
+            item={registerCandidate}
+            onClose={() => setRegisterCandidate(null)}
+            onSubmit={(payload) => registerLibraryCase(payload, onAct, async () => {
+              setRegisterCandidate(null);
+              await loadCaseLibrary();
+            })}
+          />
         )}
       </section>
     </div>
@@ -1214,19 +1225,49 @@ function CaseLibraryPanel({ library, loading, onReload, onRegister, onOpenCase, 
   );
 }
 
-function registerLibraryCase(item, onAct, onDone) {
-  const weixinNick = window.prompt('兼职微信昵称（必须，用来知道发给谁）', item.suggestedWeixinNick || item.name || '');
-  if (!weixinNick || !weixinNick.trim()) return;
-  const douyinUrl = window.prompt('抖音主页/作品链接（必须，用来自动采集账号数据）', '');
-  if (!douyinUrl || !douyinUrl.trim()) return;
+function LibraryCaseForm({ item, onClose, onSubmit }) {
+  const [form, setForm] = useState(() => ({
+    weixinNick: item.suggestedWeixinNick || item.name || '',
+    douyinUrl: '',
+    project: item.project || '吸脂'
+  }));
+  function update(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+  function submit() {
+    onSubmit({
+      sourceMaterialDir: item.sourceMaterialDir,
+      weixinNick: form.weixinNick.trim(),
+      douyinUrl: form.douyinUrl.trim(),
+      project: form.project.trim() || item.project || '吸脂'
+    });
+  }
+  return (
+    <Modal title="登记服务器案例" onClose={onClose}>
+      <div className="hintBox">这个目录会绑定到一个兼职账号，系统会同步素材、创建案例并生成近期排期。</div>
+      <div className="formGrid">
+        <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
+        <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} placeholder="必须填写，用于后续自动采集账号数据" /></label>
+        <label className="wide">项目<input value={form.project} onChange={(e) => update('project', e.target.value)} /></label>
+        <label className="wide">共享原始素材路径<input value={item.sourceMaterialDir} readOnly /></label>
+      </div>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="primary" disabled={!form.weixinNick.trim() || !form.douyinUrl.trim()} onClick={submit}>登记并同步</button>
+      </div>
+    </Modal>
+  );
+}
+
+function registerLibraryCase(payload, onAct, onDone) {
   onAct(async () => {
     const result = await request('/case-library/register', {
       method: 'POST',
       body: JSON.stringify({
-        sourceMaterialDir: item.sourceMaterialDir,
-        weixinNick: weixinNick.trim(),
-        douyinUrl: douyinUrl.trim(),
-        project: item.project,
+        sourceMaterialDir: payload.sourceMaterialDir,
+        weixinNick: payload.weixinNick,
+        douyinUrl: payload.douyinUrl,
+        project: payload.project,
       })
     });
     await onDone();
@@ -1886,6 +1927,7 @@ function GeneratedImageStrip({ files }) {
 function ViralView({ templates, onNew, onAct }) {
   const sortedTemplates = [...templates].sort((a, b) => Number(isPendingViral(b)) - Number(isPendingViral(a)));
   const pending = sortedTemplates.filter((item) => isPendingViral(item)).length;
+  const [bulkTarget, setBulkTarget] = useState(null);
   return (
     <section className="panel">
       <div className="sectionHead">
@@ -1911,11 +1953,18 @@ function ViralView({ templates, onNew, onAct }) {
               <div className="inlineActions">
                 {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
                 {isPendingViral(item) && <span className="lockedNote">等待系统分析</span>}
-                <button disabled={isPendingViral(item)} onClick={() => bulkGenerateViral(item, onAct)}>给可投放账号生成爆款候选</button>
+                <button disabled={isPendingViral(item)} onClick={() => setBulkTarget(item)}>给可投放账号生成爆款候选</button>
               </div>
             </div>
           ))}
         </div>
+      )}
+      {bulkTarget && (
+        <ViralBulkForm
+          template={bulkTarget}
+          onClose={() => setBulkTarget(null)}
+          onSubmit={(payload) => bulkGenerateViral(bulkTarget, payload.date, onAct, () => setBulkTarget(null))}
+        />
       )}
     </section>
   );
@@ -2124,14 +2173,34 @@ function updateSharedAsset(asset, patch, onAct, onReload) {
   }, '通用素材已更新');
 }
 
-function bulkGenerateViral(template, onAct) {
-  const date = window.prompt('生成到哪一天？', today());
+function ViralBulkForm({ template, onClose, onSubmit }) {
+  const [date, setDate] = useState(today());
+  return (
+    <Modal title="生成爆款候选" onClose={onClose}>
+      <div className="hintBox">系统只会给可投放账号生成候选；暂停、休眠、当天已有任务或不适合的人设会自动跳过。</div>
+      <div className="formGrid">
+        <label className="wide">爆款来源<input value={template.sourceLink || template.title || '已分析爆款'} readOnly /></label>
+        <label>生成日期<input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
+      </div>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="primary" disabled={!date} onClick={() => onSubmit({ date })}>生成候选</button>
+      </div>
+    </Modal>
+  );
+}
+
+function bulkGenerateViral(template, date, onAct, onDone) {
   if (!date) return;
   onAct(
-    () => request(`/viral-templates/${template.id}/bulk-generate`, {
+    async () => {
+      const result = await request(`/viral-templates/${template.id}/bulk-generate`, {
       method: 'POST',
       body: JSON.stringify({ date })
-    }),
+      });
+      onDone?.();
+      return result;
+    },
     (result) => `已生成 ${result.createdCount} 个爆款候选，跳过 ${result.skippedCount || 0} 个账号`
   );
 }

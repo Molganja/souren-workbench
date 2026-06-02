@@ -65,6 +65,9 @@ const leakedViralAnalysisFields = viralAnalysisFields.filter((label) => mainSour
 if (!mainSource.includes('onEdit={(item)') && !mainSource.includes('editingViral') && !leakedViralAnalysisFields.length && mainSource.includes('等待系统分析')) ok('爆款链接前台只收链接，不要求工作人员填写分析字段');
 else fail(`爆款链接前台仍暴露分析字段：${leakedViralAnalysisFields.join('、') || '编辑入口'}`);
 
+if (!mainSource.includes('window.prompt') && mainSource.includes('LibraryCaseForm') && mainSource.includes('ViralBulkForm')) ok('案例登记和爆款生成不再使用浏览器临时输入框');
+else fail('前台仍存在浏览器临时输入框，或缺少正式登记/生成弹窗');
+
 if (mainSource.includes('今日操作队列') && mainSource.includes('今日账号概览')) ok('首页保留操作队列和账号概览');
 else fail('首页缺少操作队列或账号概览');
 
