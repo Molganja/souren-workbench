@@ -151,11 +151,14 @@ else fail('兼职须知仍可能在后续交付里重复显示');
 if (mainSource.includes('当前只发给') && mainSource.includes('deliverySteps') && mainSource.includes('发完微信后标记已派发')) ok('交付弹窗按单账号固定步骤防呆');
 else fail('交付弹窗缺少单账号固定步骤');
 
+if (mainSource.includes('deliveryRequiredSteps') && mainSource.includes('handoffReady') && mainSource.includes('missingHandoffSteps') && mainSource.includes('disabled={!handoffReady}') && mainSource.includes('handoffGuard')) ok('交付弹窗未完成复制下载步骤前不能标记派发');
+else fail('交付弹窗仍可跳过复制下载步骤直接标记派发');
+
 const oldDeliveryConfirmLabel = '核' + '对发给兼职文案';
 if (mainSource.includes("copyAllowed = view.slot.status === '可交付'") && mainSource.includes('交付内容只读，避免重复发给同一个兼职') && mainSource.includes('确认发给兼职文案') && !mainSource.includes(oldDeliveryConfirmLabel)) ok('已派发交付内容只读，避免重复发送');
 else fail('已派发交付内容仍可能继续复制重发');
 
-if (mainSource.includes('allowDownload={copyAllowed}') && mainSource.includes('function MediaCard({ file, label, allowDownload = true })') && mainSource.includes('只读预览')) ok('已派发交付素材只读，避免重复下载重发');
+if (mainSource.includes('allowDownload={copyAllowed}') && mainSource.includes('function MediaCard({ file, label, allowDownload = true, completeKey') && mainSource.includes('只读预览')) ok('已派发交付素材只读，避免重复下载重发');
 else fail('已派发交付素材仍可能下载重发');
 
 if (mainSource.includes('已用微信发送') && !mainSource.includes('>标记派发</button>') && !mainSource.includes('>已微信发送</button>')) ok('派发确认只保留在交付弹窗内');

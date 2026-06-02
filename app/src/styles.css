@@ -58,11 +58,24 @@ button.primary, .button.primary {
   color: #fff;
 }
 
-button.activeSmall {
+button.activeSmall,
+.button.activeSmall {
   border-color: var(--blue);
   background: var(--blue-soft);
   color: var(--blue);
   font-weight: 650;
+}
+
+button:disabled,
+.button.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button:disabled:hover,
+.button.disabled:hover {
+  border-color: var(--line);
+  color: inherit;
 }
 
 .button.ghost {
@@ -1267,8 +1280,26 @@ textarea {
 .modalActions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
   margin-top: 16px;
+}
+
+.handoffGuard {
+  margin-right: auto;
+  color: var(--orange);
+  background: var(--orange-soft);
+  border: 1px solid #f1d49b;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.handoffGuard.ready {
+  color: var(--green);
+  background: var(--green-soft);
+  border-color: var(--green-soft);
 }
 
 .hintBox {

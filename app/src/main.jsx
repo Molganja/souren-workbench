@@ -1618,8 +1618,10 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
 function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const [view, setView] = useState(null);
   const [error, setError] = useState('');
+  const [handoffDone, setHandoffDone] = useState(() => new Set());
   useEffect(() => {
     let alive = true;
+    setHandoffDone(new Set());
     request(`/slots/${slot.id}/delivery-view`)
       .then((data) => {
         if (alive) setView(data);
@@ -1655,6 +1657,13 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const steps = deliverySteps(view, mediaFiles.length, isActiveQueueSlot);
   const copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot;
   const showFreelancerGuide = Boolean(view.shouldSendFreelancerGuide && texts.freelancerGuide);
+  const markHandoffDone = (key) => {
+    if (!key) return;
+    setHandoffDone((prev) => new Set([...prev, key]));
+  };
+  const requiredHandoffSteps = deliveryRequiredSteps(view, mediaFiles, showFreelancerGuide);
+  const missingHandoffSteps = requiredHandoffSteps.filter((item) => !handoffDone.has(item.key));
+  const handoffReady = copyAllowed && missingHandoffSteps.length === 0;
   return (
     <Modal title="交付内容" onClose={onClose}>
       <div className="deliveryHeader">
@@ -1697,9 +1706,9 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       )}
 
       <div className="deliveryTextGrid">
-        {showFreelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} copyable={copyAllowed} />}
-        <TextPanel title="发给兼职文案" text={texts.operatorInstruction} onCopy={onCopy} copyable={copyAllowed} />
-        <TextPanel title="抖音发布文案" text={texts.publishText} onCopy={onCopy} copyable={copyAllowed} />
+        {showFreelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} copyable={copyAllowed} completeKey="guide" completed={handoffDone.has('guide')} onComplete={markHandoffDone} />}
+        <TextPanel title="发给兼职文案" text={texts.operatorInstruction} onCopy={onCopy} copyable={copyAllowed} completeKey="operator" completed={handoffDone.has('operator')} onComplete={markHandoffDone} />
+        <TextPanel title="抖音发布文案" text={texts.publishText} onCopy={onCopy} copyable={copyAllowed} completeKey="publish" completed={handoffDone.has('publish')} onComplete={markHandoffDone} />
       </div>
       {!showFreelancerGuide && texts.freelancerGuideNote && <div className="guideNotice">{texts.freelancerGuideNote}</div>}
 
@@ -1710,21 +1719,27 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
         </div>
         {mediaFiles.length === 0 ? <div className="empty">还没有可发送素材，请先补素材或生成图片</div> : (
           <div className="deliveryMediaGrid">
-            {imageFiles.map((file) => <MediaCard key={file.path} file={file} label="图片" allowDownload={copyAllowed} />)}
-            {videoFiles.map((file) => <MediaCard key={file.path} file={file} label="视频" allowDownload={copyAllowed} />)}
+            {imageFiles.map((file) => {
+              const key = deliveryMediaStepKey(file);
+              return <MediaCard key={file.path} file={file} label="图片" allowDownload={copyAllowed} completeKey={key} completed={handoffDone.has(key)} onComplete={markHandoffDone} />;
+            })}
+            {videoFiles.map((file) => {
+              const key = deliveryMediaStepKey(file);
+              return <MediaCard key={file.path} file={file} label="视频" allowDownload={copyAllowed} completeKey={key} completed={handoffDone.has(key)} onComplete={markHandoffDone} />;
+            })}
           </div>
         )}
       </section>
 
       {texts.assetOrder && <TextPanel title="素材发送顺序" text={texts.assetOrder} onCopy={onCopy} copyable={false} />}
-      {texts.publishRules && <TextPanel title="发布要求" text={texts.publishRules} onCopy={onCopy} copyable={copyAllowed} />}
+      {texts.publishRules && <TextPanel title="发布要求" text={texts.publishRules} onCopy={onCopy} copyable={copyAllowed} completeKey="rules" completed={handoffDone.has('rules')} onComplete={markHandoffDone} />}
 
       {view.isVideo && (
         <section className="deliverySection">
           <div className="sectionHead"><h2>视频剪辑</h2><span>剪辑人员使用</span></div>
           <div className="deliveryTextGrid">
-            <TextPanel title="口播/字幕文案" text={texts.voiceover} onCopy={onCopy} copyable={copyAllowed} />
-            <TextPanel title="剪辑要求" text={texts.editBrief} onCopy={onCopy} copyable={copyAllowed} />
+            <TextPanel title="口播/字幕文案" text={texts.voiceover} onCopy={onCopy} copyable={copyAllowed} completeKey="voiceover" completed={handoffDone.has('voiceover')} onComplete={markHandoffDone} />
+            <TextPanel title="剪辑要求" text={texts.editBrief} onCopy={onCopy} copyable={copyAllowed} completeKey="editBrief" completed={handoffDone.has('editBrief')} onComplete={markHandoffDone} />
           </div>
           <div className="hintBox">{view.editing?.completionNote || '剪辑或发布完成后，在系统里标记「已完成」。'}</div>
           {view.sourceAssets?.length > 0 && (
@@ -1743,9 +1758,14 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       )}
 
       <div className="modalActions">
+        {copyAllowed && (
+          <div className={`handoffGuard ${handoffReady ? 'ready' : ''}`}>
+            {handoffReady ? '本条交付动作已完成，可以标记已派发。' : `还差：${missingHandoffSteps.slice(0, 4).map((item) => item.label).join('、')}${missingHandoffSteps.length > 4 ? `等 ${missingHandoffSteps.length} 步` : ''}`}
+          </div>
+        )}
         <button onClick={onClose}>关闭</button>
         {isActiveQueueSlot && view.slot.status === '可交付' && (
-          <button className="primary" onClick={() => onAct(async () => {
+          <button className="primary" disabled={!handoffReady} onClick={() => onAct(async () => {
             await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
             onClose();
           }, '已标记派发')}>已用微信发送</button>
@@ -1759,6 +1779,25 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       </div>
     </Modal>
   );
+}
+
+function deliveryMediaStepKey(file) {
+  return `media:${file.path || file.url || file.name}`;
+}
+
+function deliveryRequiredSteps(view, mediaFiles = [], showFreelancerGuide = false) {
+  const texts = view.texts || {};
+  const steps = [];
+  if (showFreelancerGuide && texts.freelancerGuide) steps.push({ key: 'guide', label: '兼职须知' });
+  if (texts.operatorInstruction) steps.push({ key: 'operator', label: '发给兼职文案' });
+  if (texts.publishText) steps.push({ key: 'publish', label: '抖音发布文案' });
+  if (texts.publishRules) steps.push({ key: 'rules', label: '发布要求' });
+  if (view.isVideo && texts.voiceover) steps.push({ key: 'voiceover', label: '口播/字幕文案' });
+  if (view.isVideo && texts.editBrief) steps.push({ key: 'editBrief', label: '剪辑要求' });
+  mediaFiles.forEach((file, index) => {
+    steps.push({ key: deliveryMediaStepKey(file), label: `${file.kind || '素材'}${index + 1}` });
+  });
+  return steps;
 }
 
 function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
@@ -1804,26 +1843,30 @@ function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
   }));
 }
 
-function TextPanel({ title, text, onCopy, copyable = true }) {
+function TextPanel({ title, text, onCopy, copyable = true, completeKey = '', completed = false, onComplete }) {
+  async function handleCopy() {
+    await onCopy(text, `${title}已复制`);
+    onComplete?.(completeKey);
+  }
   return (
     <div className="textPanel">
       <div className="rowTitle">
         <strong>{title}</strong>
-        {copyable && text && <button onClick={() => onCopy(text, `${title}已复制`)}>复制</button>}
+        {copyable && text && <button className={completed ? 'activeSmall' : ''} onClick={handleCopy}>{completed ? '已复制' : '复制'}</button>}
       </div>
       <pre>{text || '暂无内容'}</pre>
     </div>
   );
 }
 
-function MediaCard({ file, label, allowDownload = true }) {
+function MediaCard({ file, label, allowDownload = true, completeKey = '', completed = false, onComplete }) {
   return (
     <div className="mediaCard">
       {file.kind === '图片' ? <img src={file.url} alt={file.name} /> : <video src={file.url} controls />}
       <strong>{file.name}</strong>
       <span>{label}</span>
       {allowDownload ? (
-        <a className="button" href={file.url} download>{file.kind === '图片' ? '下载图片' : '下载视频'}</a>
+        <a className={`button ${completed ? 'activeSmall' : ''}`} href={file.url} download onClick={() => onComplete?.(completeKey)}>{completed ? '已下载' : (file.kind === '图片' ? '下载图片' : '下载视频')}</a>
       ) : (
         <span className="lockedNote">只读预览</span>
       )}
