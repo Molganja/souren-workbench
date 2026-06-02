@@ -296,6 +296,10 @@ button.primary, .button.primary {
   line-height: 1.5;
 }
 
+.contactCard > .button {
+  justify-self: start;
+}
+
 .flowCard {
   border: 1px solid var(--line);
   border-radius: 8px;

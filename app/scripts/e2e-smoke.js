@@ -440,6 +440,12 @@ async function main() {
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
     assert(monitorQueued.createdCount >= 2 && monitorQueued.collectorReady === false, 'monitor run did not register collector tasks');
     assert(monitorQueued.monitor.totals.dueCollection >= 1, 'monitor run missing due collection summary');
+    const chromeQueue = await api('/douyin-monitor/chrome-queue');
+    assert(chromeQueue.count >= 2, 'chrome collection queue missing due accounts');
+    assert(chromeQueue.text.includes('/api/douyin-monitor/ingest') && chromeQueue.text.includes('Chrome抖音采集清单'), 'chrome collection queue text missing ingest instructions');
+    assert(chromeQueue.targets.some((item) => item.ingestPayloadTemplate?.caseId === caze.id), 'chrome collection queue missing payload template');
+    const registeredChromeQueue = await api('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 20 }) });
+    assert(registeredChromeQueue.registeredCount >= 2 && registeredChromeQueue.monitor.totals.waitingChrome >= 1, 'chrome queue registration missing waiting status');
     const ingested = await api('/douyin-monitor/ingest', {
       method: 'POST',
       body: JSON.stringify({

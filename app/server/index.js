@@ -85,6 +85,7 @@ const STATUS_LABELS = {
   active: '待互动',
   handled: '已处理',
   waiting_collector: '等待采集器',
+  waiting_chrome: '等待Chrome采集',
   submitted: '已提交采集',
   mismatch: '不匹配',
   not_found: '未找到',
@@ -1568,7 +1569,8 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
       videoSnapshots: videoSnapshots.length,
       viralAlerts: viralAlerts.length,
       dueCollection: accounts.filter((item) => item.dueCollection).length,
-      waitingCollector: collectionRuns.filter((item) => item.status === 'waiting_collector').length
+      waitingCollector: collectionRuns.filter((item) => item.status === 'waiting_collector').length,
+      waitingChrome: collectionRuns.filter((item) => item.status === 'waiting_chrome').length
     },
     accounts,
     viralAlerts,
@@ -1589,6 +1591,132 @@ function signedNumber(value) {
 
 function monitorForCase(monitor, caseId) {
   return monitor.accounts.find((item) => item.case.id === caseId) || {};
+}
+
+function truthy(value) {
+  return ['1', 'true', 'yes', 'y', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
+function chromeCollectionPayloadTemplate(caze) {
+  return {
+    caseId: caze.id,
+    source: 'chrome-agent',
+    collectedAt: '采集时填写 ISO 时间',
+    account: {
+      fans: null,
+      following: null,
+      totalLikes: null,
+      totalWorks: null
+    },
+    videos: [
+      {
+        url: '作品链接',
+        title: '作品标题/首句',
+        publishTime: '发布时间',
+        plays: null,
+        likes: null,
+        comments: null,
+        shares: null,
+        favorites: null
+      }
+    ],
+    note: 'Chrome 登录态采集'
+  };
+}
+
+function buildChromeCollectionText(queue) {
+  const endpoint = `${networkSettings().localUrl}/api/douyin-monitor/ingest`;
+  const lines = [
+    `Chrome抖音采集清单｜${queue.generatedAt}`,
+    `回填接口：POST ${endpoint}`,
+    '',
+    '采集方式：用已登录抖音的 Chrome 打开账号主页，读取账号粉丝/关注/获赞/作品数，并记录最近作品的播放、点赞、评论、转发、收藏。',
+    '回填要求：每个账号采集完后，把对应 JSON 发到回填接口；系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
+    ''
+  ];
+  if (!queue.targets.length) {
+    lines.push('当前没有到期账号。需要全量采集时，请用 includeFresh=1 生成清单。');
+    return lines.join('\n');
+  }
+  queue.targets.forEach((target, index) => {
+    lines.push(`${index + 1}. ${target.weixinNick}｜${target.caseCode}｜${target.project}`);
+    lines.push(`抖音主页：${target.douyinUrl}`);
+    lines.push(`上次采集：${target.lastCollectedAt || '未采集'}｜最新粉丝：${target.latestSnapshot?.fans ?? '未采集'}｜最高播放：${target.topVideo?.latestSnapshot?.plays ?? '未采集'}`);
+    lines.push('回填JSON模板：');
+    lines.push(JSON.stringify(target.ingestPayloadTemplate, null, 2));
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+
+function chromeCollectionQueue(options = {}) {
+  const includeFresh = Boolean(options.includeFresh);
+  const limit = Math.max(1, Math.min(Number(options.limit) || 50, 200));
+  const monitor = monitorData();
+  const targets = monitor.accounts
+    .filter((item) => item.case?.douyinUrl)
+    .filter((item) => includeFresh || item.dueCollection)
+    .sort((a, b) => {
+      if (a.dueCollection !== b.dueCollection) return a.dueCollection ? -1 : 1;
+      return String(a.lastCollectedAt || '').localeCompare(String(b.lastCollectedAt || ''));
+    })
+    .slice(0, limit)
+    .map((item) => {
+      const caze = item.case;
+      return {
+        caseId: caze.id,
+        caseCode: caze.caseCode,
+        weixinNick: caze.weixinNick,
+        douyinId: caze.douyinId,
+        douyinUrl: caze.douyinUrl,
+        project: caze.project,
+        staff: caze.staff,
+        dueCollection: item.dueCollection,
+        lastCollectedAt: item.lastCollectedAt,
+        initialSnapshot: item.initialSnapshot,
+        latestSnapshot: item.latestSnapshot,
+        fanDelta: item.fanDelta,
+        topVideo: item.topVideo,
+        ingestEndpoint: '/api/douyin-monitor/ingest',
+        ingestPayloadTemplate: chromeCollectionPayloadTemplate(caze)
+      };
+    });
+  const queue = {
+    generatedAt: now(),
+    includeFresh,
+    limit,
+    count: targets.length,
+    totals: monitor.totals,
+    targets
+  };
+  return { ...queue, text: buildChromeCollectionText(queue) };
+}
+
+function registerChromeCollectionQueue(options = {}) {
+  const queue = chromeCollectionQueue(options);
+  queue.targets.forEach((target) => {
+    run(
+      `INSERT INTO collection_runs
+      (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uid('collect'),
+        target.caseId,
+        queue.generatedAt,
+        null,
+        'waiting_chrome',
+        'chrome-agent',
+        '已生成 Chrome 采集清单，等待我用已登录抖音的 Chrome 打开主页并回填账号/作品数据',
+        now(),
+        now()
+      ]
+    );
+  });
+  return {
+    ...queue,
+    registeredCount: queue.targets.length,
+    monitor: monitorData()
+  };
 }
 
 async function submitCollectionRunToCollector(runId, caze) {
@@ -1623,10 +1751,10 @@ async function enqueueDouyinCollection(source = 'manual') {
   const runs = [];
   for (const caze of cases) {
     const id = uid('collect');
-    const status = DOUYIN_COLLECTOR_URL ? 'waiting' : 'waiting_collector';
+    const status = DOUYIN_COLLECTOR_URL ? 'waiting' : 'waiting_chrome';
     const note = DOUYIN_COLLECTOR_URL
       ? '已登记采集任务，正在提交给抖音采集器'
-      : '已按 24 小时周期登记采集任务，等待采集器接入后写回账号和作品数据';
+      : '已按 24 小时周期登记 Chrome 采集任务，等待我用已登录抖音的 Chrome 回填账号和作品数据';
     run(
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
@@ -1716,7 +1844,7 @@ function ingestDouyinData(body = {}) {
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [uid('collect'), caze.id, collectedAt, now(), 'completed', source, body.note || '采集器已写回账号和作品数据', now(), now()]
+      [uid('collect'), caze.id, collectedAt, now(), 'completed', source, body.note || '账号和作品数据已写回系统', now(), now()]
     );
     run('COMMIT');
   } catch (error) {
@@ -1755,7 +1883,7 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   }
   if (caze.douyinUrl && monitor.dueCollection) {
     reasons.push(monitor.latestSnapshot ? '账号数据超过24小时未更新' : '账号数据待采集');
-    actions.push('系统会按 24 小时周期采集账号数据；必要时在首页点“立即登记采集”');
+    actions.push('首页生成 Chrome 采集清单，我用已登录抖音的 Chrome 打开主页并回填数据');
   }
   if (futureSlots === 0) {
     reasons.push('缺少排期');
@@ -2165,9 +2293,9 @@ function systemReadiness() {
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
-    { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '对接人 + 抖音链接即可先建链路' },
+    { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
-    { key: 'douyin-monitor', label: '抖音账号数据监控', status: DOUYIN_COLLECTOR_URL ? 'ready' : 'waiting', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，按 24 小时周期登记账号采集任务' : '采集任务可登记，等待采集器接入后自动写回账号和作品数据' },
+    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；我控制已登录抖音的 Chrome 逐个查看并回填数据' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
     { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
@@ -2206,6 +2334,24 @@ app.get('/api/readiness', (_req, res) => {
 
 app.get('/api/douyin-monitor', (_req, res) => {
   res.json(monitorData());
+});
+
+app.get('/api/douyin-monitor/chrome-queue', (req, res) => {
+  res.json(chromeCollectionQueue({
+    includeFresh: truthy(req.query.includeFresh),
+    limit: req.query.limit
+  }));
+});
+
+app.post('/api/douyin-monitor/chrome-queue', (req, res) => {
+  try {
+    res.json(registerChromeCollectionQueue({
+      includeFresh: truthy(req.body?.includeFresh),
+      limit: req.body?.limit
+    }));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.post('/api/douyin-monitor/run', async (req, res) => {

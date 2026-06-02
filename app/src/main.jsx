@@ -27,6 +27,7 @@ const STATUS_LABELS = {
   active: '待互动',
   handled: '已处理',
   waiting_collector: '等待采集器',
+  waiting_chrome: '等待Chrome采集',
   submitted: '已提交采集',
   pending: '历史待处理',
   checking: '历史处理中',
@@ -69,7 +70,7 @@ function statusClass(status) {
   if (['已派发'].includes(status)) return 'report';
   if (['已完成'].includes(status)) return 'ok';
   if (['素材阻塞', '异常'].includes(status)) return 'bad';
-  if (['waiting_key', 'draft', 'waiting_edit', 'pending', 'unavailable'].includes(status)) return 'wait';
+  if (['waiting_key', 'draft', 'waiting_edit', 'pending', 'unavailable', 'waiting_chrome'].includes(status)) return 'wait';
   if (['generating', 'review', 'checking'].includes(status)) return 'report';
   if (['approved', 'completed', 'verified'].includes(status)) return 'ok';
   if (['rejected', 'mismatch', 'not_found', 'error', 'timeout', 'unknown'].includes(status)) return 'bad';
@@ -406,7 +407,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
       </section>
 
       <ViralAlertSection items={data.viralAlerts || []} onOpenCase={onOpenCase} onAct={onAct} />
-      <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} />
+      <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
 
       <section className="panel beginnerPanel">
         <div className="sectionHead">
@@ -553,7 +554,7 @@ function ViralAlertSection({ items, onOpenCase, onAct }) {
   );
 }
 
-function MonitorSection({ monitor, onOpenCase, onAct }) {
+function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
   const accounts = monitor?.accounts || [];
   const due = accounts.filter((item) => item.dueCollection).slice(0, 8);
   return (
@@ -561,26 +562,37 @@ function MonitorSection({ monitor, onOpenCase, onAct }) {
       <div className="sectionHead">
         <h2>账号数据监控</h2>
         <div className="headerActions">
-          <span>{monitor?.totals?.monitoredAccounts || 0} 个账号 · {monitor?.totals?.dueCollection || 0} 个待采集</span>
+          <span>{monitor?.totals?.monitoredAccounts || 0} 个账号 · {monitor?.totals?.dueCollection || 0} 个待采集 · {monitor?.totals?.waitingChrome || 0} 个等Chrome</span>
           <button onClick={() => onAct(
-            () => request('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'manual' }) }),
-            (result) => result.collectorReady ? `已提交采集：${result.createdCount} 个账号` : `已登记采集：${result.createdCount} 个账号，等待采集器`
-          )}>立即登记采集</button>
+            () => request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 80 }) }),
+            (result) => `Chrome采集清单已生成：${result.registeredCount} 个账号`
+          )}>生成Chrome采集清单</button>
+          <button onClick={() => onAct(
+            () => copyChromeCollectionQueue(onCopy),
+            (result) => `已复制Chrome采集清单：${result.count} 个账号`
+          )}>复制清单</button>
         </div>
       </div>
       {accounts.length === 0 ? <div className="empty">新建案例时填写抖音主页后，会进入 24 小时账号数据监控</div> : (
         <div className="contactGrid">
           {(due.length ? due : accounts.slice(0, 8)).map((item) => (
-            <button className="contactCard" key={item.case.id} onClick={() => onOpenCase(item.case.id)}>
-              <strong>{item.case.weixinNick}</strong>
+            <div className="contactCard" key={item.case.id}>
+              <button className="linkButton" onClick={() => onOpenCase(item.case.id)}>{item.case.weixinNick}</button>
               <span>{item.dueCollection ? '待采集' : '已采集'} · 粉丝 {formatNumber(item.latestSnapshot?.fans)} · 初始 {formatNumber(item.initialSnapshot?.fans)}</span>
               <small>{item.topVideo ? `最高播放 ${formatNumber(item.topVideo.latestSnapshot?.plays)}｜${item.topVideo.title || '未命名作品'}` : `最近采集：${shortTime(item.lastCollectedAt)}`}</small>
-            </button>
+              {item.case.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
+            </div>
           ))}
         </div>
       )}
     </section>
   );
+}
+
+async function copyChromeCollectionQueue(onCopy) {
+  const result = await request('/douyin-monitor/chrome-queue?limit=80');
+  await onCopy(result.text, 'Chrome采集清单已复制');
+  return result;
 }
 
 function PendingViralSection({ items, onCopy, onOpenViral }) {
@@ -1367,7 +1379,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
 
       <section className="panel">
         <div className="sectionHead"><h2>账号监控</h2><span>{videos.length} 条作品</span></div>
-        {!monitor.latestSnapshot && videos.length === 0 ? <div className="empty">填写抖音主页后，系统会按 24 小时周期登记采集；采集器写回后这里显示粉丝和作品数据</div> : (
+        {!monitor.latestSnapshot && videos.length === 0 ? <div className="empty">填写抖音主页后，首页可生成 Chrome 采集清单；回填后这里显示粉丝和作品数据</div> : (
           <div className="metricTable">
             <div className="metricHeader"><span>初始粉丝</span><span>最新粉丝</span><span>粉丝变化</span><span>作品数</span><span>最近采集</span><span>采集状态</span></div>
             <div className="metricLine">
