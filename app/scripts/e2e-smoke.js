@@ -290,6 +290,8 @@ async function main() {
     const viralDashboard = await api('/dashboard');
     assert(viralDashboard.counts.pendingViral >= 1, 'dashboard pending viral count missing');
     assert(viralDashboard.pendingViralTemplates.some((item) => item.id === linkOnlyViral.id), 'dashboard pending viral list missing link-only template');
+    const agentWorkAfterViral = await api('/agent-work');
+    assert(agentWorkAfterViral.counts.viralAnalysis >= 1 && agentWorkAfterViral.items.some((item) => item.kind === '爆款分析' && item.viralTemplateId === linkOnlyViral.id && item.endpoint.endsWith('/analysis-result')), 'agent work queue missing pending viral analysis');
     const seed = await api('/content-seeds', {
       method: 'POST',
       body: JSON.stringify({
@@ -366,6 +368,8 @@ async function main() {
     assert(caze.stage === '起号期' && caze.slotsCreated >= 14, 'case create should ignore external stage and generate schedule by default');
     assert(caze.sourceMaterialDir === sharedSourceDir, 'case source material dir missing');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
+    const agentWorkAfterCase = await api('/agent-work');
+    assert(agentWorkAfterCase.counts.douyinCollection >= 1 && agentWorkAfterCase.items.some((item) => item.kind === '抖音采集' && item.case?.id === caze.id && item.endpoint === '/api/douyin-monitor/ingest'), 'agent work queue missing chrome collection work');
     const syncedMaterials = await api(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' });
     assert(syncedMaterials.copied === 1 && syncedMaterials.inserted === 1, 'source material sync did not copy and insert shared asset');
     const syncedAssetPath = path.join(caze.localCaseDir, '00-原始素材', '共享同步', '共享-D1.jpg');
@@ -701,6 +705,8 @@ async function main() {
     const imageDashboard = await api('/dashboard');
     assert(imageDashboard.counts.imageTasks >= 1 && imageDashboard.counts.imageWaitingKey >= 1, 'dashboard image task counts missing');
     assert(imageDashboard.imageTasks.some((item) => item.id === gapImage.id && item.case?.id === caze.id), 'dashboard image task list missing case task');
+    const imageAgentWork = await api('/agent-work');
+    assert(imageAgentWork.counts.imageWork >= 1 && imageAgentWork.items.some((item) => item.kind === '图片生成' && item.imageTaskId === gapImage.id), 'agent work queue missing image task work');
 
     const hospitalSharedDir = path.join(ROOT_DIR, '素材库', '通用素材', '医院素材');
     fs.mkdirSync(hospitalSharedDir, { recursive: true });

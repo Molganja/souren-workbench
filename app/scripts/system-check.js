@@ -72,6 +72,9 @@ else fail(`爆款链接前台仍暴露分析字段：${leakedViralAnalysisFields
 if (serverSource.includes('/api/viral-templates/:id/analysis-result') && serverSource.includes('normalizeViralAnalysisResult') && serverSource.includes('爆款分析结果缺少') && smokeSource.includes('viral analysis result accepted incomplete payload') && smokeSource.includes('/analysis-result')) ok('爆款链接有后台分析写回接口，且不接受半分析结果');
 else fail('爆款链接缺少专用分析写回接口，或未验证半分析结果会被拒绝');
 
+if (serverSource.includes("app.get('/api/agent-work'") && serverSource.includes('function agentWorkQueue') && mainSource.includes('主机侧工作清单') && mainSource.includes('/agent-work') && smokeSource.includes('agent work queue missing pending viral analysis')) ok('主机侧工作清单聚合爆款分析、Chrome采集和图片任务，且不进入首页');
+else fail('缺少主机侧后台工作清单，或没有覆盖待分析爆款/采集/图片任务');
+
 if (mainSource.includes('disabled={!ready}') && mainSource.includes('sourceLink: form.sourceLink.trim()') && serverSource.includes('请先粘贴爆款视频链接') && smokeSource.includes('blankViralRejected')) ok('空爆款链接不会生成假模板');
 else fail('空爆款链接仍可能生成假模板');
 

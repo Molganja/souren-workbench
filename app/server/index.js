@@ -2965,6 +2965,83 @@ function registerChromeCollectionQueue(options = {}) {
   };
 }
 
+function agentWorkQueue() {
+  const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
+  const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
+  const pendingViral = all('SELECT * FROM viral_templates ORDER BY created_at DESC')
+    .map(rowViral)
+    .filter(isPendingViralTemplate);
+  const chromeQueue = chromeCollectionQueue({ limit: 20 });
+  const imageTasks = all('SELECT * FROM image_tasks ORDER BY created_at DESC')
+    .map(rowImageTask)
+    .filter((task) => ['waiting_key', 'draft', 'timeout'].includes(task.status));
+  const image = imageSettings();
+  const viralItems = pendingViral.map((viral) => ({
+    id: `viral-${viral.id}`,
+    kind: '爆款分析',
+    status: '待分析',
+    priority: 100,
+    title: viral.sourceLink ? '待分析爆款链接' : viral.title,
+    action: '主机侧用 Chrome/轻抖提取标题、正文、评论区和结构后写回分析结果。',
+    endpoint: `/api/viral-templates/${viral.id}/analysis-result`,
+    sourceLink: viral.sourceLink,
+    viralTemplateId: viral.id,
+    updatedAt: viral.updatedAt
+  }));
+  const collectionItems = chromeQueue.targets.map((target) => ({
+    id: `collect-${target.caseId}`,
+    kind: '抖音采集',
+    status: target.collectionQueued ? '已排队' : '到期',
+    priority: 70 + (target.collectionPriority || 0),
+    title: `${target.weixinNick} 账号数据采集`,
+    action: '主机侧用已登录抖音的 Chrome 打开主页和作品，再把账号快照与作品数据写入后台。',
+    endpoint: '/api/douyin-monitor/ingest',
+    case: byCase[target.caseId] || null,
+    douyinUrl: target.douyinUrl,
+    lastCollectedAt: target.lastCollectedAt,
+    activityTier: target.activityTier,
+    collectionPolicy: target.collectionPolicy,
+    ingestPayloadTemplate: target.ingestPayloadTemplate,
+    updatedAt: target.pendingCollectionRun?.updatedAt || target.lastCollectedAt || chromeQueue.generatedAt
+  }));
+  const imageItems = imageTasks.map((task) => ({
+    id: `image-${task.id}`,
+    kind: '图片生成',
+    status: task.status,
+    priority: task.status === 'draft' && image.ready ? 85 : 35,
+    title: `${task.purpose} 图片任务`,
+    action: image.ready
+      ? '图片接口已接入时，主机侧可调用生成接口生成图片并审核。'
+      : '图片接口未接入时，系统只保留提示词和参考素材；接入 Image2 后再生成。',
+    endpoint: `/api/image-tasks/${task.id}/generate`,
+    case: byCase[task.caseId] || null,
+    imageTaskId: task.id,
+    purpose: task.purpose,
+    outputDir: task.outputDir,
+    updatedAt: task.updatedAt
+  }));
+  const items = [...viralItems, ...collectionItems, ...imageItems]
+    .sort((a, b) => {
+      const byPriority = (b.priority || 0) - (a.priority || 0);
+      if (byPriority) return byPriority;
+      return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    })
+    .slice(0, 80);
+  return {
+    generatedAt: now(),
+    counts: {
+      total: items.length,
+      viralAnalysis: viralItems.length,
+      douyinCollection: collectionItems.length,
+      imageWork: imageItems.length,
+      imageWaitingKey: imageItems.filter((item) => item.status === 'waiting_key').length,
+      imageReadyToGenerate: imageItems.filter((item) => item.status === 'draft' && image.ready).length
+    },
+    image: { ready: image.ready, missing: image.missing || '' },
+    items
+  };
+}
+
 async function enqueueDouyinCollection(source = 'manual') {
   const targets = monitorData().accounts.filter((item) => item.dueCollection).map((item) => item.case);
   const runs = [];
@@ -3550,6 +3627,10 @@ app.get('/api/douyin-monitor/chrome-queue', (req, res) => {
     includeFresh: truthy(req.query.includeFresh),
     limit: req.query.limit
   }));
+});
+
+app.get('/api/agent-work', (_req, res) => {
+  res.json(agentWorkQueue());
 });
 
 app.post('/api/douyin-monitor/chrome-queue', (req, res) => {

@@ -2119,6 +2119,7 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
   const [sharedAssets, setSharedAssets] = useState([]);
   const [sharedAssetsLoading, setSharedAssetsLoading] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState(null);
+  const [agentWork, setAgentWork] = useState(null);
   const [collectionLoading, setCollectionLoading] = useState(false);
   async function loadSharedAssets() {
     setSharedAssetsLoading(true);
@@ -2135,7 +2136,9 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
         request('/douyin-monitor'),
         request('/douyin-monitor/chrome-queue?limit=10')
       ]);
+      const work = await request('/agent-work');
       setCollectionStatus({ monitor, queue });
+      setAgentWork(work);
     } finally {
       setCollectionLoading(false);
     }
@@ -2147,6 +2150,8 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
   const monitorTotals = collectionStatus?.monitor?.totals || {};
   const collectionTargets = collectionStatus?.queue?.targets || [];
   const readinessChecks = config.readiness?.checks || [];
+  const agentWorkCounts = agentWork?.counts || {};
+  const agentWorkItems = agentWork?.items || [];
   return (
     <div className="stack">
       <section className="hero">
@@ -2235,6 +2240,33 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
         </div>
       </section>
       <section className="panel">
+        <div className="sectionHead">
+          <h2>主机侧工作清单</h2>
+          <span>{agentWorkCounts.total || 0} 项</span>
+        </div>
+        <div className="stats reviewStats">
+          <Metric label="爆款待分析" value={agentWorkCounts.viralAnalysis || 0} />
+          <Metric label="采集目标" value={agentWorkCounts.douyinCollection || 0} />
+          <Metric label="图片任务" value={agentWorkCounts.imageWork || 0} />
+          <Metric label="等待Key" value={agentWorkCounts.imageWaitingKey || 0} />
+          <Metric label="可生成图" value={agentWorkCounts.imageReadyToGenerate || 0} />
+        </div>
+        <div className="templateList settingsList">
+          {agentWorkItems.length === 0 ? (
+            <div className="empty">当前没有主机侧待处理动作。</div>
+          ) : agentWorkItems.slice(0, 8).map((item) => (
+            <div className="templateRow" key={item.id}>
+              <div className="rowTitle">
+                <strong>{item.title}</strong>
+                <span className={`status ${agentWorkStatusClass(item)}`}>{item.kind} · {displayStatus(item.status)}</span>
+              </div>
+              <small>{item.case?.weixinNick ? `${item.case.weixinNick}｜${item.case.project}｜` : ''}{item.action}</small>
+              <small>{item.endpoint}</small>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="panel">
         <div className="sectionHead"><h2>本地素材根目录</h2></div>
         <div className="path">{config.materialRoot}</div>
       </section>
@@ -2312,6 +2344,12 @@ function readinessStatusClass(status) {
   if (status === 'ready') return 'ok';
   if (status === 'waiting') return 'wait';
   return 'bad';
+}
+
+function agentWorkStatusClass(item = {}) {
+  if (item.kind === '爆款分析') return 'wait';
+  if (item.kind === '抖音采集') return item.status === '已排队' ? 'report' : 'ready';
+  return statusClass(item.status);
 }
 
 const SHARED_ASSET_CATEGORIES = ['医院素材', '套图素材', '生活场景', '文字卡素材', '备用素材'];
