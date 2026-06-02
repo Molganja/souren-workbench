@@ -435,6 +435,16 @@ async function main() {
     const throttleDetail = await api(`/cases/${throttleCase.id}`);
     assert(throttleDetail.slots.length > 0 && throttleDetail.slots.length <= 8, 'throttled account generated too many future slots');
     assert(throttleDetail.monitor.postingStrategy?.mode === '两天一条', 'case detail missing throttled posting strategy');
+    const throttleActionSlot = await api('/douyin-monitor/actions/slot', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: throttleCase.id, kind: '偏冷补内容' })
+    });
+    assert(throttleActionSlot.created === true && throttleActionSlot.slot.contentKind === '爆款提权', 'throttled strategy action did not create one viral slot');
+    const repeatedThrottleAction = await api('/douyin-monitor/actions/slot', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: throttleCase.id, kind: '偏冷补内容' })
+    });
+    assert(repeatedThrottleAction.created === false && repeatedThrottleAction.slot.id === throttleActionSlot.slot.id, 'throttled strategy action duplicated instead of reusing existing slot');
 
     const sleepCase = await api('/cases', {
       method: 'POST',
@@ -459,9 +469,15 @@ async function main() {
     assert(sleepAccount?.activityTier === '休眠', 'three cold videos should mark account sleeping');
     assert(sleepAccount.postingStrategy?.mode === '暂停自动补', 'sleeping account should pause automatic posting');
     assert(sleepAccount.collectionPolicy?.intervalHours === 168, 'sleeping account should collect weekly');
-    await api('/dashboard');
+    const sleepDashboard = await api('/dashboard');
+    assert(!sleepDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === sleepCase.id), 'sleeping account should not show cold content action');
     const sleepDetail = await api(`/cases/${sleepCase.id}`);
     assert(sleepDetail.slots.length === 0, 'sleeping account should not auto generate future slots');
+    const sleepActionSlot = await api('/douyin-monitor/actions/slot', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: sleepCase.id, kind: '偏冷补内容' })
+    });
+    assert(sleepActionSlot.created === false && !sleepActionSlot.slot && sleepActionSlot.reason.includes('暂停'), 'sleeping account strategy action should not create a slot');
 
     const lostCase = await api('/cases', {
       method: 'POST',
@@ -837,12 +853,12 @@ async function main() {
     assert(afterChromeAgentDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing cold content action');
     const coldSlot = await api('/douyin-monitor/actions/slot', {
       method: 'POST',
-      body: JSON.stringify({ caseId: minimalCase.id, kind: '偏冷补内容', date: '2026-06-08' })
+      body: JSON.stringify({ caseId: minimalCase.id, kind: '偏冷补内容' })
     });
     assert(coldSlot.created === true && coldSlot.slot.contentKind === '爆款提权', 'cold monitor action did not create viral slot');
     const repeatedColdSlot = await api('/douyin-monitor/actions/slot', {
       method: 'POST',
-      body: JSON.stringify({ caseId: minimalCase.id, kind: '偏冷补内容', date: '2026-06-08' })
+      body: JSON.stringify({ caseId: minimalCase.id, kind: '偏冷补内容' })
     });
     assert(repeatedColdSlot.created === false && repeatedColdSlot.slot.id === coldSlot.slot.id, 'cold monitor action duplicate guard failed');
     await api('/douyin-monitor/ingest', {
@@ -860,7 +876,7 @@ async function main() {
     assert(afterGrowthDashboard.monitorActions.some((item) => item.kind === '增长承接' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing growth action');
     const growthSlot = await api('/douyin-monitor/actions/slot', {
       method: 'POST',
-      body: JSON.stringify({ caseId: minimalCase.id, kind: '增长承接', date: '2026-06-09' })
+      body: JSON.stringify({ caseId: minimalCase.id, kind: '增长承接' })
     });
     assert(growthSlot.created === true && growthSlot.slot.contentKind === '素人种草', 'growth monitor action did not create carry slot');
     await api(`/viral-alerts/${ingested.viralAlerts[0].id}`, {

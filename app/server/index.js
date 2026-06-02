@@ -2125,6 +2125,34 @@ function shouldCreateSlotForDate(caze, date, postingStrategy = {}) {
   return Math.abs(daysBetween(base, date)) % interval === 0;
 }
 
+function openSlotForDate(caseId, date) {
+  return rowSlot(get(
+    `SELECT * FROM plan_slots
+    WHERE case_id = ? AND date = ? AND status NOT IN (?, ?)
+    ORDER BY date ASC, created_at ASC LIMIT 1`,
+    [caseId, date, '已取消', '已完成']
+  ));
+}
+
+function existingStrategySlot(caze, plan, startDate) {
+  return rowSlot(get(
+    `SELECT * FROM plan_slots
+    WHERE case_id = ? AND date >= ? AND content_kind = ? AND goal = ? AND status NOT IN (?, ?)
+    ORDER BY date ASC, created_at ASC LIMIT 1`,
+    [caze.id, startDate, plan.contentKind, plan.goal, '已取消', '已完成']
+  ));
+}
+
+function nextOpenStrategyDate(caze, postingStrategy = {}, startDate = addDays(new Date().toISOString().slice(0, 10), 1), searchDays = 45) {
+  for (let i = 0; i < searchDays; i += 1) {
+    const date = addDays(startDate, i);
+    if (!shouldCreateSlotForDate(caze, date, postingStrategy)) continue;
+    if (openSlotForDate(caze.id, date)) continue;
+    return date;
+  }
+  return null;
+}
+
 function prunePendingSlotsForStrategy(caze, postingStrategy = {}, startDate = new Date().toISOString().slice(0, 10)) {
   if (!caze?.id) return 0;
   const slots = all(
@@ -2485,7 +2513,7 @@ function monitorActionQueue(monitor = {}) {
         collectionPolicy: item.collectionPolicy
       });
     }
-    if (!item.activeViralAlerts?.length && item.topVideo?.latestSnapshot) {
+    if (!item.activeViralAlerts?.length && item.postingStrategy?.intervalDays > 0 && item.topVideo?.latestSnapshot) {
       const plays = item.topVideo.latestSnapshot.plays || 0;
       const comments = item.topVideo.latestSnapshot.comments || 0;
       if (plays > 0 && plays < 2000 && comments < 20) {
@@ -2502,7 +2530,7 @@ function monitorActionQueue(monitor = {}) {
         });
       }
     }
-    if (!item.activeViralAlerts?.length && item.fanDelta != null && item.fanDelta >= 50) {
+    if (!item.activeViralAlerts?.length && item.postingStrategy?.intervalDays > 0 && item.fanDelta != null && item.fanDelta >= 50) {
       actions.push({
         id: `growth-${caze.id}`,
         priority: 55,
@@ -2547,15 +2575,49 @@ function createMonitorActionSlot(input = {}) {
     error.status = 400;
     throw error;
   }
-  const date = input.date || addDays(new Date().toISOString().slice(0, 10), 1);
-  const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
-  const existing = rowSlot(get(
-    'SELECT * FROM plan_slots WHERE case_id = ? AND date = ? AND content_kind = ? AND goal = ? LIMIT 1',
-    [caze.id, date, plan.contentKind, plan.goal]
-  ));
-  if (existing) {
-    return { created: false, kind, title: plan.title, slot: existing };
+  const today = new Date().toISOString().slice(0, 10);
+  const postingStrategy = postingStrategyForCase(caze);
+  if (caseIsPaused(caze) || Number(postingStrategy.intervalDays ?? 1) <= 0) {
+    return {
+      created: false,
+      skipped: true,
+      kind,
+      title: plan.title,
+      slot: null,
+      reason: postingStrategy.reason || '账号已暂停或休眠，先不生成新的排期。'
+    };
   }
+  const existingStrategy = existingStrategySlot(caze, plan, today);
+  if (existingStrategy) {
+    return { created: false, kind, title: plan.title, slot: existingStrategy, reason: '已有同类账号策略排期，不重复生成。' };
+  }
+  const requestedDate = input.date || '';
+  let date = requestedDate || nextOpenStrategyDate(caze, postingStrategy);
+  if (!date) {
+    return {
+      created: false,
+      skipped: true,
+      kind,
+      title: plan.title,
+      slot: null,
+      reason: '未来 45 天没有符合账号投放频率的空档，先不额外加任务。'
+    };
+  }
+  if (!shouldCreateSlotForDate(caze, date, postingStrategy)) {
+    return {
+      created: false,
+      skipped: true,
+      kind,
+      title: plan.title,
+      slot: null,
+      reason: postingStrategy.reason || '当前日期不在这个账号的投放频率内。'
+    };
+  }
+  const existingOpenSlot = openSlotForDate(caze.id, date);
+  if (existingOpenSlot) {
+    return { created: false, skipped: true, kind, title: plan.title, slot: existingOpenSlot, reason: '当天已有排期，先不额外加任务。' };
+  }
+  const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
   const slot = createSlotForCase(caze, {
     date,
     timeWindow: input.timeWindow || '19:00-21:00',
@@ -2564,7 +2626,7 @@ function createMonitorActionSlot(input = {}) {
     stage,
     status: '待生成'
   });
-  return { created: true, kind, title: plan.title, slot };
+  return { created: true, kind, title: plan.title, slot, postingStrategy };
 }
 
 function truthy(value) {

@@ -735,7 +735,9 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, canOpenLoc
         )}>确认暂停</button>}
         {monitorActionSlotLabel(item.monitorAction.kind) && item.case?.id && <button onClick={() => onAct(
           () => request('/douyin-monitor/actions/slot', { method: 'POST', body: JSON.stringify({ caseId: item.case.id, kind: item.monitorAction.kind }) }),
-          (result) => result.created ? `已生成：${result.slot.date} ${result.slot.contentKind}` : `已有对应排期：${result.slot.date} ${result.slot.contentKind}`
+          (result) => result.created
+            ? `已生成：${result.slot.date} ${result.slot.contentKind}`
+            : (result.slot ? `已有对应排期：${result.slot.date} ${result.slot.contentKind}` : (result.reason || '当前账号不生成新排期'))
         )}>{monitorActionSlotLabel(item.monitorAction.kind)}</button>}
       </div>
     );
