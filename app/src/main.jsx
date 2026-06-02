@@ -370,6 +370,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
   const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
   const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
   const beginnerSteps = buildBeginnerSteps(data, operatorMonitorActions);
+  const priorityActions = buildPriorityActions(data, strategyActions);
   return (
     <div className="stack">
       <section className="hero">
@@ -408,24 +409,15 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
         </div>
       </section>
 
-      {(data.viralAlerts || []).length > 0 && <ViralAlertSection items={data.viralAlerts || []} onOpenCase={onOpenCase} onAct={onAct} />}
-      {strategyActions.length > 0 && <MonitorActionSection title="账号策略动作" empty="暂无需要工作人员处理的账号策略动作" items={strategyActions} onOpenCase={onOpenCase} onAct={onAct} />}
-
-      <section className="panel beginnerPanel">
-        <div className="sectionHead">
-          <h2>新手今日顺序</h2>
-          <span>{beginnerSteps.filter((item) => item.count > 0).length} 个动作</span>
-        </div>
-        <div className="beginnerGrid">
-          {beginnerSteps.map((step, index) => (
-            <div className={`beginnerStep ${step.count > 0 ? 'active' : ''}`} key={step.title}>
-              <strong>{index + 1}. {step.title}</strong>
-              <span>{step.count > 0 ? `${step.count} 条` : '暂无'}</span>
-              <small>{step.note}</small>
-            </div>
-          ))}
-        </div>
-      </section>
+      <PriorityActionSection
+        items={priorityActions}
+        onOpenCase={onOpenCase}
+        onAct={onAct}
+        onCopy={onCopy}
+        onOpenViral={onOpenViral}
+        onDelivery={onDelivery}
+        canOpenLocalPaths={canOpenLocalPaths}
+      />
 
       <section className="panel">
         <div className="sectionHead">
@@ -454,6 +446,25 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
             ))}
           </div>
         )}
+      </section>
+
+      {(data.viralAlerts || []).length > 0 && <ViralAlertSection items={data.viralAlerts || []} onOpenCase={onOpenCase} onAct={onAct} />}
+      {strategyActions.length > 0 && <MonitorActionSection title="账号策略动作" empty="暂无需要工作人员处理的账号策略动作" items={strategyActions} onOpenCase={onOpenCase} onAct={onAct} />}
+
+      <section className="panel beginnerPanel">
+        <div className="sectionHead">
+          <h2>新手今日顺序</h2>
+          <span>{beginnerSteps.filter((item) => item.count > 0).length} 个动作</span>
+        </div>
+        <div className="beginnerGrid">
+          {beginnerSteps.map((step, index) => (
+            <div className={`beginnerStep ${step.count > 0 ? 'active' : ''}`} key={step.title}>
+              <strong>{index + 1}. {step.title}</strong>
+              <span>{step.count > 0 ? `${step.count} 条` : '暂无'}</span>
+              <small>{step.note}</small>
+            </div>
+          ))}
+        </div>
       </section>
 
       {data.readyDelivery.length > 0 && <TaskSection title="可微信交付" items={data.readyDelivery} empty="没有可交付任务" onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />}
@@ -680,6 +691,238 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
       )}
     </section>
   );
+}
+
+function buildPriorityActions(data = {}, strategyActions = []) {
+  const items = [];
+  (data.viralAlerts || []).slice(0, 6).forEach((alert) => {
+    items.push({
+      id: `alert-${alert.id}`,
+      priority: alert.level === 'high' ? 120 : 110,
+      kind: '爆款互动',
+      status: alert.level === 'high' ? '强信号' : '有苗头',
+      statusClass: alert.level === 'high' ? 'bad' : 'report',
+      title: `${alert.case?.weixinNick || '未知账号'} 出爆款`,
+      detail: `${alert.video?.title || alert.video?.url || '未命名作品'}｜播放 ${formatNumber(alert.snapshot?.plays)}｜评论 ${formatNumber(alert.snapshot?.comments)}`,
+      note: alert.interactionNote || '安排助理号/阑尾号进评论区互动和承接。',
+      case: alert.case,
+      alert
+    });
+  });
+  (data.readyDelivery || []).slice(0, 8).forEach((slot) => {
+    items.push({
+      id: `delivery-${slot.id}`,
+      priority: 100,
+      kind: '微信交付',
+      status: slot.status,
+      title: `发给 ${slot.case?.weixinNick || '未命名兼职'}`,
+      detail: `${slot.case?.staff || '未填对接人'}｜${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
+      note: '在网页交付弹窗里复制文案，下载图片或视频，通过微信发送。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.pendingChoose || []).slice(0, 8).forEach((slot) => {
+    items.push({
+      id: `choose-${slot.id}`,
+      priority: 82,
+      kind: '选候选',
+      status: slot.status,
+      title: `${slot.case?.weixinNick || '未命名兼职'} 等待选稿`,
+      detail: `${slot.case?.staff || '未填对接人'}｜${slot.contentKind}｜候选 ${slot.candidateCount || 0} 条`,
+      note: '进案例详情，从 3 条候选里选一条锁定。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.materialSync || []).slice(0, 8).forEach((row) => {
+    items.push({
+      id: `sync-${row.caseId}`,
+      priority: row.status === '目录不可用' ? 78 : 76,
+      kind: '素材同步',
+      status: row.status,
+      statusClass: row.status === '目录不可用' ? 'bad' : 'wait',
+      title: `${row.case?.weixinNick || '未知账号'} 有共享素材要处理`,
+      detail: `${row.sourceDir || '未填写共享目录'}｜待同步 ${row.unsyncedCount || 0} 个`,
+      note: row.status === '目录不可用' ? '先检查登记的共享原始素材路径。' : '点击同步，把共享目录里的新素材纳入这个案例。',
+      case: row.case,
+      materialSync: row
+    });
+  });
+  (data.pendingGenerate || []).slice(0, 8).forEach((slot) => {
+    items.push({
+      id: `generate-${slot.id}`,
+      priority: 65,
+      kind: '生成候选',
+      status: slot.status,
+      title: `${slot.case?.weixinNick || '未命名兼职'} 今天缺内容`,
+      detail: `${slot.case?.staff || '未填对接人'}｜${slot.contentKind}｜${slot.goal}`,
+      note: '先让系统生成 3 条候选稿。',
+      case: slot.case,
+      slot
+    });
+  });
+  strategyActions.slice(0, 8).forEach((item) => {
+    items.push({
+      id: `strategy-${item.id}`,
+      priority: item.priority || 55,
+      kind: item.kind,
+      status: item.title,
+      statusClass: monitorActionClass(item.kind),
+      title: `${item.case?.weixinNick || '未知账号'} 需要账号策略`,
+      detail: item.reason,
+      note: item.action,
+      case: item.case,
+      monitorAction: item
+    });
+  });
+  (data.pendingViralTemplates || []).slice(0, 5).forEach((item) => {
+    items.push({
+      id: `viral-template-${item.id}`,
+      priority: 48,
+      kind: '爆款分析',
+      status: '待分析',
+      statusClass: 'wait',
+      title: pendingViralTitle(item),
+      detail: item.sourceLink || '未填写链接',
+      note: '复制分析任务，提取结构后再批量生成人设化内容。',
+      viralTemplate: item
+    });
+  });
+  (data.clipTasks || []).slice(0, 5).forEach((task) => {
+    items.push({
+      id: `clip-${task.id}`,
+      priority: 42,
+      kind: '剪辑任务',
+      status: displayStatus(task.status),
+      statusClass: statusClass(task.status),
+      title: `${task.case?.weixinNick || '未知账号'} 要剪辑`,
+      detail: task.title,
+      note: '复制任务单，剪完或安排发布后标记完成。',
+      case: task.case,
+      clipTask: task
+    });
+  });
+  return items.sort((a, b) => b.priority - a.priority).slice(0, 6);
+}
+
+function PriorityActionSection({ items, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, canOpenLocalPaths }) {
+  return (
+    <section className="panel priorityPanel">
+      <div className="sectionHead">
+        <h2>今天先处理</h2>
+        <span>{items.length} 条</span>
+      </div>
+      {items.length === 0 ? <div className="empty">今天没有必须优先处理的动作</div> : (
+        <div className="priorityList">
+          {items.map((item) => (
+            <div className="priorityRow" key={item.id}>
+              <div className="priorityBadge">
+                <strong>{item.kind}</strong>
+                <span className={`status ${item.statusClass || statusClass(item.status)}`}>{item.status}</span>
+              </div>
+              <div className="taskMain">
+                <div className="rowTitle">
+                  {item.case?.id ? <button className="linkButton" onClick={() => onOpenCase(item.case.id)}>{item.title}</button> : <strong>{item.title}</strong>}
+                </div>
+                <p>{item.detail}</p>
+                <small>{item.note}</small>
+              </div>
+              <PriorityActionButtons
+                item={item}
+                onOpenCase={onOpenCase}
+                onAct={onAct}
+                onCopy={onCopy}
+                onOpenViral={onOpenViral}
+                onDelivery={onDelivery}
+                canOpenLocalPaths={canOpenLocalPaths}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PriorityActionButtons({ item, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, canOpenLocalPaths }) {
+  if (item.alert) {
+    return (
+      <div className="rowActions">
+        {item.alert.video?.url && <a className="button" href={item.alert.video.url} target="_blank">打开作品</a>}
+        <button onClick={() => onAct(
+          () => request(`/viral-alerts/${item.alert.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
+          '爆款互动已标记'
+        )}>标记已互动</button>
+      </div>
+    );
+  }
+  if (item.slot?.status === '可交付') {
+    return (
+      <div className="rowActions">
+        <button onClick={() => onDelivery(item.slot)}>查看交付</button>
+        <button onClick={() => onAct(() => request(`/slots/${item.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) }), '已标记派发')}>已微信发送</button>
+      </div>
+    );
+  }
+  if (item.slot?.status === '候选待选') {
+    return (
+      <div className="rowActions">
+        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>去选择</button>
+        {item.slot.selectedCandidate && <button onClick={() => onCopy(`${item.slot.selectedCandidate.title}\n\n${item.slot.selectedCandidate.publishText}`, '发布文案已复制')}>复制文案</button>}
+      </div>
+    );
+  }
+  if (item.slot?.status === '待生成') {
+    return (
+      <div className="rowActions">
+        <button onClick={() => onAct(() => request(`/slots/${item.slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>
+        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
+      </div>
+    );
+  }
+  if (item.materialSync) {
+    return (
+      <div className="rowActions">
+        {item.materialSync.status === '待同步' && item.case?.id && <button onClick={() => onAct(
+          () => request(`/cases/${item.case.id}/sync-source-materials`, { method: 'POST' }),
+          (result) => `已同步共享素材：复制 ${result.copied} 个，新增 ${result.inserted} 个`
+        )}>同步素材</button>}
+        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
+        {canOpenLocalPaths && item.materialSync.sourceDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.materialSync.sourceDir }) }), '已打开共享目录')}>打开共享目录</button>}
+      </div>
+    );
+  }
+  if (item.monitorAction) {
+    return (
+      <div className="rowActions">
+        {item.case?.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
+        {monitorActionSlotLabel(item.monitorAction.kind) && item.case?.id && <button onClick={() => onAct(
+          () => request('/douyin-monitor/actions/slot', { method: 'POST', body: JSON.stringify({ caseId: item.case.id, kind: item.monitorAction.kind }) }),
+          (result) => result.created ? `已生成：${result.slot.date} ${result.slot.contentKind}` : `已有对应排期：${result.slot.date} ${result.slot.contentKind}`
+        )}>{monitorActionSlotLabel(item.monitorAction.kind)}</button>}
+      </div>
+    );
+  }
+  if (item.viralTemplate) {
+    return (
+      <div className="rowActions">
+        {item.viralTemplate.sourceLink && <a className="button" href={item.viralTemplate.sourceLink} target="_blank">打开链接</a>}
+        <button onClick={() => copyViralAnalysisTask(item.viralTemplate, onCopy)}>复制分析任务</button>
+        <button onClick={onOpenViral}>补分析</button>
+      </div>
+    );
+  }
+  if (item.clipTask) {
+    return (
+      <div className="rowActions">
+        <button onClick={() => onCopy(item.clipTask.brief, '剪辑任务单已复制')}>复制任务单</button>
+        {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.clipTask.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}
+        <button onClick={() => onAct(() => request(`/clip-tasks/${item.clipTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) }), '剪辑任务已标记：已完成')}>标记完成</button>
+      </div>
+    );
+  }
+  return <div className="rowActions"><button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button></div>;
 }
 
 function MaterialSyncSection({ items, onOpenCase, onAct, canOpenLocalPaths }) {

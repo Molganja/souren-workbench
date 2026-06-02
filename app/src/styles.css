@@ -242,6 +242,36 @@ button.activeSmall {
   gap: 10px;
 }
 
+.priorityList {
+  display: grid;
+  gap: 8px;
+}
+
+.priorityRow {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  align-items: center;
+}
+
+.priorityBadge {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+}
+
+.priorityBadge strong {
+  font-size: 14px;
+}
+
+.priorityBadge .status {
+  width: fit-content;
+}
+
 .contactGrid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
@@ -1267,7 +1297,7 @@ textarea {
   .topActions {
     margin-left: 0;
   }
-  .hero, .caseHeader, .taskRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow {
+  .hero, .caseHeader, .taskRow, .priorityRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow {
     grid-template-columns: 1fr;
   }
   .stats, .draftGrid, .beginnerGrid {
