@@ -142,6 +142,19 @@ else fail('前台导航仍暴露系统配置旧口径');
 if (mainSource.includes('activePriority') && mainSource.includes('queueSummary') && mainSource.includes('后面还有')) ok('今日队列只开放队首任务操作');
 else fail('今日队列缺少队首防呆状态');
 
+if (
+  serverSource.includes('function dashboardPriorityActions')
+  && serverSource.includes('priorityActions,')
+  && serverSource.includes('queueHead: priorityActions[0] || null')
+  && serverSource.includes('return Array.isArray(data.priorityActions) ? data.priorityActions[0] || null : null')
+  && mainSource.includes('const priorityActions = data.priorityActions || []')
+  && mainSource.includes('dashboard?.queueHead || dashboard?.priorityActions?.[0]')
+  && !mainSource.includes('function buildPriorityActions')
+  && !mainSource.includes('function firstPriorityAction')
+  && !mainSource.includes('function monitorActionClass')
+) ok('今日队列由后端单一真源排序，前端不再重复拼队列');
+else fail('今日队列前后端仍可能各自排序，导致队首不一致');
+
 if (mainSource.includes('focusMeta') && mainSource.includes('微信：') && mainSource.includes('抖音：') && mainSource.includes('项目：')) ok('队首任务直接显示当前收件账号');
 else fail('队首任务缺少收件账号信息');
 
@@ -514,7 +527,7 @@ else fail('同一排期仍可能重复创建剪辑任务');
 if (mainSource.includes('ClipTaskModal') && mainSource.includes('我已看完固定配方') && mainSource.includes('recipeConfirmed: true') && !mainSource.includes('CLIP_ACTIONS') && serverSource.includes('完成剪辑前必须先确认已看完固定剪辑配方') && smokeSource.includes('clipCompletedWithoutRecipeRejected')) ok('剪辑任务必须先查看完整固定配方才能标记完成');
 else fail('剪辑任务仍可能不看配方直接标记完成');
 
-if (mainSource.includes('先打开完整剪辑要求并确认看完配方') && readmeSource.includes('打开完整要求并确认看完配方') && !readmeSource.includes('可在首页查看并标记状态')) ok('剪辑任务前台和文档不再保留直接标记旧口径');
+if ((mainSource.includes('先打开完整剪辑要求并确认看完配方') || serverSource.includes('先打开完整剪辑要求并确认看完配方')) && readmeSource.includes('打开完整要求并确认看完配方') && !readmeSource.includes('可在首页查看并标记状态')) ok('剪辑任务前台和文档不再保留直接标记旧口径');
 else fail('剪辑任务仍有直接查看标记的旧口径');
 
 if (serverSource.includes('剪辑任务必须绑定具体排期') && mainSource.includes('来自具体排期') && !mainSource.includes('新建剪辑任务') && !mainSource.includes('临时剪辑任务')) ok('剪辑任务只能从具体排期创建');

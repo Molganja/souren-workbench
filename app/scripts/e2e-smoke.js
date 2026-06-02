@@ -1211,6 +1211,10 @@ async function main() {
     assert(deliveryDashboardSlot.case.weixinNick === '验收兼职改名', 'dashboard missing case recipient');
     assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitDone), 'dashboard work split counts missing');
     assert(!('sentWaitReport' in deliveryDashboard.counts), 'dashboard still exposes old sent wait report count');
+    assert(Array.isArray(deliveryDashboard.priorityActions), 'dashboard missing backend priority action queue');
+    assert(deliveryDashboard.priorityActions.length > 0, 'dashboard priority action queue unexpectedly empty');
+    assert(deliveryDashboard.queueHead?.id === deliveryDashboard.priorityActions[0].id, 'dashboard queueHead diverged from first priority action');
+    assert(deliveryDashboard.queueHead.case?.weixinNick && deliveryDashboard.queueHead.title && deliveryDashboard.queueHead.detail && deliveryDashboard.queueHead.note, 'backend queue head missing display fields');
 
     const complianceSeed = await api('/content-seeds', {
       method: 'POST',

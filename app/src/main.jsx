@@ -222,7 +222,7 @@ function App() {
     </div>
   );
   const canUseWorkbench = session ? (!session.authRequired || session.authenticated) : false;
-  const activeQueueItem = dashboard ? firstPriorityAction(dashboard) : null;
+  const activeQueueItem = dashboard?.queueHead || dashboard?.priorityActions?.[0] || null;
 
   return (
     <div>
@@ -321,9 +321,7 @@ function App() {
 }
 
 function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask }) {
-  const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
-  const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
-  const priorityActions = buildPriorityActions(data, strategyActions);
+  const priorityActions = data.priorityActions || [];
   const waitingConfirm = buildWaitingConfirmActions(data);
   const accountGroups = groupQueueByAccount(priorityActions);
   const dashboardStats = buildDashboardStats(data, priorityActions, waitingConfirm);
@@ -412,14 +410,6 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask }) {
   );
 }
 
-function monitorActionClass(kind) {
-  if (kind === '爆款互动') return 'bad';
-  if (kind === '账号采集') return 'wait';
-  if (kind === '偏冷补内容') return 'report';
-  if (kind === '增长承接') return 'ok';
-  return 'ready';
-}
-
 function monitorActionSlotLabel(kind) {
   if (kind === '偏冷补内容') return '生成爆款槽位';
   if (kind === '增长承接') return '生成承接槽位';
@@ -436,12 +426,6 @@ function buildDashboardStats(data = {}, priorityActions = [], waitingConfirm = [
     { label: '出爆款', value: counts.viralAlerts || 0 },
     { label: '阻塞/缺口', value: blocked }
   ];
-}
-
-function firstPriorityAction(data = {}) {
-  const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
-  const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
-  return buildPriorityActions(data, strategyActions)[0] || null;
 }
 
 function activeQueueMatchesSlot(activeQueueItem, slot) {
@@ -461,147 +445,6 @@ function activeQueueMatchesCaseMaterial(activeQueueItem, caze) {
   if (activeQueueItem.materialSync?.caseId === caze.id || activeQueueItem.materialSync?.case?.id === caze.id) return true;
   if (activeQueueItem.slot?.caseId === caze.id && ['素材阻塞', '异常'].includes(activeQueueItem.slot.status)) return true;
   return false;
-}
-
-function buildPriorityActions(data = {}, strategyActions = []) {
-  const items = [];
-  (data.viralAlerts || []).forEach((alert) => {
-    items.push({
-      id: `alert-${alert.id}`,
-      priority: alert.level === 'high' ? 120 : 110,
-      kind: '爆款互动',
-      status: alert.level === 'high' ? '强信号' : '有苗头',
-      statusClass: alert.level === 'high' ? 'bad' : 'report',
-      title: `${alert.case?.weixinNick || '未知账号'} 出爆款`,
-      detail: `${alert.video?.title || alert.video?.url || '未命名作品'}｜播放 ${formatNumber(alert.snapshot?.plays)}｜评论 ${formatNumber(alert.snapshot?.comments)}`,
-      note: alert.interactionNote || '安排助理号/阑尾号进评论区互动和承接。',
-      case: alert.case,
-      alert
-    });
-  });
-  (data.readyDelivery || []).forEach((slot) => {
-    items.push({
-      id: `delivery-${slot.id}`,
-      priority: 100,
-      kind: '微信交付',
-      status: slot.status,
-      title: `发给 ${slot.case?.weixinNick || '未命名兼职'}`,
-      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
-      note: '在网页交付弹窗里复制文案，下载图片或视频，通过微信发送。',
-      case: slot.case,
-      slot
-    });
-  });
-  (data.todaySlots || []).filter((slot) => slot.status === '已锁定').forEach((slot) => {
-    items.push({
-      id: `locked-${slot.id}`,
-      priority: 88,
-      kind: '生成交付',
-      status: slot.status,
-      title: `${slot.case?.weixinNick || '未命名兼职'} 已锁定文案`,
-      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
-      note: '生成网页交付内容后，就能复制文案和发送素材。',
-      case: slot.case,
-      slot
-    });
-  });
-  (data.intakeIssues || []).forEach((row) => {
-    items.push({
-      id: row.id,
-      priority: 84,
-      kind: '补登记',
-      status: row.status,
-      statusClass: 'bad',
-      title: row.title || `${row.case?.weixinNick || '未知账号'} 登记资料缺失`,
-      detail: row.detail || (row.issues || []).join(' / '),
-      note: row.action || '打开案例，编辑微信、抖音主页、项目和共享原始素材路径。',
-      case: row.case,
-      intakeIssue: row
-    });
-  });
-  (data.pendingChoose || []).forEach((slot) => {
-    items.push({
-      id: `choose-${slot.id}`,
-      priority: 82,
-      kind: '选候选',
-      status: slot.status,
-      title: `${slot.case?.weixinNick || '未命名兼职'} 等待选稿`,
-      detail: `${slot.contentKind}｜候选 ${slot.candidateCount || 0} 条`,
-      note: '进案例详情，从 3 条候选里选一条锁定。',
-      case: slot.case,
-      slot
-    });
-  });
-  (data.todaySlots || []).filter((slot) => ['素材阻塞', '异常'].includes(slot.status)).forEach((slot) => {
-    items.push({
-      id: `blocked-${slot.id}`,
-      priority: slot.status === '异常' ? 79 : 78,
-      kind: slot.status === '异常' ? '异常处理' : '补素材',
-      status: slot.status,
-      statusClass: 'bad',
-      title: `${slot.case?.weixinNick || '未命名兼职'} 不能交付`,
-      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
-      note: slot.status === '异常' ? '先打开案例查看异常原因，再决定重生成或人工处理。' : '先补素材或同步共享素材，再重新生成交付内容。',
-      case: slot.case,
-      slot
-    });
-  });
-  (data.materialSync || []).forEach((row) => {
-    items.push({
-      id: `sync-${row.caseId}`,
-      priority: row.status === '目录不可用' ? 78 : 76,
-      kind: '素材同步',
-      status: row.status,
-      statusClass: row.status === '目录不可用' ? 'bad' : 'wait',
-      title: `${row.case?.weixinNick || '未知账号'} 有共享素材要处理`,
-      detail: `${row.sourceDir || '未填写共享目录'}｜待同步 ${row.unsyncedCount || 0} 个`,
-      note: row.status === '目录不可用' ? '先检查登记的共享原始素材路径。' : '点击同步，把共享目录里的新素材纳入这个案例。',
-      case: row.case,
-      materialSync: row
-    });
-  });
-  (data.pendingGenerate || []).forEach((slot) => {
-    items.push({
-      id: `generate-${slot.id}`,
-      priority: 65,
-      kind: '生成候选',
-      status: slot.status,
-      title: `${slot.case?.weixinNick || '未命名兼职'} 今天缺内容`,
-      detail: `${slot.contentKind}｜${slot.goal}`,
-      note: '先让系统生成 3 条候选稿。',
-      case: slot.case,
-      slot
-    });
-  });
-  strategyActions.forEach((item) => {
-    items.push({
-      id: `strategy-${item.id}`,
-      priority: item.priority || 55,
-      kind: item.kind,
-      status: item.title,
-      statusClass: monitorActionClass(item.kind),
-      title: `${item.case?.weixinNick || '未知账号'} 需要账号策略`,
-      detail: item.reason,
-      note: item.action,
-      case: item.case,
-      monitorAction: item
-    });
-  });
-  (data.clipTasks || []).forEach((task) => {
-    items.push({
-      id: `clip-${task.id}`,
-      priority: 42,
-      kind: '剪辑任务',
-      status: displayStatus(task.status),
-      statusClass: statusClass(task.status),
-      title: `${task.case?.weixinNick || '未知账号'} 要剪辑`,
-      detail: task.title,
-      note: '先打开完整剪辑要求并确认看完配方，剪完或安排发布后再标记完成。',
-      case: task.case,
-      clipTask: task
-    });
-  });
-  return items.sort((a, b) => b.priority - a.priority);
 }
 
 function buildWaitingConfirmActions(data = {}) {

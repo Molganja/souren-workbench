@@ -2865,6 +2865,28 @@ function monitorForCase(monitor, caseId) {
   return monitor.accounts.find((item) => item.case.id === caseId) || {};
 }
 
+function queueStatusClass(status) {
+  if (['待生成', '候选待选'].includes(status)) return 'wait';
+  if (['已锁定', '可交付'].includes(status)) return 'ready';
+  if (['已派发'].includes(status)) return 'report';
+  if (['已完成', 'approved', 'completed'].includes(status)) return 'ok';
+  if (['素材阻塞', '异常', 'rejected', 'error', 'timeout', 'unknown'].includes(status)) return 'bad';
+  if (['waiting_key', 'draft', 'waiting_edit', 'unavailable', 'waiting_chrome', '已取消'].includes(status)) return 'wait';
+  if (['generating', 'review', 'handled'].includes(status)) return 'report';
+  return 'bad';
+}
+
+function monitorActionStatusClass(kind) {
+  if (kind === '偏冷补内容') return 'wait';
+  if (kind === '增长承接') return 'report';
+  return 'ready';
+}
+
+function displayNumber(value) {
+  if (value === undefined || value === null || value === '') return '—';
+  return Number(value).toLocaleString('zh-CN');
+}
+
 function monitorActionQueue(monitor = {}) {
   const actions = [];
   (monitor.viralAlerts || []).forEach((alert) => {
@@ -3695,6 +3717,157 @@ function scheduleSummary() {
   };
 }
 
+function dashboardPriorityActions(data = {}) {
+  const items = [];
+  (data.viralAlerts || []).forEach((alert) => {
+    items.push({
+      id: `alert-${alert.id}`,
+      priority: alert.level === 'high' ? 120 : 110,
+      kind: '爆款互动',
+      status: alert.level === 'high' ? '强信号' : '有苗头',
+      statusClass: alert.level === 'high' ? 'bad' : 'report',
+      title: `${alert.case?.weixinNick || '未知账号'} 出爆款`,
+      detail: `${alert.video?.title || alert.video?.url || '未命名作品'}｜播放 ${displayNumber(alert.snapshot?.plays)}｜评论 ${displayNumber(alert.snapshot?.comments)}`,
+      note: alert.interactionNote || '安排助理号/阑尾号进评论区互动和承接。',
+      case: alert.case,
+      alert
+    });
+  });
+  (data.readyDelivery || []).forEach((slot) => {
+    items.push({
+      id: `delivery-${slot.id}`,
+      priority: 100,
+      kind: '微信交付',
+      status: slot.status,
+      statusClass: queueStatusClass(slot.status),
+      title: `发给 ${slot.case?.weixinNick || '未命名兼职'}`,
+      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
+      note: '在网页交付弹窗里复制文案，下载图片或视频，通过微信发送。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.todaySlots || []).filter((slot) => slot.status === '已锁定').forEach((slot) => {
+    items.push({
+      id: `locked-${slot.id}`,
+      priority: 88,
+      kind: '生成交付',
+      status: slot.status,
+      statusClass: queueStatusClass(slot.status),
+      title: `${slot.case?.weixinNick || '未命名兼职'} 已锁定文案`,
+      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
+      note: '生成网页交付内容后，就能复制文案和发送素材。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.intakeIssues || []).forEach((row) => {
+    items.push({
+      id: row.id,
+      priority: 84,
+      kind: '补登记',
+      status: row.status,
+      statusClass: 'bad',
+      title: row.title || `${row.case?.weixinNick || '未知账号'} 登记资料缺失`,
+      detail: row.detail || (row.issues || []).join(' / '),
+      note: row.action || '打开案例，编辑微信、抖音主页、项目和共享原始素材路径。',
+      case: row.case,
+      intakeIssue: row
+    });
+  });
+  (data.pendingChoose || []).forEach((slot) => {
+    items.push({
+      id: `choose-${slot.id}`,
+      priority: 82,
+      kind: '选候选',
+      status: slot.status,
+      statusClass: queueStatusClass(slot.status),
+      title: `${slot.case?.weixinNick || '未命名兼职'} 等待选稿`,
+      detail: `${slot.contentKind}｜候选 ${slot.candidateCount || 0} 条`,
+      note: '进案例详情，从 3 条候选里选一条锁定。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.todaySlots || []).filter((slot) => ['素材阻塞', '异常'].includes(slot.status)).forEach((slot) => {
+    items.push({
+      id: `blocked-${slot.id}`,
+      priority: slot.status === '异常' ? 79 : 78,
+      kind: slot.status === '异常' ? '异常处理' : '补素材',
+      status: slot.status,
+      statusClass: 'bad',
+      title: `${slot.case?.weixinNick || '未命名兼职'} 不能交付`,
+      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
+      note: slot.status === '异常' ? '先打开案例查看异常原因，再决定重生成或人工处理。' : '先补素材或同步共享素材，再重新生成交付内容。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.materialSync || []).forEach((row) => {
+    items.push({
+      id: `sync-${row.caseId}`,
+      priority: row.status === '目录不可用' ? 78 : 76,
+      kind: '素材同步',
+      status: row.status,
+      statusClass: row.status === '目录不可用' ? 'bad' : 'wait',
+      title: `${row.case?.weixinNick || '未知账号'} 有共享素材要处理`,
+      detail: `${row.sourceDir || '未填写共享目录'}｜待同步 ${row.unsyncedCount || 0} 个`,
+      note: row.status === '目录不可用' ? '先检查登记的共享原始素材路径。' : '点击同步，把共享目录里的新素材纳入这个案例。',
+      case: row.case,
+      materialSync: row
+    });
+  });
+  (data.pendingGenerate || []).forEach((slot) => {
+    items.push({
+      id: `generate-${slot.id}`,
+      priority: 65,
+      kind: '生成候选',
+      status: slot.status,
+      statusClass: queueStatusClass(slot.status),
+      title: `${slot.case?.weixinNick || '未命名兼职'} 今天缺内容`,
+      detail: `${slot.contentKind}｜${slot.goal}`,
+      note: '先让系统生成 3 条候选稿。',
+      case: slot.case,
+      slot
+    });
+  });
+  (data.monitorActions || [])
+    .filter((item) => item.kind !== '账号采集' && item.kind !== '爆款互动')
+    .forEach((item) => {
+      items.push({
+        id: `strategy-${item.id}`,
+        priority: item.priority || 55,
+        kind: item.kind,
+        status: item.title,
+        statusClass: monitorActionStatusClass(item.kind),
+        title: `${item.case?.weixinNick || '未知账号'} 需要账号策略`,
+        detail: item.reason,
+        note: item.action,
+        case: item.case,
+        monitorAction: item
+      });
+    });
+  (data.clipTasks || []).forEach((task) => {
+    items.push({
+      id: `clip-${task.id}`,
+      priority: 42,
+      kind: '剪辑任务',
+      status: displayStatus(task.status),
+      statusClass: queueStatusClass(task.status),
+      title: `${task.case?.weixinNick || '未知账号'} 要剪辑`,
+      detail: task.title,
+      note: '先打开完整剪辑要求并确认看完配方，剪完或安排发布后再标记完成。',
+      case: task.case,
+      clipTask: task
+    });
+  });
+  return items.sort((a, b) => {
+    const byPriority = (b.priority || 0) - (a.priority || 0);
+    if (byPriority) return byPriority;
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
+}
+
 function dashboard() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const rollingSchedule = maintainRollingSchedule(cases);
@@ -3767,7 +3940,7 @@ function dashboard() {
   const openClipTasks = clipTasks
     .filter((item) => OPEN_CLIP_STATUSES.includes(item.status))
     .filter((item) => !pausedCaseIds.has(item.caseId));
-  return {
+  const result = {
     today,
     maintenance: { rollingSchedule },
     monitor,
@@ -3815,48 +3988,16 @@ function dashboard() {
       .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0 || caze.activeViralAlerts.length > 0)
       .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.requiredGapCount + b.materialGaps.length + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.requiredGapCount + a.materialGaps.length + a.reasons.length))
   };
+  const priorityActions = dashboardPriorityActions(result);
+  return {
+    ...result,
+    priorityActions,
+    queueHead: priorityActions[0] || null
+  };
 }
 
 function dashboardQueueHead(data = {}) {
-  const items = [];
-  (data.viralAlerts || []).forEach((alert) => {
-    items.push({
-      id: `alert-${alert.id}`,
-      priority: alert.level === 'high' ? 120 : 110,
-      kind: '爆款互动',
-      alert
-    });
-  });
-  (data.readyDelivery || []).forEach((slot) => {
-    items.push({ id: `delivery-${slot.id}`, priority: 100, kind: '微信交付', slot });
-  });
-  (data.todaySlots || []).filter((slot) => slot.status === '已锁定').forEach((slot) => {
-    items.push({ id: `locked-${slot.id}`, priority: 88, kind: '生成交付', slot });
-  });
-  (data.intakeIssues || []).forEach((row) => {
-    items.push({ id: row.id, priority: 84, kind: '补登记', intakeIssue: row });
-  });
-  (data.pendingChoose || []).forEach((slot) => {
-    items.push({ id: `choose-${slot.id}`, priority: 82, kind: '选候选', slot });
-  });
-  (data.todaySlots || []).filter((slot) => ['素材阻塞', '异常'].includes(slot.status)).forEach((slot) => {
-    items.push({ id: `blocked-${slot.id}`, priority: slot.status === '异常' ? 79 : 78, kind: slot.status === '异常' ? '异常处理' : '补素材', slot });
-  });
-  (data.materialSync || []).forEach((row) => {
-    items.push({ id: `sync-${row.caseId}`, priority: row.status === '目录不可用' ? 78 : 76, kind: '素材同步', materialSync: row });
-  });
-  (data.pendingGenerate || []).forEach((slot) => {
-    items.push({ id: `generate-${slot.id}`, priority: 65, kind: '生成候选', slot });
-  });
-  (data.monitorActions || [])
-    .filter((item) => item.kind !== '账号采集' && item.kind !== '爆款互动')
-    .forEach((item) => {
-      items.push({ id: `strategy-${item.id}`, priority: item.priority || 55, kind: item.kind, monitorAction: item });
-    });
-  (data.clipTasks || []).forEach((task) => {
-    items.push({ id: `clip-${task.id}`, priority: 42, kind: '剪辑任务', clipTask: task });
-  });
-  return items.sort((a, b) => b.priority - a.priority)[0] || null;
+  return Array.isArray(data.priorityActions) ? data.priorityActions[0] || null : null;
 }
 
 const OPERATOR_FLOW = [
