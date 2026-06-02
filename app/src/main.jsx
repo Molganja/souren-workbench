@@ -1296,7 +1296,6 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
           {!canRunMaterialActions && <span className="lockedNote">素材动作排到今日队列队首后处理</span>}
           {canOpenLocalPaths && caze.sourceMaterialDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.sourceMaterialDir }) }), '已打开共享素材目录')}>打开共享目录</button>}
           {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>}
-          {caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音主页</a>}
           {caseCanResume(caze) && <button className="primary" onClick={() => onAct(
             () => request(`/cases/${caze.id}/resume`, { method: 'POST' }),
             (result) => `已恢复账号：取消旧派发 ${result.canceledCount} 条，新排期 ${result.slotsCreated} 条`
