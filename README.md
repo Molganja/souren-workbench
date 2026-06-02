@@ -18,6 +18,24 @@ npm run start
 http://127.0.0.1:5174
 ```
 
+## 桌面客户端
+
+开发机上可以直接用桌面窗口运行：
+
+```bash
+cd /Users/licc/Desktop/素人系统/app
+npm run client
+```
+
+生成 Mac 桌面应用目录：
+
+```bash
+cd /Users/licc/Desktop/素人系统/app
+npm run client:mac
+```
+
+输出目录是 `app/release/`。客户端包不会带真实 `.env`、数据库或素材；运行时会在本机自己的工作数据目录里创建数据和素材库。当前桌面壳会启动本地后端并打开工作台窗口，如果电脑没有可用的 Node.js 24+，会提示先安装 Node。
+
 ## 数据和素材
 
 - 结构化数据：`/Users/licc/Desktop/素人系统/data/souren.sqlite`
@@ -83,6 +101,7 @@ SOUREN_LOCAL_AI_DISABLED=0
 ```bash
 cd /Users/licc/Desktop/素人系统/app
 npm run doctor
+npm run client:check
 npm run consult
 npm run check
 npm run test:e2e

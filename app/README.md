@@ -23,6 +23,22 @@ npm run dev
 - 前端：`http://127.0.0.1:5173`
 - 后端/API：`http://127.0.0.1:5174`
 
+桌面窗口方式：
+
+```bash
+cd /Users/licc/Desktop/素人系统/app
+npm run client
+```
+
+生成 Mac `.app` 目录：
+
+```bash
+cd /Users/licc/Desktop/素人系统/app
+npm run client:mac
+```
+
+打包输出在 `app/release/`。客户端包不会包含真实 `.env`、数据库和素材。当前后端使用 `node:sqlite`，所以运行客户端的电脑仍需要 Node.js 24+；如果要发给完全没有技术环境的 Windows 用户，下一阶段需要把后端 SQLite 运行时改成可随客户端一起打包的依赖，或随包内置 Node。
+
 生产构建后也可以只跑后端：
 
 ```bash
@@ -114,6 +130,7 @@ cd /Users/licc/Desktop/素人系统/app
 npm run doctor
 npm run consult
 npm run check
+npm run client:check
 npm run test:e2e
 npm run verify
 npm run verify:consult

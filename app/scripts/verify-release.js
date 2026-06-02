@@ -119,6 +119,7 @@ async function verifyRuntime() {
 async function main() {
   await run('npm', ['run', 'doctor']);
   await run('npm', ['run', 'check']);
+  await run('npm', ['run', 'client:check']);
   await run('npm', ['run', 'test:e2e']);
   await verifyRuntime();
   verifyGitHubSync();

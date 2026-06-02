@@ -11,6 +11,21 @@
    - `待接入`：通常是 `IMAGE_API_KEY` 或本地 `clude/Claude`，不影响排期、文案、交付、核对。
    - `需处理`：优先处理，例如 GitHub main 未同步、目录异常。
 
+如果要用桌面窗口版，在终端运行：
+
+```bash
+cd /Users/licc/Desktop/素人系统/app
+npm run client
+```
+
+生成 Mac 客户端目录：
+
+```bash
+npm run client:mac
+```
+
+当前客户端仍需要电脑有 Node.js 24+。普通运营不需要理解这些命令，日常只用双击启动或打开客户端窗口。
+
 ## 2. 工作人员每天只做的动作
 
 1. 看「今日中控台」。
@@ -131,6 +146,12 @@ npm run verify:github
 ```
 
 当前如果本机没有 GitHub 写权限，`verify:github` 会失败，这是预期提示。需要先完成 GitHub 认证或配置有写权限的 SSH key，再 push。
+
+桌面客户端配置验收：
+
+```bash
+npm run client:check
+```
 
 ## 9. 当前已知外部依赖
 

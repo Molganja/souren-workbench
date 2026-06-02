@@ -8,6 +8,7 @@ const required = [
   path.join(APP_DIR, 'package.json'),
   path.join(APP_DIR, 'server', 'index.js'),
   path.join(APP_DIR, 'server', 'db.js'),
+  path.join(APP_DIR, 'electron', 'main.cjs'),
   path.join(APP_DIR, 'src', 'main.jsx'),
   path.join(APP_DIR, 'src', 'styles.css')
 ];

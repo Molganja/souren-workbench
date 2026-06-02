@@ -360,6 +360,12 @@ function assertInsideRoot(targetPath) {
   return resolved;
 }
 
+function openLocalPath(target, callback) {
+  if (process.platform === 'darwin') return execFile('open', [target], callback);
+  if (process.platform === 'win32') return execFile('cmd', ['/c', 'start', '', target], callback);
+  return execFile('xdg-open', [target], callback);
+}
+
 function caseById(id) {
   return rowCase(get('SELECT * FROM cases WHERE id = ?', [id]));
 }
@@ -2722,7 +2728,7 @@ app.post('/api/open-path', (req, res) => {
   try {
     const target = assertInsideRoot(req.body?.path || ROOT_DIR);
     if (!fs.existsSync(target)) return res.status(404).json({ error: 'path not found' });
-    execFile('open', [target], (error) => {
+    openLocalPath(target, (error) => {
       if (error) return res.status(500).json({ error: error.message });
       res.json({ opened: target });
     });
