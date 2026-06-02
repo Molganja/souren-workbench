@@ -2191,7 +2191,6 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
           <Metric label="局域网" value={config.network?.lanEnabled ? '已开放' : '本机'} />
           <Metric label="内容阶段" value={config.stages.length} />
           <Metric label="内容类" value={config.contentKinds.length} />
-          <Metric label="就绪" value={`${config.readiness?.summary?.ready || 0}/${config.readiness?.summary?.total || 0}`} />
         </div>
       </section>
       <section className="panel">
@@ -2211,23 +2210,6 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
             <strong>访问码</strong>
             <span>{config.network?.accessCodeRequired ? '已开启' : '未开启；建议开放局域网时设置 SOUREN_ACCESS_CODE'}</span>
           </div>
-        </div>
-      </section>
-      <section className="panel">
-        <div className="sectionHead">
-          <h2>系统验收清单</h2>
-          <span>等待 {config.readiness?.summary?.waiting || 0} · 警告 {config.readiness?.summary?.warning || 0}</span>
-        </div>
-        <div className="templateList">
-          {(config.readiness?.checks || []).map((item) => (
-            <div className="templateRow readinessRow" key={item.key}>
-              <div className="rowTitle">
-                <span className={`status ${readinessStatusClass(item.status)}`}>{readinessStatusText(item.status)}</span>
-                <strong>{item.label}</strong>
-              </div>
-              <span>{item.detail}</span>
-            </div>
-          ))}
         </div>
       </section>
       <section className="panel">
@@ -2400,18 +2382,6 @@ function updateSharedAsset(asset, patch, onAct, onReload) {
   }, '通用素材已更新');
 }
 
-function readinessStatusClass(status) {
-  if (status === 'ready') return 's-ok';
-  if (status === 'waiting') return 's-pending';
-  return 's-bad';
-}
-
-function readinessStatusText(status) {
-  if (status === 'ready') return '已就绪';
-  if (status === 'waiting') return '待接入';
-  return '需处理';
-}
-
 function bulkGenerateViral(template, onAct) {
   const date = window.prompt('生成到哪一天？', today());
   if (!date) return;
@@ -2427,7 +2397,7 @@ function bulkGenerateViral(template, onAct) {
 function CaseForm({ initial, onClose, onSubmit }) {
   const isCreate = !initial;
   const defaults = useMemo(() => initial ? null : randomCaseDefaults(), [initial]);
-  const [showAdvanced, setShowAdvanced] = useState(Boolean(initial));
+  const showAdvanced = Boolean(initial);
   const [form, setForm] = useState(() => ({
     weixinNick: initial?.weixinNick || defaults?.weixinNick || '',
     douyinId: initial?.douyinId || '',
@@ -2484,7 +2454,6 @@ function CaseForm({ initial, onClose, onSubmit }) {
       </div>
       <div className="modalActions">
         {isCreate && <button onClick={reroll}>随机换一组</button>}
-        {isCreate && <button onClick={() => setShowAdvanced((prev) => !prev)}>{showAdvanced ? '收起高级信息' : '编辑高级信息'}</button>}
         <button onClick={onClose}>取消</button>
         <button className="primary" onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>{initial ? '保存' : '创建'}</button>
       </div>
