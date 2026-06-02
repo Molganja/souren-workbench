@@ -68,6 +68,7 @@ const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const ALLOWED_OPEN_ROOTS = [ROOT_DIR, SHARED_MATERIAL_ROOT, CASE_LIBRARY_ROOT];
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
+const OPEN_COLLECTION_STATUSES = ['waiting', 'waiting_collector', 'waiting_chrome', 'submitted'];
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
@@ -523,6 +524,10 @@ function rowCollectionRun(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function collectionRunIsOpen(item) {
+  return Boolean(item && OPEN_COLLECTION_STATUSES.includes(item.status));
 }
 
 function rowViralAlert(row) {
@@ -2001,6 +2006,8 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
     const caseRuns = runsByCase[caze.id] || [];
     const latestSnapshot = snapshots[0] || null;
     const initialSnapshot = snapshots[snapshots.length - 1] || null;
+    const pendingCollectionRun = caseRuns.find(collectionRunIsOpen) || null;
+    const needsCollection = Boolean(caze.douyinUrl) && (!latestSnapshot || hoursSince(latestSnapshot.collectedAt) >= 24);
     const topVideo = caseVideos
       .map((video) => ({ ...video, latestSnapshot: latestVideoSnapshots.get(video.id) || null }))
       .filter((video) => video.latestSnapshot)
@@ -2011,7 +2018,10 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
       latestSnapshot,
       fanDelta: latestSnapshot?.fans != null && initialSnapshot?.fans != null ? latestSnapshot.fans - initialSnapshot.fans : null,
       lastCollectedAt: latestSnapshot?.collectedAt || null,
-      dueCollection: Boolean(caze.douyinUrl) && (!latestSnapshot || hoursSince(latestSnapshot.collectedAt) >= 24),
+      needsCollection,
+      dueCollection: needsCollection && !pendingCollectionRun,
+      collectionQueued: Boolean(pendingCollectionRun),
+      pendingCollectionRun,
       videos: caseVideos.length,
       snapshots: (snapshotsByCase[caze.id] || []).length,
       topVideo,
@@ -2028,6 +2038,7 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
       videoSnapshots: videoSnapshots.length,
       viralAlerts: viralAlerts.length,
       dueCollection: accounts.filter((item) => item.dueCollection).length,
+      collectionQueued: accounts.filter((item) => item.collectionQueued).length,
       waitingCollector: collectionRuns.filter((item) => item.status === 'waiting_collector').length,
       waitingChrome: collectionRuns.filter((item) => item.status === 'waiting_chrome').length
     },
@@ -2078,7 +2089,7 @@ function monitorActionQueue(monitor = {}) {
         kind: '账号采集',
         title: item.latestSnapshot ? '超过24小时未采集' : '首次采集账号数据',
         reason: item.latestSnapshot ? `上次采集：${item.lastCollectedAt}` : '这个账号还没有粉丝和作品数据',
-        action: '系统会登记采集清单；主机端用已登录抖音的 Chrome 采集主页和作品数据后写回后台。',
+        action: '系统会登记采集清单；主机端用已登录抖音的 Chrome 采集主页和作品数据后写入后台。',
         case: caze,
         latestSnapshot: item.latestSnapshot,
         topVideo: item.topVideo
@@ -2228,7 +2239,7 @@ function chromeCollectionQueue(options = {}) {
   const monitor = monitorData();
   const targets = monitor.accounts
     .filter((item) => item.case?.douyinUrl)
-    .filter((item) => includeFresh || item.dueCollection)
+    .filter((item) => includeFresh || item.dueCollection || item.collectionQueued)
     .sort((a, b) => {
       if (a.dueCollection !== b.dueCollection) return a.dueCollection ? -1 : 1;
       return String(a.lastCollectedAt || '').localeCompare(String(b.lastCollectedAt || ''));
@@ -2249,6 +2260,8 @@ function chromeCollectionQueue(options = {}) {
         latestSnapshot: item.latestSnapshot,
         fanDelta: item.fanDelta,
         topVideo: item.topVideo,
+        collectionQueued: item.collectionQueued,
+        pendingCollectionRun: item.pendingCollectionRun,
         ingestEndpoint: '/api/douyin-monitor/ingest',
         ingestPayloadTemplate: chromeCollectionPayloadTemplate(caze)
       };
@@ -2266,7 +2279,8 @@ function chromeCollectionQueue(options = {}) {
 
 function registerChromeCollectionQueue(options = {}) {
   const queue = chromeCollectionQueue(options);
-  queue.targets.forEach((target) => {
+  const toRegister = queue.targets.filter((target) => !target.collectionQueued);
+  toRegister.forEach((target) => {
     run(
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
@@ -2286,7 +2300,8 @@ function registerChromeCollectionQueue(options = {}) {
   });
   return {
     ...queue,
-    registeredCount: queue.targets.length,
+    registeredCount: toRegister.length,
+    skippedQueuedCount: queue.targets.length - toRegister.length,
     monitor: monitorData()
   };
 }
@@ -2308,7 +2323,7 @@ async function submitCollectionRunToCollector(runId, caze) {
     if (!response.ok) throw new Error(`采集器返回 ${response.status}`);
     run(
       'UPDATE collection_runs SET status = ?, finished_at = ?, note = ?, updated_at = ? WHERE id = ?',
-      ['submitted', now(), '已提交给抖音采集器，等待采集器写回账号和作品数据', now(), runId]
+      ['submitted', now(), '已提交给抖音采集器，等待采集器写入账号和作品数据', now(), runId]
     );
   } catch (error) {
     run(
@@ -2319,11 +2334,11 @@ async function submitCollectionRunToCollector(runId, caze) {
 }
 
 async function enqueueDouyinCollection(source = 'manual') {
-  const cases = all("SELECT * FROM cases WHERE douyin_url IS NOT NULL AND TRIM(douyin_url) != '' ORDER BY created_at ASC").map(rowCase);
+  const targets = monitorData().accounts.filter((item) => item.dueCollection).map((item) => item.case);
   const runs = [];
-  for (const caze of cases) {
+  for (const caze of targets) {
     const id = uid('collect');
-    const status = DOUYIN_COLLECTOR_URL ? 'waiting' : 'waiting_chrome';
+    const status = DOUYIN_COLLECTOR_URL ? 'waiting_collector' : 'waiting_chrome';
     const note = DOUYIN_COLLECTOR_URL
       ? '已登记采集任务，正在提交给抖音采集器'
       : '已按 24 小时周期登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 写入账号和作品数据';
@@ -2331,7 +2346,7 @@ async function enqueueDouyinCollection(source = 'manual') {
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, caze.id, now(), DOUYIN_COLLECTOR_URL ? null : now(), status, source, note, now(), now()]
+      [id, caze.id, now(), null, status, source, note, now(), now()]
     );
     runs.push(rowCollectionRun(get('SELECT * FROM collection_runs WHERE id = ?', [id])));
     if (DOUYIN_COLLECTOR_URL) {
@@ -2413,10 +2428,16 @@ function ingestDouyinData(body = {}) {
     });
 
     run(
+      `UPDATE collection_runs
+      SET status = ?, finished_at = ?, note = ?, updated_at = ?
+      WHERE case_id = ? AND status IN (${OPEN_COLLECTION_STATUSES.map(() => '?').join(', ')})`,
+      ['completed', now(), body.note || '账号和作品数据已写入系统', now(), caze.id, ...OPEN_COLLECTION_STATUSES]
+    );
+    run(
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [uid('collect'), caze.id, collectedAt, now(), 'completed', source, body.note || '账号和作品数据已写回系统', now(), now()]
+      [uid('collect'), caze.id, collectedAt, now(), 'completed', source, body.note || '账号和作品数据已写入系统', now(), now()]
     );
     run('COMMIT');
   } catch (error) {
@@ -2788,7 +2809,7 @@ function systemReadiness() {
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
-    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并写回后台' },
+    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并写入后台' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
     { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
@@ -3738,11 +3759,15 @@ app.listen(PORT, LISTEN_HOST, () => {
   console.log(`Material root: ${MATERIAL_ROOT}`);
 });
 
+function runScheduledDouyinCollection(source) {
+  enqueueDouyinCollection(source).catch((error) => {
+    console.error(`Douyin monitor schedule failed: ${error.message}`);
+  });
+}
+
 if (DOUYIN_COLLECTION_INTERVAL_MS > 0) {
-  const timer = setInterval(() => {
-    enqueueDouyinCollection('scheduled').catch((error) => {
-      console.error(`Douyin monitor schedule failed: ${error.message}`);
-    });
-  }, DOUYIN_COLLECTION_INTERVAL_MS);
+  const startupTimer = setTimeout(() => runScheduledDouyinCollection('startup'), 2000);
+  startupTimer.unref?.();
+  const timer = setInterval(() => runScheduledDouyinCollection('scheduled'), DOUYIN_COLLECTION_INTERVAL_MS);
   timer.unref?.();
 }

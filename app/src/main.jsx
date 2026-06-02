@@ -640,7 +640,7 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
       <details>
         <summary>
           <strong>后台采集状态</strong>
-          <span>{monitor?.totals?.monitoredAccounts || 0} 个账号 · {monitor?.totals?.dueCollection || 0} 个待采集 · {monitor?.totals?.waitingChrome || 0} 个等Chrome</span>
+          <span>{monitor?.totals?.monitoredAccounts || 0} 个账号 · {monitor?.totals?.dueCollection || 0} 个待登记 · {monitor?.totals?.collectionQueued || 0} 个已排队</span>
         </summary>
         <div className="backstageBody">
           <div className="sectionHead">
@@ -662,7 +662,7 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
               {(due.length ? due : accounts.slice(0, 8)).map((item) => (
                 <div className="accountCard" key={item.case.id}>
                   <button className="linkButton" onClick={() => onOpenCase(item.case.id)}>{item.case.weixinNick}</button>
-                  <span>{item.dueCollection ? '待采集' : '已采集'} · 粉丝 {formatNumber(item.latestSnapshot?.fans)} · 初始 {formatNumber(item.initialSnapshot?.fans)}</span>
+                  <span>{item.collectionQueued ? '已排队' : item.dueCollection ? '待登记' : '已采集'} · 粉丝 {formatNumber(item.latestSnapshot?.fans)} · 初始 {formatNumber(item.initialSnapshot?.fans)}</span>
                   <small>{item.topVideo ? `最高播放 ${formatNumber(item.topVideo.latestSnapshot?.plays)}｜${item.topVideo.title || '未命名作品'}` : `最近采集：${shortTime(item.lastCollectedAt)}`}</small>
                   <div className="inlineActions compactActions">
                     {item.case.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}

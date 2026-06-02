@@ -520,13 +520,13 @@ async function main() {
     assert(completedDashboard.todaySlots.some((item) => item.id === slot.id && item.status === '已完成'), 'dashboard today chain dropped completed slot');
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
     assert(monitorQueued.createdCount >= 2 && monitorQueued.collectorReady === false, 'monitor run did not register collector tasks');
-    assert(monitorQueued.monitor.totals.dueCollection >= 1, 'monitor run missing due collection summary');
+    assert(monitorQueued.monitor.totals.collectionQueued >= 2 && monitorQueued.monitor.totals.waitingChrome >= 2, 'monitor run did not mark queued Chrome collection');
     const chromeQueue = await api('/douyin-monitor/chrome-queue');
     assert(chromeQueue.count >= 2, 'chrome collection queue missing due accounts');
     assert(chromeQueue.text.includes('/api/douyin-monitor/ingest') && chromeQueue.text.includes('Chrome抖音采集清单'), 'chrome collection queue text missing ingest instructions');
     assert(chromeQueue.targets.some((item) => item.ingestPayloadTemplate?.caseId === caze.id), 'chrome collection queue missing payload template');
     const registeredChromeQueue = await api('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 20 }) });
-    assert(registeredChromeQueue.registeredCount >= 2 && registeredChromeQueue.monitor.totals.waitingChrome >= 1, 'chrome queue registration missing waiting status');
+    assert(registeredChromeQueue.registeredCount === 0 && registeredChromeQueue.skippedQueuedCount >= 2, 'chrome queue duplicated already queued accounts');
     const ingested = await api('/douyin-monitor/ingest', {
       method: 'POST',
       body: JSON.stringify({
@@ -559,6 +559,7 @@ async function main() {
     assert(monitorDashboard.monitorActions.some((item) => item.kind === '爆款互动' && item.case?.id === caze.id), 'dashboard monitor actions missing viral interaction');
     const detailAfterIngest = await api(`/cases/${caze.id}`);
     assert(detailAfterIngest.monitor.latestSnapshot.fans === 100, 'case monitor latest snapshot missing');
+    assert(!detailAfterIngest.monitor.pendingCollectionRun, 'case pending collection was not closed after ingest');
     assert(detailAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 8000), 'case video metrics missing');
     const chromeAgentIngest = await api('/douyin-monitor/ingest', {
       method: 'POST',
@@ -585,6 +586,7 @@ async function main() {
     assert(chromeAgentIngest.accountSnapshot?.fans === 88, 'chrome agent ingest missing account snapshot');
     const minimalAfterIngest = await api(`/cases/${minimalCase.id}`);
     assert(minimalAfterIngest.monitor.latestSnapshot.fans === 88, 'chrome agent ingest latest snapshot missing');
+    assert(!minimalAfterIngest.monitor.pendingCollectionRun, 'minimal case pending collection was not closed after ingest');
     assert(minimalAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 1200), 'chrome agent ingest video metrics missing');
     const afterChromeAgentDashboard = await api('/dashboard');
     assert(afterChromeAgentDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing cold content action');
