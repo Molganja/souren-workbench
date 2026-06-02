@@ -577,6 +577,8 @@ async function main() {
     }
     assert(lockedRejected, 'locked slot allowed candidate regeneration');
     const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
+    const repeatedClip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收重复剪辑任务' }) });
+    assert(repeatedClip.id === clip.id && repeatedClip.alreadyExisting === true, 'duplicate clip task was created for the same slot');
     assert(fs.existsSync(path.join(clip.outputDir, '剪辑任务单.txt')), 'clip brief file missing');
     const clipBrief = fs.readFileSync(path.join(clip.outputDir, '剪辑任务单.txt'), 'utf8');
     assert(clip.brief.includes('固定剪辑配方'), 'clip task response missing fixed edit recipe');
