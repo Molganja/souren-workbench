@@ -2528,50 +2528,27 @@ function CaseForm({ initial, onClose, onSubmit }) {
     douyinId: initial?.douyinId || '',
     douyinUrl: initial?.douyinUrl || '',
     project: initial?.project || '吸脂',
-    sourceMaterialDir: initial?.sourceMaterialDir || '',
-    persona: {
-      city: initial?.persona?.city || '',
-      age: initial?.persona?.age || '',
-      occupation: initial?.persona?.occupation || '',
-      tone: initial?.persona?.tone || '',
-      motivation: initial?.persona?.motivation || ''
-    }
+    sourceMaterialDir: initial?.sourceMaterialDir || ''
   }));
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
-  function updatePersona(key, value) {
-    setForm((prev) => ({ ...prev, persona: { ...prev.persona, [key]: value } }));
-  }
   function submit() {
-    if (isCreate) {
-      onSubmit({
-        weixinNick: form.weixinNick,
-        douyinUrl: form.douyinUrl,
-        project: form.project,
-        sourceMaterialDir: form.sourceMaterialDir
-      });
-      return;
-    }
-    onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } });
+    onSubmit({
+      weixinNick: form.weixinNick,
+      douyinUrl: form.douyinUrl,
+      project: form.project,
+      sourceMaterialDir: form.sourceMaterialDir
+    });
   }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {isCreate && <div className="hintBox">新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。微信、抖音和共享原始素材路径都必须填，系统会自动建立目录、近期排期和采集链路。</div>}
+      <div className="hintBox">{isCreate ? '新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。微信、抖音和共享原始素材路径都必须填，系统会自动建立目录、近期排期和采集链路。' : '编辑时只改对接必需信息：微信、抖音、项目和共享素材路径。人设和阶段由系统内部维护，不需要工作人员填写。'}</div>
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
         <label className="wide">项目<input value={form.project} onChange={(e) => update('project', e.target.value)} placeholder="例如：吸脂 / 复诊 / 其他项目" /></label>
         <label className="wide">共享原始素材路径<input value={form.sourceMaterialDir} onChange={(e) => update('sourceMaterialDir', e.target.value)} placeholder="工作人员在共享盘/服务器里放素材的目录路径" /></label>
-        {!isCreate && (
-          <>
-            <label>城市<input value={form.persona.city} onChange={(e) => updatePersona('city', e.target.value)} /></label>
-            <label>年龄<input value={form.persona.age} onChange={(e) => updatePersona('age', e.target.value)} /></label>
-            <label>职业<input value={form.persona.occupation} onChange={(e) => updatePersona('occupation', e.target.value)} /></label>
-            <label>语气<input value={form.persona.tone} onChange={(e) => updatePersona('tone', e.target.value)} /></label>
-            <label className="wide">动机故事<textarea value={form.persona.motivation} onChange={(e) => updatePersona('motivation', e.target.value)} /></label>
-          </>
-        )}
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
