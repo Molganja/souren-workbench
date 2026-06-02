@@ -62,6 +62,7 @@ function statusClass(status) {
   if (['已锁定', '可交付'].includes(status)) return 'ready';
   if (['已派发'].includes(status)) return 'report';
   if (['已完成'].includes(status)) return 'ok';
+  if (['已取消'].includes(status)) return 'wait';
   if (['素材阻塞', '异常'].includes(status)) return 'bad';
   if (['waiting_key', 'draft', 'waiting_edit', 'unavailable', 'waiting_chrome'].includes(status)) return 'wait';
   if (['generating', 'review'].includes(status)) return 'report';
@@ -1044,7 +1045,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }
             <option value="60">未来 60 天</option>
           </select>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            {['全部状态', '待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常'].map((item) => <option key={item}>{item}</option>)}
+            {['全部状态', '待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常', '已取消'].map((item) => <option key={item}>{item}</option>)}
           </select>
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
             {['全部内容', ...KINDS].map((item) => <option key={item}>{item}</option>)}
@@ -1268,6 +1269,10 @@ function deleteCase(item, onAct) {
   onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), (result) => result.removedDir ? '案例已删除，本地素材已移入回收目录' : '案例已删除，本地目录原本不存在');
 }
 
+function caseCanResume(caze = {}) {
+  return ['失联暂停', '已放弃', '停用'].includes(caze.healthStatus);
+}
+
 function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], monitor = {}, videos = [], viralAlerts = [], metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
@@ -1302,6 +1307,10 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths }) {
           {canOpenLocalPaths && caze.sourceMaterialDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.sourceMaterialDir }) }), '已打开共享素材目录')}>打开共享目录</button>}
           {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>}
           {caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音主页</a>}
+          {caseCanResume(caze) && <button className="primary" onClick={() => onAct(
+            () => request(`/cases/${caze.id}/resume`, { method: 'POST' }),
+            (result) => `已恢复账号：取消旧派发 ${result.canceledCount} 条，新排期 ${result.slotsCreated} 条`
+          )}>恢复账号</button>}
         </div>
       </section>
       {editOpen && (

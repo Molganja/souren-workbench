@@ -460,6 +460,13 @@ async function main() {
     await api(`/cases/${lostCase.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) });
     const lostPausedDashboard = await api('/dashboard');
     assert(!lostPausedDashboard.monitorActions.some((item) => item.kind === '失联处理' && item.case?.id === lostCase.id), 'paused lost account still prompted action');
+    const resumedLost = await api(`/cases/${lostCase.id}/resume`, { method: 'POST' });
+    assert(resumedLost.case.healthStatus === '健康', 'resume did not restore case health');
+    assert(resumedLost.canceledCount >= 1 && resumedLost.slotsCreated >= 1, 'resume did not cancel stale sent slots and create new schedule');
+    const resumedLostDetail = await api(`/cases/${lostCase.id}`);
+    assert(resumedLostDetail.slots.some((item) => item.status === '已取消'), 'resume did not keep stale sent slot as cancelled');
+    assert(resumedLostDetail.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'resume did not create future pending slot');
+    assert(resumedLostDetail.monitor.activityTier !== '失联暂停', 'resumed account still marked lost');
     await api(`/cases/${throttleCase.id}`, { method: 'DELETE' });
     await api(`/cases/${sleepCase.id}`, { method: 'DELETE' });
     await api(`/cases/${lostCase.id}`, { method: 'DELETE' });

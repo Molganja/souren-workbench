@@ -68,6 +68,9 @@ else fail('缺少固定剪辑配方');
 if (serverSource.includes('失联处理') && serverSource.includes('失联暂停') && serverSource.includes('不进入采集队列')) ok('失联账号会暂停排期和采集');
 else fail('缺少失联账号暂停逻辑');
 
+if (serverSource.includes('/api/cases/:id/resume') && serverSource.includes('已取消') && mainSource.includes('恢复账号')) ok('失联暂停账号支持一键恢复');
+else fail('缺少失联暂停账号恢复闭环');
+
 if (serverSource.includes('兼职须知') && serverSource.includes('固定发布说明') && mainSource.includes('兼职须知（首次发送）')) ok('交付内容内置固定发布说明和兼职须知');
 else fail('缺少固定发布说明或兼职须知');
 

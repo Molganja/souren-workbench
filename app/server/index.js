@@ -69,7 +69,7 @@ app.use('/shared-files', requireWorkbenchAccess);
 
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
-const PLAN_SLOT_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常'];
+const PLAN_SLOT_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常', '已取消'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
@@ -1019,6 +1019,36 @@ function createCaseFromBody(body = {}) {
   writeFreelancerGuide(createdCase);
   writeCaseManifest(createdCase);
   return createdCase;
+}
+
+function resumeCaseAccount(caseId) {
+  const caze = caseById(caseId);
+  if (!caze) {
+    const error = new Error('case not found');
+    error.status = 404;
+    throw error;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const staleSentSlots = all(
+    'SELECT * FROM plan_slots WHERE case_id = ? AND status = ? ORDER BY date ASC',
+    [caze.id, '已派发']
+  ).map(rowSlot).filter((slot) => daysBetween(slot.date, today) >= 3);
+  staleSentSlots.forEach((slot) => {
+    run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['已取消', now(), slot.id]);
+  });
+  run('UPDATE cases SET health_status = ?, updated_at = ? WHERE id = ?', ['健康', now(), caze.id]);
+  const updated = caseById(caze.id);
+  const postingStrategy = postingStrategyForCase(updated);
+  const createdSlots = generateSlotsForCase(updated, { days: 7, startDate: today, postingStrategy });
+  writeCaseManifest(updated);
+  return {
+    case: updated,
+    canceledCount: staleSentSlots.length,
+    canceledSlots: staleSentSlots.map((slot) => ({ ...slot, status: '已取消' })),
+    slotsCreated: createdSlots.length,
+    createdSlots,
+    postingStrategy
+  };
 }
 
 const CASE_LIBRARY_PROJECT_WORDS = ['吸脂', '修复', '复诊', '鼻', '眼', '皮肤', '脂肪', '面诊', '医美'];
@@ -3367,6 +3397,14 @@ app.patch('/api/cases/:id', (req, res) => {
   const updated = caseById(req.params.id);
   writeCaseManifest(updated);
   res.json(updated);
+});
+
+app.post('/api/cases/:id/resume', (req, res) => {
+  try {
+    res.json(resumeCaseAccount(req.params.id));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.delete('/api/cases/:id', (req, res) => {
