@@ -361,7 +361,7 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask }) {
         <div>
           <p className="eyebrow">今日 {data.today}</p>
           <h1>运营中控台</h1>
-          <p>先处理下面这一条队列：生成、选择、交付、补素材、剪辑和爆款互动都在这里完成，账号清单只做概览。</p>
+          <p>当前只处理一个微信账号：生成、选择、交付、补素材、剪辑和爆款互动都从队首推进；做完这一条，下一条才出现。</p>
         </div>
         <div className="stats dashboardStats">
           {dashboardStats.map((item) => <Metric key={item.label} label={item.label} value={item.value} />)}
@@ -501,15 +501,16 @@ function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTas
         <h2>今日操作队列</h2>
         <span>{items.length ? `当前 1 / ${items.length}` : '已清空'}</span>
       </div>
-      {items.length === 0 ? <div className="empty doneEmpty">今天发完了</div> : (
+      {items.length === 0 ? <div className="empty doneEmpty">今天发完了，剩下只等对方回复，不算漏发。</div> : (
         <div className="priorityList">
           <div className="priorityRow activePriority" key={activeItem.id}>
             <div className="priorityBadge">
               <strong>{activeItem.kind}</strong>
               <span className={`status ${activeItem.statusClass || statusClass(activeItem.status)}`}>{activeItem.status}</span>
-              <span className="queueFlag activeFlag">当前处理</span>
+              <span className="queueFlag activeFlag">只做这一条</span>
             </div>
             <div className="taskMain">
+              {activeItem.case?.weixinNick && <div className="singleFocusBar">当前微信：{activeItem.case.weixinNick}。不要切到下一个账号，完成后系统自动露出下一条。</div>}
               <div className="rowTitle">
                 {activeItem.case?.id ? <button className="linkButton" onClick={() => onOpenCase(activeItem.case.id)}>{activeItem.title}</button> : <strong>{activeItem.title}</strong>}
               </div>
@@ -527,8 +528,8 @@ function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTas
           </div>
           {queuedItems.length > 0 && (
             <div className="queueSummary">
-              <span className="queuedLabel">后面还有 {queuedItems.length} 条排队中</span>
-              <small>{summarizeQueuedKinds(queuedItems)}</small>
+              <span className="queuedLabel">后面已锁住 {queuedItems.length} 条</span>
+              <small>不用提前检查，也不能跳做；当前任务完成后自动出现下一条。</small>
             </div>
           )}
         </div>
@@ -564,14 +565,6 @@ function WaitingConfirmSection({ items = [], onDelivery }) {
       </details>
     </section>
   );
-}
-
-function summarizeQueuedKinds(items = []) {
-  const counts = items.reduce((acc, item) => {
-    acc[item.kind] = (acc[item.kind] || 0) + 1;
-    return acc;
-  }, {});
-  return Object.entries(counts).map(([kind, count]) => `${kind} ${count}`).join(' / ');
 }
 
 function douyinDisplay(caze = {}) {
@@ -1550,6 +1543,7 @@ function ClipTaskModal({ task, onClose, onAct, activeQueueItem }) {
       {!isActiveQueueClip && (
         <div className="readonlyNotice">这条不是今日操作队列的当前剪辑任务，只读查看；请回到首页按队首顺序处理。</div>
       )}
+      <ClipFillCard task={task} caze={caze} />
       <div className="textPanel clipBriefPanel">
         <div className="rowTitle">
           <strong>固定剪辑配方和素材说明</strong>
@@ -1569,6 +1563,23 @@ function ClipTaskModal({ task, onClose, onAct, activeQueueItem }) {
         {isActiveQueueClip && <button className="primary" disabled={!completeReady} onClick={() => patchClipStatus('completed', { recipeConfirmed: true })}>剪辑已完成</button>}
       </div>
     </Modal>
+  );
+}
+
+function ClipFillCard({ task, caze = {} }) {
+  return (
+    <div className="clipFillCard">
+      <div>
+        <strong>剪辑填空卡</strong>
+        <span>只换素材、标题和账号信息，结构不重新想。</span>
+      </div>
+      <div className="clipFillGrid">
+        <span>发给谁：{caze.weixinNick || '未命名兼职'}</span>
+        <span>剪哪条：{task.title || '当前剪辑任务'}</span>
+        <span>素材：只用本次视频素材区</span>
+        <span>完成：剪完或安排发布后标记完成</span>
+      </div>
+    </div>
   );
 }
 
@@ -2080,6 +2091,7 @@ function SettingsView({ config, onAct }) {
   const agentWorkItems = agentWork?.items || [];
   const collector = config.douyinCollector || {};
   const canPrepareLan = Boolean(config.network?.localRequest && !config.network?.lanEnabled);
+  const canCloseLan = Boolean(config.network?.localRequest && config.network?.lanEnabled);
   return (
     <div className="stack">
       <section className="hero">
@@ -2128,11 +2140,36 @@ function SettingsView({ config, onAct }) {
               )}>开启局域网访问</button>
             </div>
           )}
+          {canCloseLan && (
+            <div className="templateRow actionTemplateRow">
+              <div>
+                <strong>只允许本机使用</strong>
+                <p>系统会关闭局域网访问配置；重启后工作人员端网址会失效，主机仍可继续使用。</p>
+              </div>
+              <button onClick={() => onAct(
+                async () => {
+                  const result = await request('/network/lan-access', { method: 'POST', body: JSON.stringify({ action: 'disable' }) });
+                  setLanSetup({ ...result, disabled: true });
+                  return result;
+                },
+                '已关闭局域网访问配置，重启工作台后生效'
+              )}>关闭局域网访问</button>
+            </div>
+          )}
         </div>
         {lanSetup && (
           <div className="hintBox lanSetupResult">
-            <strong>访问码：{lanSetup.accessCode}</strong>
-            <span>重启工作台后，在这里查看局域网网址，再把网址和访问码发给工作人员。</span>
+            {lanSetup.disabled ? (
+              <>
+                <strong>局域网访问已关闭，等待重启生效</strong>
+                <span>重启工作台后，只保留本机地址。</span>
+              </>
+            ) : (
+              <>
+                <strong>访问码：{lanSetup.accessCode}</strong>
+                <span>重启工作台后，在这里查看局域网网址，再把网址和访问码发给工作人员。</span>
+              </>
+            )}
           </div>
         )}
       </section>

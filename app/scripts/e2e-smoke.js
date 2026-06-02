@@ -290,6 +290,12 @@ async function lanAccessConfigSmoke() {
     assert(envText.includes('IMAGE_API_KEY=keep-this-key'), 'LAN enable did not preserve existing env values');
     assert(envText.includes('SOUREN_HOST=0.0.0.0'), 'LAN enable did not write host');
     assert(envText.includes(`SOUREN_ACCESS_CODE=${result.accessCode}`), 'LAN enable did not write generated access code');
+    const disabled = await api('/network/lan-access', { method: 'POST', body: JSON.stringify({ action: 'disable' }) }, lanBase);
+    assert(disabled.restartRequired === true, 'LAN disable did not ask for restart');
+    const disabledEnv = fs.readFileSync(envPath, 'utf8');
+    assert(disabledEnv.includes('IMAGE_API_KEY=keep-this-key'), 'LAN disable did not preserve existing env values');
+    assert(disabledEnv.includes('SOUREN_HOST=127.0.0.1'), 'LAN disable did not restore local host');
+    assert(disabledEnv.includes('SOUREN_ACCESS_CODE='), 'LAN disable did not clear access code');
   } finally {
     server.kill('SIGTERM');
     await sleep(300);
@@ -1152,6 +1158,7 @@ async function main() {
     assert(repeatedClip.id === clip.id && repeatedClip.alreadyExisting === true, 'duplicate clip task was created for the same slot');
     assert(clip.brief.includes('固定剪辑配方'), 'clip task response missing fixed edit recipe');
     assert(clip.brief.includes('固定剪辑配方') && clip.brief.includes('不临时改结构'), 'clip brief missing fixed edit recipe');
+    assert(clip.brief.includes('剪辑填空卡') && clip.brief.includes('只换这些空') && clip.brief.includes('镜头固定模板'), 'clip brief missing fill-in recipe card');
     assert(clip.brief.includes('不需要上传成片') && !clip.brief.includes('final.mp4 放回'), 'clip brief still asks for final video upload');
     assert(!('outputDir' in clip), 'clip task still exposes a local output directory');
     const clipSchemaDb = new DatabaseSync(path.join(ROOT_DIR, 'data', 'souren.sqlite'));
@@ -1371,6 +1378,7 @@ async function main() {
     assert(videoDeliveryView.isVideo === true && videoDeliveryView.editing.completionNote.includes('不需要上传成片'), 'video delivery view missing completion-only note');
     assert(videoDeliveryView.texts.editBrief.includes('剪辑要求'), 'video delivery view missing edit brief');
     assert(videoDeliveryView.texts.editBrief.includes('固定剪辑配方') && videoDeliveryView.texts.editBrief.includes('只替换素材和标题'), 'video delivery edit brief missing fixed recipe');
+    assert(videoDeliveryView.texts.editBrief.includes('剪辑填空卡') && videoDeliveryView.texts.editBrief.includes('只换这些空'), 'video delivery edit brief missing fill-in recipe card');
     assert(!videoDeliveryView.texts.editBrief.includes('final.mp4') && !('finalVideoPath' in videoDeliveryView.editing), 'video delivery still exposes final video path');
     await api(`/cases/${videoCase.id}`, { method: 'DELETE' });
 

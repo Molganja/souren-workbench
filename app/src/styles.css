@@ -403,6 +403,20 @@ button:disabled:hover,
   color: var(--muted);
 }
 
+.singleFocusBar {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--blue-soft);
+  border-radius: 8px;
+  background: #f7fbff;
+  color: var(--blue);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  margin-bottom: 8px;
+}
+
 .doneEmpty {
   color: var(--green);
   background: var(--green-soft);
@@ -959,6 +973,48 @@ button:disabled:hover,
   white-space: pre-wrap;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.clipFillCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.clipFillCard > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.clipFillCard strong {
+  color: var(--ink);
+}
+
+.clipFillCard span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.clipFillGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.clipFillGrid span {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 10px;
+  font-weight: 700;
 }
 
 .rowActions, .inlineActions, .headerActions, .heroActions {
@@ -1702,7 +1758,7 @@ textarea {
   .topActions {
     margin-left: 0;
   }
-  .hero, .caseHeader, .taskRow, .priorityRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow, .waitingRow {
+  .hero, .caseHeader, .taskRow, .priorityRow, .consultRow, .twoCol, .deliveryTextGrid, .sourceRow, .waitingRow, .clipFillGrid {
     grid-template-columns: 1fr;
   }
   .handoffSteps {

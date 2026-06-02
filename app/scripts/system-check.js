@@ -139,7 +139,7 @@ else fail('异常账号仍可能默认铺开，分散工作人员处理当前队
 if (mainSource.includes('>运行状态</button>') && !mainSource.includes('>系统配置</button>')) ok('前台导航不再显示系统配置入口');
 else fail('前台导航仍暴露系统配置旧口径');
 
-if (mainSource.includes('activePriority') && mainSource.includes('queueSummary') && mainSource.includes('后面还有')) ok('今日队列只开放队首任务操作');
+if (mainSource.includes('activePriority') && mainSource.includes('queueSummary') && mainSource.includes('只做这一条') && mainSource.includes('后面已锁住')) ok('今日队列只开放队首任务操作');
 else fail('今日队列缺少队首防呆状态');
 
 if (
@@ -322,28 +322,48 @@ else fail('运行状态前台仍暴露英文环境变量、Key 或 Chrome 状态
 
 if (
   mainSource.includes('开启局域网访问') &&
+  mainSource.includes('关闭局域网访问') &&
   mainSource.includes("request('/network/lan-access'") &&
   mainSource.includes('访问码：{lanSetup.accessCode}') &&
+  mainSource.includes('只允许本机使用') &&
   serverSource.includes("app.post('/api/network/lan-access'") &&
   serverSource.includes('localControlOnly(req, res)') &&
   serverSource.includes('writeRuntimeEnvUpdates') &&
+  serverSource.includes("action === 'disable'") &&
+  serverSource.includes("SOUREN_HOST: '127.0.0.1'") &&
   serverSource.includes('SOUREN_ENV_PATH') &&
   fs.readFileSync(path.join(APP_DIR, 'electron', 'main.cjs'), 'utf8').includes('SOUREN_ENV_PATH') &&
-  smokeSource.includes('LAN enable did not write generated access code')
-) ok('本机运行状态可一键生成局域网访问码并写入运行配置，重启后给工作人员使用');
-else fail('局域网访问仍需要工作人员手改配置，或缺少本机专用写入保护');
+  smokeSource.includes('LAN enable did not write generated access code') &&
+  smokeSource.includes('LAN disable did not restore local host')
+) ok('本机运行状态可一键开启或关闭局域网访问配置，重启后给工作人员使用');
+else fail('局域网访问仍需要工作人员手改配置，或缺少本机专用开关保护');
 
 const pkg = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8'));
 if (pkg.scripts?.['client:verify']?.includes('client:mac') && pkg.scripts?.['client:verify']?.includes('client:package:check')) ok('客户端可一条命令打包并启动验收');
 else fail('客户端缺少一条命令打包验收脚本');
 
-if (mainSource.includes('今天发完了') && !mainSource.includes('今天没有必须处理的动作')) ok('今日队列清空后有明确完工状态');
+if (
+  mainSource.includes('今天发完了，剩下只等对方回复，不算漏发。') &&
+  mainSource.includes('当前微信：{activeItem.case.weixinNick}') &&
+  mainSource.includes('后面已锁住 {queuedItems.length} 条') &&
+  mainSource.includes('不用提前检查，也不能跳做') &&
+  !mainSource.includes('summarizeQueuedKinds') &&
+  !mainSource.includes('今天没有必须处理的动作')
+) ok('今日队列清空后有明确完工状态，队首只聚焦当前微信');
 else fail('今日队列清空状态仍不明确');
 
 if (serverSource.includes('ACTIVE_OPERATOR_STATUSES') && serverSource.includes("'已派发', '异常'") && !serverSource.includes("ACTIVE_OPERATOR_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成'")) ok('已完成任务不再留在今日操作队列');
 else fail('已完成任务仍可能留在今日操作队列');
 
-if (serverSource.includes('固定剪辑配方') && serverSource.includes('不临时改结构')) ok('视频交付和剪辑任务内置固定剪辑配方');
+if (
+  serverSource.includes('剪辑填空卡') &&
+  serverSource.includes('只换这些空') &&
+  serverSource.includes('镜头固定模板') &&
+  serverSource.includes('不临时改结构') &&
+  mainSource.includes('function ClipFillCard') &&
+  mainSource.includes('结构不重新想') &&
+  smokeSource.includes('clip brief missing fill-in recipe card')
+) ok('视频交付和剪辑任务内置固定剪辑填空卡');
 else fail('缺少固定剪辑配方');
 
 if (!mainSource.includes('成片保存到') && !mainSource.includes('封面保存到') && !serverSource.includes('07-成片回收说明') && !serverSource.includes('final.mp4 放回') && serverSource.includes('不需要上传成片')) ok('视频剪辑完成后只标记完成，不要求上传成片');
