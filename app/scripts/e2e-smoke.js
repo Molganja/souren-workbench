@@ -10,6 +10,7 @@ const TEST_IMAGE_PORT = 5189;
 const TEST_AUTH_PORT = 5190;
 const TEST_LAN_FAIL_PORT = 5191;
 const TEST_IMAGE_KEY_ONLY_PORT = 5192;
+const TEST_PLACEHOLDER_PORT = 5193;
 const ORIGIN = `http://127.0.0.1:${TEST_PORT}`;
 const BASE = `${ORIGIN}/api`;
 const E2E_SETUP_HEADER = { 'X-Souren-E2E-Setup': '1' };
@@ -20,6 +21,7 @@ const IMAGE_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image');
 const IMAGE_KEY_ONLY_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image-key-only');
 const AUTH_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-auth');
 const LAN_FAIL_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-lan-fail');
+const PLACEHOLDER_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-placeholder');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -257,6 +259,48 @@ function makeSharedSourceDir(rootDir, name) {
   const dir = path.join(rootDir, '员工共享素材', name);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+async function placeholderDouyinCollectionSmoke() {
+  fs.rmSync(path.join(PLACEHOLDER_ROOT_DIR, 'data'), { recursive: true, force: true });
+  fs.rmSync(path.join(PLACEHOLDER_ROOT_DIR, '素材库'), { recursive: true, force: true });
+  fs.mkdirSync(PLACEHOLDER_ROOT_DIR, { recursive: true });
+  const placeholderBase = `http://127.0.0.1:${TEST_PLACEHOLDER_PORT}/api`;
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: {
+      ...process.env,
+      PORT: String(TEST_PLACEHOLDER_PORT),
+      SOUREN_ROOT_DIR: PLACEHOLDER_ROOT_DIR,
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
+      DOUYIN_COLLECTOR_AUTO_RUN: '0'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  try {
+    await waitForServer(server, placeholderBase);
+    const demoCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '演示采集保护兼职',
+        douyinUrl: 'https://www.douyin.com/user/demo_autocollect',
+        project: '吸脂',
+        sourceMaterialDir: makeSharedSourceDir(PLACEHOLDER_ROOT_DIR, '演示采集保护兼职')
+      })
+    }, placeholderBase);
+    assert(demoCase.collectionQueue?.registeredCount === 0 && demoCase.collectionQueue?.count === 0, 'placeholder Douyin URL should not register Chrome collection');
+    const queue = await api('/douyin-monitor/chrome-queue?includeFresh=1&limit=10', {}, placeholderBase);
+    assert(!queue.targets.some((item) => item.caseId === demoCase.id), 'placeholder Douyin URL leaked into Chrome collection queue');
+    const monitor = await api('/douyin-monitor', {}, placeholderBase);
+    const account = monitor.accounts.find((item) => item.case?.id === demoCase.id);
+    assert(account?.collectionPolicy?.intervalHours == null && /演示|测试/.test(account.collectionPolicy.reason), 'placeholder Douyin URL missing no-collection policy');
+  } finally {
+    server.kill('SIGTERM');
+    await sleep(300);
+    fs.rmSync(PLACEHOLDER_ROOT_DIR, { recursive: true, force: true });
+  }
 }
 
 async function main() {
@@ -1185,6 +1229,7 @@ async function main() {
     await imageKeyOnlyConfigSmoke();
     await authAccessSmoke();
     await lanFailClosedSmoke();
+    await placeholderDouyinCollectionSmoke();
 
     const videoCase = await api('/cases', {
       method: 'POST',
@@ -1553,6 +1598,7 @@ async function main() {
     fs.rmSync(IMAGE_KEY_ONLY_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(AUTH_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(LAN_FAIL_ROOT_DIR, { recursive: true, force: true });
+    fs.rmSync(PLACEHOLDER_ROOT_DIR, { recursive: true, force: true });
   }
 }
 

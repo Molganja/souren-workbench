@@ -36,6 +36,7 @@ const DOUYIN_COLLECTOR_LIMIT = Math.max(1, Math.min(Number(process.env.DOUYIN_CO
 const DOUYIN_COLLECTOR_WAIT_MS = Math.max(1000, Math.min(Number(process.env.DOUYIN_COLLECTOR_WAIT_MS || 6000), 30000));
 const DOUYIN_COLLECTOR_COOLDOWN_MS = Math.max(0, Number(process.env.DOUYIN_COLLECTOR_COOLDOWN_MS || 15 * 60 * 1000));
 const ROLLING_SCHEDULE_DAYS = Math.max(0, Number(process.env.SOUREN_ROLLING_SCHEDULE_DAYS || 14));
+const ALLOW_PLACEHOLDER_DOUYIN_COLLECTION = process.env.SOUREN_E2E_QUEUE_BYPASS === '1';
 const LOOPBACK_LISTEN_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
 let douyinCollectorRun = null;
 let douyinCollectorLastStartedAt = null;
@@ -1097,6 +1098,29 @@ function douyinIdFromUrl(value) {
   } catch {
     return '';
   }
+}
+
+function placeholderDouyinReason(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) return '未填写抖音主页，不进入采集队列。';
+  try {
+    const parsed = new URL(text);
+    const path = parsed.pathname.replace(/\/+$/, '').toLowerCase();
+    if (!path) return '抖音链接不是具体账号主页，不进入采集队列。';
+    if (/\/user\/(demo_|test|smoke|legacy|bulk-|image-smoke|manual)/.test(path)) {
+      return '演示或测试抖音链接只用于界面验收，不进入自动采集队列。';
+    }
+  } catch {
+    if (/demo_|smoke|legacy|bulk-|image-smoke|manual/.test(text)) {
+      return '演示或测试抖音链接只用于界面验收，不进入自动采集队列。';
+    }
+  }
+  return '';
+}
+
+function douyinCollectBlockReason(value) {
+  if (ALLOW_PLACEHOLDER_DOUYIN_COLLECTION) return '';
+  return placeholderDouyinReason(value);
 }
 
 function normalizeSourceMaterialDir(value) {
@@ -2350,12 +2374,16 @@ function accountStrategy(input = {}) {
 
   let collectionIntervalHours = 168;
   let collectionReason = '账号近期没有投放动作，按一周一次采集。';
+  const douyinBlockReason = douyinCollectBlockReason(caze?.douyinUrl);
   if (activityTier === '失联暂停') {
     collectionIntervalHours = null;
     collectionReason = '账号已失联暂停，不进入采集队列。';
   } else if (!caze?.douyinUrl) {
     collectionIntervalHours = null;
     collectionReason = '未填写抖音主页，不进入采集队列。';
+  } else if (douyinBlockReason) {
+    collectionIntervalHours = null;
+    collectionReason = douyinBlockReason;
   } else if (!latestSnapshot) {
     collectionIntervalHours = 0;
     collectionReason = '账号还没有首次数据，优先采集。';

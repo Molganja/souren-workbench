@@ -339,6 +339,15 @@ if (
 else fail('到期采集仍可能只自动排队，未自动启动主机 Chrome 执行器');
 
 if (
+  serverSource.includes('function placeholderDouyinReason')
+  && serverSource.includes('ALLOW_PLACEHOLDER_DOUYIN_COLLECTION')
+  && serverSource.includes('演示或测试抖音链接只用于界面验收，不进入自动采集队列')
+  && smokeSource.includes('placeholder Douyin URL should not register Chrome collection')
+  && smokeSource.includes('placeholder Douyin URL leaked into Chrome collection queue')
+) ok('演示或测试抖音链接不会进入自动采集队列');
+else fail('演示或测试抖音链接仍可能触发自动采集');
+
+if (
   serverSource.includes('function registerCaseCollectionQueue')
   && serverSource.includes('caseIds: ids')
   && serverSource.includes("registerCaseCollectionQueue([created.id], 'case-create')")

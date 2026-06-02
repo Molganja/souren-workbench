@@ -151,6 +151,8 @@ npm run collect:douyin -- --register --limit 10
 
 第一次自动运行前确保 Google Chrome 已登录抖音，并允许 Apple Events 执行 JavaScript。`--dry-run` 只看解析结果不写回；`--register` 会先把到期账号登记为等待 Chrome 采集，再把解析到的真实账号/作品数据写回后台。
 
+演示账号或 `demo_` 这类测试抖音链接只用于界面验收，不会进入自动采集队列。
+
 日常操作手册见项目根目录：`日常运营SOP.md`。
 
 ## 验收
