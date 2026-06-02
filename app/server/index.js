@@ -4053,7 +4053,7 @@ function deliveryMediaStepKey(file) {
 function deliveryRequiredHandoffSteps(view) {
   if (!view) return [];
   const texts = view.texts || {};
-  const steps = [];
+  const steps = [{ key: 'recipient', label: '收件微信确认' }];
   if (view.shouldSendFreelancerGuide && texts.freelancerGuide) steps.push({ key: 'guide', label: '兼职须知' });
   if (texts.operatorInstruction) steps.push({ key: 'operator', label: '发给兼职文案' });
   if (texts.publishText) steps.push({ key: 'publish', label: '抖音发布文案' });

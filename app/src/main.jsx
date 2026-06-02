@@ -1763,6 +1763,15 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
         ))}
       </div>
 
+      <RecipientConfirmPanel
+        caze={view.case}
+        copyAllowed={copyAllowed}
+        completed={handoffDone.has('recipient')}
+        enabled={handoffStepEnabled('recipient')}
+        blockedNote={handoffBlockText('recipient')}
+        onComplete={markHandoffDone}
+      />
+
       {texts.blockedNote && (
         <div className="textPanel warningPanel">
           <strong>素材阻塞说明</strong>
@@ -1798,7 +1807,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
                 <div className="sourceRow" key={asset.id}>
                   <span>{asset.kind}｜{asset.stage}｜{asset.source}</span>
                   <small>{asset.path}</small>
-                  {copyAllowed ? <a className="button" href={asset.url} download>下载源素材</a> : <span className="lockedNote">只读预览</span>}
+                  {copyAllowed && handoffDone.has('recipient') ? <a className="button" href={asset.url} download>下载源素材</a> : <span className="lockedNote">{copyAllowed ? '先完成：收件微信确认' : '只读预览'}</span>}
                 </div>
               ))}
             </div>
@@ -1861,7 +1870,7 @@ function deliveryMediaStepKey(file) {
 
 function deliveryRequiredSteps(view, mediaFiles = [], showFreelancerGuide = false) {
   const texts = view.texts || {};
-  const steps = [];
+  const steps = [{ key: 'recipient', label: '收件微信确认' }];
   if (showFreelancerGuide && texts.freelancerGuide) steps.push({ key: 'guide', label: '兼职须知' });
   if (texts.operatorInstruction) steps.push({ key: 'operator', label: '发给兼职文案' });
   if (texts.publishText) steps.push({ key: 'publish', label: '抖音发布文案' });
@@ -1923,6 +1932,27 @@ function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
     ...item,
     order: String(index + 1)
   }));
+}
+
+function RecipientConfirmPanel({ caze, copyAllowed = true, completed = false, enabled = true, blockedNote = '', onComplete }) {
+  const name = caze?.weixinNick || '未命名兼职';
+  return (
+    <div className={`recipientConfirm ${completed ? 'confirmed' : ''}`}>
+      <div>
+        <strong>收件微信确认</strong>
+        <span>当前只发给：{name}</span>
+        <small>先确认电脑微信窗口里的收件对象，再继续复制文案和下载素材。</small>
+      </div>
+      {copyAllowed ? (
+        <button className={completed ? 'activeSmall' : ''} disabled={!enabled} onClick={() => onComplete?.('recipient')}>
+          {completed ? '已确认' : (enabled ? '确认只发给这个微信' : '先完成前一步')}
+        </button>
+      ) : (
+        <span className="lockedNote">只读确认</span>
+      )}
+      {copyAllowed && blockedNote && <small className="lockedNote">{blockedNote}</small>}
+    </div>
+  );
 }
 
 function TextPanel({ title, text, onCopy, copyable = true, completeKey = '', completed = false, enabled = true, blockedNote = '', onComplete }) {

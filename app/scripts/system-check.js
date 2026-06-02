@@ -44,6 +44,7 @@ required.forEach((file) => {
 const mainSource = fs.readFileSync(path.join(APP_DIR, 'src', 'main.jsx'), 'utf8');
 const styleSource = fs.readFileSync(path.join(APP_DIR, 'src', 'styles.css'), 'utf8');
 const dbSource = fs.readFileSync(path.join(APP_DIR, 'server', 'db.js'), 'utf8');
+const smokeSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'e2e-smoke.js'), 'utf8');
 const readmeSource = [
   fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8'),
   fs.readFileSync(path.join(APP_DIR, 'README.md'), 'utf8')
@@ -174,6 +175,9 @@ else fail('视频交付顶部步骤没有覆盖口播、剪辑要求或步骤布
 
 if (mainSource.includes('deliveryRequiredSteps') && mainSource.includes('handoffReady') && mainSource.includes('missingHandoffSteps') && mainSource.includes('disabled={!handoffReady}') && mainSource.includes('handoffGuard')) ok('交付弹窗未完成复制下载步骤前不能标记派发');
 else fail('交付弹窗仍可跳过复制下载步骤直接标记派发');
+
+if (mainSource.includes("key: 'recipient'") && mainSource.includes('确认只发给这个微信') && mainSource.includes('RecipientConfirmPanel') && serverSource.includes("key: 'recipient'") && smokeSource.includes("key !== 'recipient'")) ok('交付必须先确认收件微信，前端和后端都不能跳过');
+else fail('交付仍可能跳过收件微信确认');
 
 if (mainSource.includes('nextHandoffStep') && mainSource.includes('handoffStepEnabled') && mainSource.includes('先完成前一步') && serverSource.includes('outOfOrderIndex') && serverSource.includes('按发送顺序操作')) ok('交付动作必须按顺序完成');
 else fail('交付动作仍可能不按顺序完成');

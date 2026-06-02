@@ -38,7 +38,7 @@ function deliveryMediaStepKey(file) {
 
 function handoffDoneForDeliveryView(view) {
   const texts = view.texts || {};
-  const keys = [];
+  const keys = ['recipient'];
   if (view.shouldSendFreelancerGuide && texts.freelancerGuide) keys.push('guide');
   if (texts.operatorInstruction) keys.push('operator');
   if (texts.publishText) keys.push('publish');
@@ -934,6 +934,16 @@ async function main() {
       dispatchOutOfOrderRejected = /按发送顺序/.test(error.message);
     }
     assert(dispatchOutOfOrderRejected, 'ready delivery allowed out-of-order handoff checklist');
+    let dispatchWithoutRecipientRejected = false;
+    try {
+      await api(`/slots/${slot.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView).filter((key) => key !== 'recipient') })
+      });
+    } catch (error) {
+      dispatchWithoutRecipientRejected = /收件微信确认/.test(error.message);
+    }
+    assert(dispatchWithoutRecipientRejected, 'ready delivery allowed dispatch without recipient confirmation');
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView) }) });
     const sentDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(sentDeliveryView.freelancerGuideAlreadySent === true, 'sent delivery should mark freelancer guide covered');

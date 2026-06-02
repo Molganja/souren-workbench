@@ -507,6 +507,36 @@ button:disabled:hover,
   line-height: 1.45;
 }
 
+.recipientConfirm {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 0 0 12px;
+  background: #fff;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.recipientConfirm.confirmed {
+  border-color: var(--green-soft);
+  background: var(--green-soft);
+}
+
+.recipientConfirm strong,
+.recipientConfirm span,
+.recipientConfirm small {
+  display: block;
+}
+
+.recipientConfirm span,
+.recipientConfirm small {
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
 .deliveryTextGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1380,6 +1410,9 @@ textarea {
   }
   .deliveryHeader {
     display: grid;
+  }
+  .recipientConfirm {
+    grid-template-columns: 1fr;
   }
   .accessForm {
     align-items: stretch;
