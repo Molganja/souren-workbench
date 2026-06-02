@@ -4664,8 +4664,7 @@ app.patch('/api/slots/:id/status', (req, res) => {
     if (!deliveryView?.mediaFiles?.length) {
       return res.status(409).json({ error: '交付动作还没完成：本次可发送图片或视频' });
     }
-    const completedHandoff = req.body?.handoffDone || req.body?.deliveryChecklist || slot.handoffDone;
-    handoffGuard = deliveryHandoffGuard(slot, completedHandoff, deliveryView);
+    handoffGuard = deliveryHandoffGuard(slot, slot.handoffDone, deliveryView);
     if (!handoffGuard.ok) {
       return res.status(409).json({ error: `交付动作还没完成：${handoffGuard.missing.map((item) => item.label).join('、')}` });
     }

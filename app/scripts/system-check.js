@@ -551,12 +551,14 @@ if (
   dbSource.includes('handoff_done TEXT')
   && serverSource.includes("app.patch('/api/slots/:id/handoff'")
   && serverSource.includes('deliveryHandoffProgressGuard')
-  && serverSource.includes('completedHandoff = req.body?.handoffDone || req.body?.deliveryChecklist || slot.handoffDone')
+  && serverSource.includes('deliveryHandoffGuard(slot, slot.handoffDone, deliveryView)')
+  && !serverSource.includes('req.body?.handoffDone || req.body?.deliveryChecklist')
   && mainSource.includes('setHandoffDone(new Set(data.handoffDone || []))')
   && mainSource.includes('/slots/${view.slot.id}/handoff')
   && readmeSource.includes('关窗重开仍从上次位置继续')
   && sopSource.includes('关窗重开仍从上次位置继续')
   && smokeSource.includes('delivery view did not restore persisted handoff progress after reopening')
+  && smokeSource.includes('ready delivery allowed dispatch with forged request handoff checklist')
   && smokeSource.includes('sent delivery did not keep persisted handoff history')
 ) ok('交付步骤进度会落库，关窗重开不需要重复复制或下载');
 else fail('交付步骤仍只存在前端状态，关窗重开可能导致重复发送');
@@ -569,7 +571,7 @@ if (
 ) ok('交付派发要求至少有一个可发送素材');
 else fail('交付派发仍可能在没有图片或视频素材时被标记已派发');
 
-if (mainSource.includes("key: 'recipient'") && mainSource.includes('确认只发给这个微信') && mainSource.includes('RecipientConfirmPanel') && serverSource.includes("key: 'recipient'") && smokeSource.includes("key !== 'recipient'")) ok('交付必须先确认收件微信，前端和后端都不能跳过');
+if (mainSource.includes("key: 'recipient'") && mainSource.includes('确认只发给这个微信') && mainSource.includes('RecipientConfirmPanel') && serverSource.includes("key: 'recipient'") && smokeSource.includes('handoff progress allowed saving a later step before recipient confirmation') && smokeSource.includes('ready delivery allowed dispatch with forged request handoff checklist')) ok('交付必须先确认收件微信，前端和后端都不能跳过');
 else fail('交付仍可能跳过收件微信确认');
 
 if (mainSource.includes('nextHandoffStep') && mainSource.includes('handoffStepEnabled') && mainSource.includes('先完成前一步') && serverSource.includes('outOfOrderIndex') && serverSource.includes('按发送顺序操作')) ok('交付动作必须按顺序完成');
@@ -578,7 +580,7 @@ else fail('交付动作仍可能不按顺序完成');
 if (!mainSource.includes('completeKey="rules"') && !serverSource.includes("steps.push({ key: 'rules'")) ok('发布要求不再作为额外复制步骤');
 else fail('发布要求仍被当成必须复制步骤');
 
-if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes("requireQueueHeadForSlot(req, slot, '改状态')") && serverSource.includes('这条不是今日操作队列队首') && serverSource.includes("['异常', '已派发'].includes(status)") && serverSource.includes("status === '已完成' && !completingAlreadySent") && serverSource.includes('交付动作还没完成') && mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端派发状态接口也要求队首和交付步骤完成清单');
+if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes("requireQueueHeadForSlot(req, slot, '改状态')") && serverSource.includes('这条不是今日操作队列队首') && serverSource.includes("['异常', '已派发'].includes(status)") && serverSource.includes("status === '已完成' && !completingAlreadySent") && serverSource.includes('交付动作还没完成') && serverSource.includes('deliveryHandoffGuard(slot, slot.handoffDone, deliveryView)') && !mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端派发状态接口也要求队首和已落库交付步骤完成');
 else fail('后端状态接口仍可能绕过交付步骤门禁');
 
 if (serverSource.includes('sentWaitDone: dueSlots.filter') && !serverSource.includes('items.push({ id: `sent-${slot.id}`') && mainSource.includes('WaitingConfirmSection') && mainSource.includes('waitingDetails') && mainSource.includes('收到对方完成回复后再展开收尾') && mainSource.includes('不阻塞今日队列') && mainSource.includes('completionAllowed') && styleSource.includes('.waitingDetails[open] summary::after') && smokeSource.includes('sent slot should move to non-blocking wait confirmation list')) ok('已派发任务进入折叠等待确认区，不再阻塞今日操作队列');

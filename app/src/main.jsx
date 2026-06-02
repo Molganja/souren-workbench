@@ -1852,7 +1852,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
           <button className="primary" disabled={!handoffReady} onClick={() => onAct(async () => {
             await request(`/slots/${view.slot.id}/status`, {
               method: 'PATCH',
-              body: JSON.stringify({ status: '已派发', handoffDone: Array.from(handoffDone) })
+              body: JSON.stringify({ status: '已派发' })
             });
             onClose();
           }, '已标记派发')}>已用微信发送</button>

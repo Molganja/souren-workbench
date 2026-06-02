@@ -1433,26 +1433,28 @@ async function main() {
       dispatchWithoutChecklistRejected = /交付动作还没完成/.test(error.message);
     }
     assert(dispatchWithoutChecklistRejected, 'ready delivery allowed dispatch without completed handoff checklist');
-    let dispatchOutOfOrderRejected = false;
+    let forgedDispatchRejected = false;
     try {
       await api(`/slots/${slot.id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView).reverse() })
+        body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView) })
       });
     } catch (error) {
-      dispatchOutOfOrderRejected = /按发送顺序/.test(error.message);
+      forgedDispatchRejected = /交付动作还没完成/.test(error.message);
     }
-    assert(dispatchOutOfOrderRejected, 'ready delivery allowed out-of-order handoff checklist');
-    let dispatchWithoutRecipientRejected = false;
+    assert(forgedDispatchRejected, 'ready delivery allowed dispatch with forged request handoff checklist');
+    const afterForgedDispatchView = await api(`/slots/${slot.id}/delivery-view`);
+    assert(afterForgedDispatchView.handoffDone.length === 1, 'forged dispatch request changed persisted handoff progress');
+    let dispatchOutOfOrderProgressRejected = false;
     try {
-      await api(`/slots/${slot.id}/status`, {
+      await api(`/slots/${slot.id}/handoff`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView).filter((key) => key !== 'recipient') })
+        body: JSON.stringify({ handoffDone: handoffDoneForDeliveryView(deliveryView).reverse() })
       });
     } catch (error) {
-      dispatchWithoutRecipientRejected = /收件微信确认/.test(error.message);
+      dispatchOutOfOrderProgressRejected = /按发送顺序/.test(error.message);
     }
-    assert(dispatchWithoutRecipientRejected, 'ready delivery allowed dispatch without recipient confirmation');
+    assert(dispatchOutOfOrderProgressRejected, 'handoff progress allowed out-of-order checklist');
     const fullHandoff = await api(`/slots/${slot.id}/handoff`, {
       method: 'PATCH',
       body: JSON.stringify({ handoffDone: deliveryHandoffKeys })
