@@ -778,7 +778,21 @@ async function main() {
     if (queueDelivered.reason) assert(queueDelivered.reason.includes('不能越过队首') || queueDelivered.reason.includes('今日队列已清空'), 'dashboard delivery missing queue-head refusal reason');
 
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
+    const sentDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
+    assert(sentDeliveryView.freelancerGuideAlreadySent === true, 'sent delivery should mark freelancer guide covered');
+    assert(sentDeliveryView.shouldSendFreelancerGuide === false && !sentDeliveryView.texts.freelancerGuide, 'sent delivery should not keep freelancer guide copyable');
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
+    const repeatGuideSlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-10', contentKind: '日常养号', stage: '起号期', goal: '兼职须知不重复验收' })
+    });
+    const repeatGuideDrafts = await api(`/slots/${repeatGuideSlot.id}/generate-candidates`, { method: 'POST' });
+    await api(`/candidates/${repeatGuideDrafts[0].id}/select`, { method: 'POST' });
+    await api(`/slots/${repeatGuideSlot.id}/delivery`, { method: 'POST' });
+    const repeatGuideView = await api(`/slots/${repeatGuideSlot.id}/delivery-view`);
+    assert(repeatGuideView.freelancerGuideAlreadySent === true, 'later delivery did not detect previous guide send');
+    assert(repeatGuideView.shouldSendFreelancerGuide === false, 'later delivery still asks to send freelancer guide');
+    assert(!repeatGuideView.texts.freelancerGuide && repeatGuideView.texts.freelancerGuideNote.includes('后续不重复发'), 'later delivery should only keep a guide status note');
     const completedDashboard = await api('/dashboard');
     assert(completedDashboard.todaySlots.some((item) => item.id === slot.id && item.status === '已完成'), 'dashboard today chain dropped completed slot');
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });

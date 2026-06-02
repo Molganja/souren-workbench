@@ -442,6 +442,16 @@ button.activeSmall {
   font-weight: 700;
 }
 
+.guideNotice {
+  border: 1px solid var(--green-soft);
+  background: var(--green-soft);
+  color: var(--green);
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin: -4px 0 12px;
+  font-weight: 700;
+}
+
 .handoffSteps {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

@@ -1649,6 +1649,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, view.slot);
   const steps = deliverySteps(view, mediaFiles.length, isActiveQueueSlot);
   const copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot;
+  const showFreelancerGuide = Boolean(view.shouldSendFreelancerGuide && texts.freelancerGuide);
   return (
     <Modal title="交付内容" onClose={onClose}>
       <div className="deliveryHeader">
@@ -1691,10 +1692,11 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       )}
 
       <div className="deliveryTextGrid">
-        {texts.freelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} copyable={copyAllowed} />}
+        {showFreelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} copyable={copyAllowed} />}
         <TextPanel title="发给兼职文案" text={texts.operatorInstruction} onCopy={onCopy} copyable={copyAllowed} />
         <TextPanel title="抖音发布文案" text={texts.publishText} onCopy={onCopy} copyable={copyAllowed} />
       </div>
+      {!showFreelancerGuide && texts.freelancerGuideNote && <div className="guideNotice">{texts.freelancerGuideNote}</div>}
 
       <section className="deliverySection">
         <div className="sectionHead">
@@ -1778,11 +1780,11 @@ function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
       detail: readonlyDelivery ? `已派发素材只用于确认本次记录，本次记录 ${mediaCount} 个素材。` : (mediaCount ? `按页面顺序发送 ${mediaCount} 个素材。` : '没有素材时不要派发，先补素材。')
     }
   ];
-  if (view.texts?.freelancerGuide) {
+  if (view.shouldSendFreelancerGuide && view.texts?.freelancerGuide) {
     steps.splice(1, 0, {
       order: '首次',
-      label: readonlyDelivery ? '兼职须知已进入记录' : '第一次先发兼职须知',
-      detail: readonlyDelivery ? '只用于确认首次口径，不再重复发送。' : '同一个兼职以前发过就不用重复发。'
+      label: '第一次先发兼职须知',
+      detail: '同一个兼职以前发过就不用重复发。'
     });
   }
   steps.push({

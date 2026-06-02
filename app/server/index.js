@@ -3918,6 +3918,17 @@ function deliveryFileKind(fileName) {
   return '文件';
 }
 
+function caseGuideAlreadySent(slot) {
+  if (!slot) return false;
+  if (['已派发', '已完成'].includes(slot.status)) return true;
+  return Boolean(get(
+    `SELECT id FROM plan_slots
+    WHERE case_id = ? AND id != ? AND status IN ('已派发', '已完成')
+    LIMIT 1`,
+    [slot.caseId, slot.id]
+  ));
+}
+
 function deliveryViewForSlot(slot) {
   if (!slot) return null;
   const caze = caseById(slot.caseId);
@@ -3950,14 +3961,20 @@ function deliveryViewForSlot(slot) {
       url: assetFileUrl(asset.path)
     }));
   const videoDelivery = isVideoDelivery(candidate.format);
+  const guideAlreadySent = caseGuideAlreadySent(slot);
+  const shouldSendFreelancerGuide = slot.status === '可交付' && !guideAlreadySent;
+  const freelancerGuide = readDeliveryText(deliveryDir, '00-兼职须知.txt') || freelancerGuideForCase(caze);
   return {
     slot,
     case: caze,
     candidate,
     deliveryDir,
     isVideo: videoDelivery,
+    shouldSendFreelancerGuide,
+    freelancerGuideAlreadySent: guideAlreadySent,
     texts: {
-      freelancerGuide: readDeliveryText(deliveryDir, '00-兼职须知.txt') || freelancerGuideForCase(caze),
+      freelancerGuide: shouldSendFreelancerGuide ? freelancerGuide : '',
+      freelancerGuideNote: guideAlreadySent ? '兼职须知已在首次交付发送，后续不重复发。' : '',
       checklist: readDeliveryText(deliveryDir, '00-微信发送清单.txt'),
       operatorInstruction: deliveryOperatorInstructionText(readDeliveryText(deliveryDir, '01-发给兼职文案.txt'), slot, caze),
       publishText: readDeliveryText(deliveryDir, '02-抖音发布文案.txt'),
