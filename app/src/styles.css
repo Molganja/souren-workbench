@@ -1107,6 +1107,10 @@ button:disabled:hover,
   gap: 4px;
 }
 
+.settingsList {
+  margin-top: 12px;
+}
+
 .readinessRow {
   align-items: start;
 }

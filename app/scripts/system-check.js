@@ -50,6 +50,7 @@ const readmeSource = [
   fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8'),
   fs.readFileSync(path.join(APP_DIR, 'README.md'), 'utf8')
 ].join('\n');
+const sopSource = fs.readFileSync(path.join(ROOT_DIR, '日常运营SOP.md'), 'utf8');
 const duplicateDashboardLabels = ['新手今日顺序', '今日链路复盘', '今天全部任务', '可微信交付', '待选择候选', '待生成候选稿', '今天先处理'];
 const leakedLabels = duplicateDashboardLabels.filter((label) => mainSource.includes(label));
 if (leakedLabels.length) fail(`首页仍包含重复任务区块：${leakedLabels.join('、')}`);
@@ -110,6 +111,9 @@ else fail('案例详情仍可能绕过今日队首执行素材标记、缺口建
 if (!mainSource.includes('内容阶段比例') && !mainSource.includes('<h2>素材模板</h2>') && !serverSource.includes('stageRatios: STAGE_RATIOS') && !serverSource.includes('materialTemplates: MATERIAL_TEMPLATES')) ok('系统配置不暴露后台阶段比例和素材模板');
 else fail('系统配置仍暴露后台阶段比例或素材模板');
 
+if (mainSource.includes('系统验收清单') && mainSource.includes('readinessChecks') && mainSource.includes('readinessStatusLabel')) ok('系统配置展示简短验收清单');
+else fail('系统配置缺少 SOP 要求的验收清单');
+
 const pkg = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8'));
 if (pkg.scripts?.['client:verify']?.includes('client:mac') && pkg.scripts?.['client:verify']?.includes('client:package:check')) ok('客户端可一条命令打包并启动验收');
 else fail('客户端缺少一条命令打包验收脚本');
@@ -160,6 +164,9 @@ else fail('采集写入后仍可能留下旧的未来待生成或已准备未派
 
 if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)') && serverSource.includes('item.collectionPolicy?.intervalHours != null')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
 else fail('Chrome采集清单缺少活跃度优先排序');
+
+if (mainSource.includes('后台采集状态') && mainSource.includes('/douyin-monitor/chrome-queue?limit=10') && mainSource.includes('登记到期采集清单') && !mainSource.includes('采集回填入口')) ok('后台采集状态只放在系统配置，不回到首页手工回填');
+else fail('后台采集状态缺少系统配置入口，或前台仍保留手工回填口径');
 
 if (!mainSource.includes('打开抖音主页') && !mainSource.includes('target="_blank">打开主页</a>')) ok('前台不要求工作人员手动打开抖音主页');
 else fail('前台仍暴露手动打开抖音主页入口');
@@ -234,6 +241,17 @@ else fail('新建案例仍暴露随机人设选择或允许缺少微信名');
 
 if (serverSource.includes('必须填写兼职微信昵称') && serverSource.includes('必须填写有效的抖音主页或作品链接') && serverSource.includes('必须填写共享原始素材路径') && serverSource.includes('normalizeDouyinUrl') && !serverSource.includes('body.weixinNick || `${persona.city}') && !serverSource.includes('input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick')) ok('后端不再随机生成兼职微信名，也不允许缺少抖音链接或共享素材路径');
 else fail('后端仍可能随机生成兼职微信名或允许缺少抖音链接/共享素材路径');
+
+const staleOperatorDocs = [
+  '先复制这个账号的清单',
+  '回到系统补分析结果',
+  '底部折叠的「后台采集状态」',
+  '远端代码写权限未配置',
+  '待爆款分析链接只保留打开原链接和补分析结果'
+];
+const leakedOperatorDocs = staleOperatorDocs.filter((label) => [readmeSource, sopSource].some((source) => source.includes(label)));
+if (!leakedOperatorDocs.length) ok('SOP 和 README 不再保留手工分析、手工采集或远端权限旧口径');
+else fail(`SOP/README 仍有旧口径：${leakedOperatorDocs.join('、')}`);
 
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');

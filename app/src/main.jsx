@@ -2118,6 +2118,8 @@ function pendingViralTitle(item) {
 function SettingsView({ config, onAct, canOpenLocalPaths }) {
   const [sharedAssets, setSharedAssets] = useState([]);
   const [sharedAssetsLoading, setSharedAssetsLoading] = useState(false);
+  const [collectionStatus, setCollectionStatus] = useState(null);
+  const [collectionLoading, setCollectionLoading] = useState(false);
   async function loadSharedAssets() {
     setSharedAssetsLoading(true);
     try {
@@ -2126,9 +2128,25 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
       setSharedAssetsLoading(false);
     }
   }
+  async function loadCollectionStatus() {
+    setCollectionLoading(true);
+    try {
+      const [monitor, queue] = await Promise.all([
+        request('/douyin-monitor'),
+        request('/douyin-monitor/chrome-queue?limit=10')
+      ]);
+      setCollectionStatus({ monitor, queue });
+    } finally {
+      setCollectionLoading(false);
+    }
+  }
   useEffect(() => {
     loadSharedAssets();
+    loadCollectionStatus();
   }, []);
+  const monitorTotals = collectionStatus?.monitor?.totals || {};
+  const collectionTargets = collectionStatus?.queue?.targets || [];
+  const readinessChecks = config.readiness?.checks || [];
   return (
     <div className="stack">
       <section className="hero">
@@ -2160,6 +2178,60 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
             <strong>访问码</strong>
             <span>{config.network?.accessCodeRequired ? '已开启' : '未开启；建议开放局域网时设置 SOUREN_ACCESS_CODE'}</span>
           </div>
+        </div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>系统验收清单</h2>
+          <span>{config.readiness?.summary?.ready || 0} / {config.readiness?.summary?.total || 0} 已就绪</span>
+        </div>
+        <div className="templateList">
+          {readinessChecks.map((item) => (
+            <div className="templateRow readinessRow" key={item.key}>
+              <div className="rowTitle">
+                <strong>{item.label}</strong>
+                <span className={`status ${readinessStatusClass(item.status)}`}>{readinessStatusLabel(item.status)}</span>
+              </div>
+              <small>{item.detail}</small>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>后台采集状态</h2>
+          <div className="headerActions">
+            <button disabled={collectionLoading} onClick={loadCollectionStatus}>{collectionLoading ? '刷新中' : '刷新采集状态'}</button>
+            <button disabled={collectionLoading} onClick={() => onAct(
+              async () => {
+                const result = await request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 20 }) });
+                await loadCollectionStatus();
+                return result;
+              },
+              (result) => `已登记 ${result.registeredCount} 个到期采集，已排队 ${result.skippedQueuedCount || 0} 个`
+            )}>登记到期采集清单</button>
+          </div>
+        </div>
+        <div className="stats reviewStats">
+          <Metric label="监控账号" value={monitorTotals.monitoredAccounts || 0} />
+          <Metric label="到期采集" value={monitorTotals.dueCollection || 0} />
+          <Metric label="已排队" value={monitorTotals.collectionQueued || 0} />
+          <Metric label="等待Chrome" value={monitorTotals.waitingChrome || 0} />
+          <Metric label="爆款提醒" value={monitorTotals.viralAlerts || 0} />
+        </div>
+        <div className="templateList settingsList">
+          {collectionTargets.length === 0 ? (
+            <div className="empty">当前没有到期账号。后台会按活跃度登记采集，不进入首页队列。</div>
+          ) : collectionTargets.map((target) => (
+            <div className="templateRow" key={target.caseId}>
+              <div>
+                <strong>{target.weixinNick}</strong>
+                <p>{target.project} · {target.activityTier || '未判断'} · {target.collectionQueued ? '已在队列' : (target.dueCollection ? '到期' : '未到期')}</p>
+              </div>
+              <span>{target.collectionPolicy?.intervalHours == null ? '不采集' : `${target.collectionPolicy.intervalHours}小时周期`}</span>
+              <small>上次：{shortTime(target.lastCollectedAt)}｜粉丝：{formatNumber(target.latestSnapshot?.fans)}｜最高播放：{formatNumber(target.topVideo?.latestSnapshot?.plays)}</small>
+            </div>
+          ))}
         </div>
       </section>
       <section className="panel">
@@ -2226,6 +2298,20 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
       </section>
     </div>
   );
+}
+
+function readinessStatusLabel(status) {
+  return {
+    ready: '已就绪',
+    waiting: '待接入',
+    warning: '需处理'
+  }[status] || status || '未知';
+}
+
+function readinessStatusClass(status) {
+  if (status === 'ready') return 'ok';
+  if (status === 'waiting') return 'wait';
+  return 'bad';
 }
 
 const SHARED_ASSET_CATEGORIES = ['医院素材', '套图素材', '生活场景', '文字卡素材', '备用素材'];
