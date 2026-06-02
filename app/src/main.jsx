@@ -2153,7 +2153,7 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
         <div>
           <p className="eyebrow">系统配置</p>
           <h1>运行状态</h1>
-          <p>这里只保留工作人员能判断的状态：验收清单、后台采集、局域网访问、素材目录、图片生成占位和通用素材管理。</p>
+          <p>日常只看局域网、素材目录、图片接口和验收清单；采集登记、爆款分析和图片生成排队放进系统后台，平时不用展开。</p>
         </div>
         <div className="stats">
           <Metric label="图片接口" value={config.image?.ready ? '已接入' : '待接入'} />
@@ -2197,69 +2197,83 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
           ))}
         </div>
       </section>
-      <section className="panel">
-        <div className="sectionHead">
-          <h2>后台采集状态</h2>
-          <div className="headerActions">
-            <button disabled={collectionLoading} onClick={loadCollectionStatus}>{collectionLoading ? '刷新中' : '刷新采集状态'}</button>
-            <button disabled={collectionLoading} onClick={() => onAct(
-              async () => {
-                const result = await request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 20 }) });
-                await loadCollectionStatus();
-                return result;
-              },
-              (result) => `已登记 ${result.registeredCount} 个到期采集，已排队 ${result.skippedQueuedCount || 0} 个`
-            )}>登记到期采集清单</button>
+      <section className="panel systemBackstage">
+        <details>
+          <summary>
+            <div>
+              <h2>系统后台</h2>
+              <p>采集登记、爆款分析和图片生成排队都在这里；只有排查或主机处理时展开。</p>
+            </div>
+            <span>到期采集 {monitorTotals.dueCollection || 0} · 后台动作 {agentWorkCounts.total || 0}</span>
+          </summary>
+          <div className="backstageBlocks">
+            <div className="backstageBlock">
+              <div className="sectionHead">
+                <h3>采集状态</h3>
+                <div className="headerActions">
+                  <button disabled={collectionLoading} onClick={loadCollectionStatus}>{collectionLoading ? '刷新中' : '刷新采集状态'}</button>
+                  <button disabled={collectionLoading} onClick={() => onAct(
+                    async () => {
+                      const result = await request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 20 }) });
+                      await loadCollectionStatus();
+                      return result;
+                    },
+                    (result) => `已登记 ${result.registeredCount} 个到期采集，已排队 ${result.skippedQueuedCount || 0} 个`
+                  )}>登记到期采集清单</button>
+                </div>
+              </div>
+              <div className="stats reviewStats">
+                <Metric label="监控账号" value={monitorTotals.monitoredAccounts || 0} />
+                <Metric label="到期采集" value={monitorTotals.dueCollection || 0} />
+                <Metric label="已排队" value={monitorTotals.collectionQueued || 0} />
+                <Metric label="等待Chrome" value={monitorTotals.waitingChrome || 0} />
+                <Metric label="爆款提醒" value={monitorTotals.viralAlerts || 0} />
+              </div>
+              <div className="templateList settingsList">
+                {collectionTargets.length === 0 ? (
+                  <div className="empty">当前没有到期账号。后台会按活跃度登记采集，不进入首页队列。</div>
+                ) : collectionTargets.map((target) => (
+                  <div className="templateRow" key={target.caseId}>
+                    <div>
+                      <strong>{target.weixinNick}</strong>
+                      <p>{target.project} · {target.activityTier || '未判断'} · {target.collectionQueued ? '已在队列' : (target.dueCollection ? '到期' : '未到期')}</p>
+                    </div>
+                    <span>{target.collectionPolicy?.intervalHours == null ? '不采集' : `${target.collectionPolicy.intervalHours}小时周期`}</span>
+                    <small>上次：{shortTime(target.lastCollectedAt)}｜粉丝：{formatNumber(target.latestSnapshot?.fans)}｜最高播放：{formatNumber(target.topVideo?.latestSnapshot?.plays)}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="backstageBlock">
+              <div className="sectionHead">
+                <h3>后台动作</h3>
+                <span>{agentWorkCounts.total || 0} 项</span>
+              </div>
+              <div className="stats reviewStats">
+                <Metric label="爆款待分析" value={agentWorkCounts.viralAnalysis || 0} />
+                <Metric label="采集目标" value={agentWorkCounts.douyinCollection || 0} />
+                <Metric label="图片任务" value={agentWorkCounts.imageWork || 0} />
+                <Metric label="等待Key" value={agentWorkCounts.imageWaitingKey || 0} />
+                <Metric label="可生成图" value={agentWorkCounts.imageReadyToGenerate || 0} />
+              </div>
+              <div className="templateList settingsList">
+                {agentWorkItems.length === 0 ? (
+                  <div className="empty">当前没有后台待处理动作。</div>
+                ) : agentWorkItems.slice(0, 8).map((item) => (
+                  <div className="templateRow" key={item.id}>
+                    <div className="rowTitle">
+                      <strong>{item.title}</strong>
+                      <span className={`status ${agentWorkStatusClass(item)}`}>{item.kind} · {displayStatus(item.status)}</span>
+                    </div>
+                    <small>{item.case?.weixinNick ? `${item.case.weixinNick}｜${item.case.project}｜` : ''}{item.action}</small>
+                    <small>{item.endpoint}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="stats reviewStats">
-          <Metric label="监控账号" value={monitorTotals.monitoredAccounts || 0} />
-          <Metric label="到期采集" value={monitorTotals.dueCollection || 0} />
-          <Metric label="已排队" value={monitorTotals.collectionQueued || 0} />
-          <Metric label="等待Chrome" value={monitorTotals.waitingChrome || 0} />
-          <Metric label="爆款提醒" value={monitorTotals.viralAlerts || 0} />
-        </div>
-        <div className="templateList settingsList">
-          {collectionTargets.length === 0 ? (
-            <div className="empty">当前没有到期账号。后台会按活跃度登记采集，不进入首页队列。</div>
-          ) : collectionTargets.map((target) => (
-            <div className="templateRow" key={target.caseId}>
-              <div>
-                <strong>{target.weixinNick}</strong>
-                <p>{target.project} · {target.activityTier || '未判断'} · {target.collectionQueued ? '已在队列' : (target.dueCollection ? '到期' : '未到期')}</p>
-              </div>
-              <span>{target.collectionPolicy?.intervalHours == null ? '不采集' : `${target.collectionPolicy.intervalHours}小时周期`}</span>
-              <small>上次：{shortTime(target.lastCollectedAt)}｜粉丝：{formatNumber(target.latestSnapshot?.fans)}｜最高播放：{formatNumber(target.topVideo?.latestSnapshot?.plays)}</small>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="panel">
-        <div className="sectionHead">
-          <h2>主机侧工作清单</h2>
-          <span>{agentWorkCounts.total || 0} 项</span>
-        </div>
-        <div className="stats reviewStats">
-          <Metric label="爆款待分析" value={agentWorkCounts.viralAnalysis || 0} />
-          <Metric label="采集目标" value={agentWorkCounts.douyinCollection || 0} />
-          <Metric label="图片任务" value={agentWorkCounts.imageWork || 0} />
-          <Metric label="等待Key" value={agentWorkCounts.imageWaitingKey || 0} />
-          <Metric label="可生成图" value={agentWorkCounts.imageReadyToGenerate || 0} />
-        </div>
-        <div className="templateList settingsList">
-          {agentWorkItems.length === 0 ? (
-            <div className="empty">当前没有主机侧待处理动作。</div>
-          ) : agentWorkItems.slice(0, 8).map((item) => (
-            <div className="templateRow" key={item.id}>
-              <div className="rowTitle">
-                <strong>{item.title}</strong>
-                <span className={`status ${agentWorkStatusClass(item)}`}>{item.kind} · {displayStatus(item.status)}</span>
-              </div>
-              <small>{item.case?.weixinNick ? `${item.case.weixinNick}｜${item.case.project}｜` : ''}{item.action}</small>
-              <small>{item.endpoint}</small>
-            </div>
-          ))}
-        </div>
+        </details>
       </section>
       <section className="panel">
         <div className="sectionHead"><h2>本地素材根目录</h2></div>

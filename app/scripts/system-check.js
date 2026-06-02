@@ -72,8 +72,16 @@ else fail(`爆款链接前台仍暴露分析字段：${leakedViralAnalysisFields
 if (serverSource.includes('/api/viral-templates/:id/analysis-result') && serverSource.includes('normalizeViralAnalysisResult') && serverSource.includes('爆款分析结果缺少') && smokeSource.includes('viral analysis result accepted incomplete payload') && smokeSource.includes('/analysis-result')) ok('爆款链接有后台分析写回接口，且不接受半分析结果');
 else fail('爆款链接缺少专用分析写回接口，或未验证半分析结果会被拒绝');
 
-if (serverSource.includes("app.get('/api/agent-work'") && serverSource.includes('function agentWorkQueue') && mainSource.includes('主机侧工作清单') && mainSource.includes('/agent-work') && smokeSource.includes('agent work queue missing pending viral analysis')) ok('主机侧工作清单聚合爆款分析、Chrome采集和图片任务，且不进入首页');
-else fail('缺少主机侧后台工作清单，或没有覆盖待分析爆款/采集/图片任务');
+if (
+  serverSource.includes("app.get('/api/agent-work'")
+  && serverSource.includes('function agentWorkQueue')
+  && mainSource.includes('className="panel systemBackstage"')
+  && mainSource.includes('<h2>系统后台</h2>')
+  && mainSource.includes('/agent-work')
+  && !mainSource.includes('主机侧工作清单')
+  && smokeSource.includes('agent work queue missing pending viral analysis')
+) ok('后台动作聚合爆款分析、Chrome采集和图片任务，默认折叠且不进入首页');
+else fail('缺少折叠的系统后台，或仍保留主机侧工作清单旧口径');
 
 if (serverSource.includes('DEFAULT_IMAGE_API_URL') && serverSource.includes("DEFAULT_IMAGE_MODEL = 'gpt-image-1'") && serverSource.includes('apiUrlDefaulted') && !serverSource.includes('IMAGE_API_KEY 和 IMAGE_API_URL') && !readmeSource.includes('同时填写 `IMAGE_API_KEY` 和 `IMAGE_API_URL`') && smokeSource.includes('image config should be ready with key only')) ok('图片接口只要求 IMAGE_API_KEY，接口地址仅作为可选覆盖');
 else fail('图片接口仍要求同时填写 key 和 URL，或缺少 key-only 验收');
@@ -174,8 +182,15 @@ else fail('采集写入后仍可能留下旧的未来待生成或已准备未派
 if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)') && serverSource.includes('item.collectionPolicy?.intervalHours != null')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
 else fail('Chrome采集清单缺少活跃度优先排序');
 
-if (mainSource.includes('后台采集状态') && mainSource.includes('/douyin-monitor/chrome-queue?limit=10') && mainSource.includes('登记到期采集清单') && !mainSource.includes('采集回填入口')) ok('后台采集状态只放在系统配置，不回到首页手工回填');
-else fail('后台采集状态缺少系统配置入口，或前台仍保留手工回填口径');
+if (
+  mainSource.includes('<h3>采集状态</h3>')
+  && mainSource.includes('systemBackstage')
+  && mainSource.includes('/douyin-monitor/chrome-queue?limit=10')
+  && mainSource.includes('登记到期采集清单')
+  && !mainSource.includes('后台采集状态')
+  && !mainSource.includes('采集回填入口')
+) ok('采集状态只放在折叠系统后台，不回到首页手工回填');
+else fail('采集状态缺少折叠后台入口，或前台仍保留手工回填旧口径');
 
 if (!mainSource.includes('打开抖音主页') && !mainSource.includes('target="_blank">打开主页</a>')) ok('前台不要求工作人员手动打开抖音主页');
 else fail('前台仍暴露手动打开抖音主页入口');

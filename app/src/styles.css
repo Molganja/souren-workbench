@@ -250,8 +250,78 @@ button:disabled:hover,
   font-size: 17px;
 }
 
+.sectionHead h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
 .sectionHead span {
   color: var(--muted);
+}
+
+.systemBackstage {
+  background: #fbfcfe;
+}
+
+.systemBackstage details {
+  display: grid;
+  gap: 14px;
+}
+
+.systemBackstage summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.systemBackstage summary::-webkit-details-marker {
+  display: none;
+}
+
+.systemBackstage summary::after {
+  content: "展开";
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: #fff;
+  white-space: nowrap;
+}
+
+.systemBackstage details[open] summary::after {
+  content: "收起";
+}
+
+.systemBackstage summary h2,
+.systemBackstage summary p {
+  margin: 0;
+}
+
+.systemBackstage summary p {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.systemBackstage summary > span {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.backstageBlocks {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 14px;
+  display: grid;
+  gap: 16px;
+}
+
+.backstageBlock {
+  display: grid;
+  gap: 12px;
 }
 
 .taskList, .slotList, .assetList, .templateList, .accountGrid {
