@@ -1329,10 +1329,12 @@ function registerLibraryCase(payload, onAct, onDone) {
 
 function DeleteCaseModal({ item, onClose, onDelete }) {
   const [confirmText, setConfirmText] = useState('');
-  const ready = confirmText.trim() === '删除';
+  const deleteName = item.weixinNick || item.caseCode || '这个案例';
+  const deletePhrase = `删除 ${deleteName}`;
+  const ready = confirmText.trim() === deletePhrase;
   return (
     <Modal title="删除案例" onClose={onClose}>
-      <div className="hintBox dangerHint">删除后，这个账号不会再进入首页队列；本地素材副本也会同步删除。</div>
+      <div className="hintBox dangerHint">删除后，这个账号不会再进入首页队列；本地素材副本也会同步删除。请输入「{deletePhrase}」确认。</div>
       <div className="templateList">
         <div className="templateRow">
           <strong>微信昵称</strong>
@@ -1344,7 +1346,7 @@ function DeleteCaseModal({ item, onClose, onDelete }) {
         </div>
       </div>
       <div className="formGrid">
-        <label className="wide">确认删除<input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder="输入：删除" /></label>
+        <label className="wide">确认删除<input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder={`输入：${deletePhrase}`} /></label>
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>

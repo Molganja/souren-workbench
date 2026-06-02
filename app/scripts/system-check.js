@@ -110,8 +110,14 @@ else fail('空爆款链接仍可能生成假模板');
 if (!mainSource.includes('window.prompt') && mainSource.includes('LibraryCaseForm') && mainSource.includes('ViralBulkForm')) ok('案例登记和爆款生成不再使用浏览器临时输入框');
 else fail('前台仍存在浏览器临时输入框，或缺少正式登记/生成弹窗');
 
-if (!mainSource.includes('window.confirm') && mainSource.includes('DeleteCaseModal') && mainSource.includes('输入：删除')) ok('删除案例使用工作台内确认弹窗');
-else fail('删除案例仍使用浏览器原生确认框，或缺少明确删除确认');
+if (
+  !mainSource.includes('window.confirm')
+  && mainSource.includes('DeleteCaseModal')
+  && mainSource.includes('const deletePhrase = `删除 ${deleteName}`')
+  && mainSource.includes("confirmText.trim() === deletePhrase")
+  && mainSource.includes('placeholder={`输入：${deletePhrase}`}')
+) ok('删除案例必须输入删除加微信昵称，使用工作台内确认弹窗');
+else fail('删除案例仍使用浏览器原生确认框，或缺少绑定账号的明确删除确认');
 
 if (
   mainSource.includes('今日操作队列') &&
