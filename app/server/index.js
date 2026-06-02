@@ -2311,6 +2311,35 @@ function autoPauseLostContactCases(cases = all('SELECT * FROM cases ORDER BY cre
   return autoPaused;
 }
 
+function cancelBlockedDouyinCollectionRuns(cases = all('SELECT * FROM cases ORDER BY created_at ASC').map(rowCase)) {
+  const canceled = [];
+  const collectionPlaceholders = OPEN_COLLECTION_STATUSES.map(() => '?').join(', ');
+  cases.forEach((caze) => {
+    if (!caze?.id || caseIsPaused(caze)) return;
+    const reason = douyinCollectBlockReason(caze.douyinUrl);
+    if (!reason) return;
+    const openRuns = all(
+      `SELECT * FROM collection_runs WHERE case_id = ? AND status IN (${collectionPlaceholders}) ORDER BY started_at ASC, created_at ASC`,
+      [caze.id, ...OPEN_COLLECTION_STATUSES]
+    ).map(rowCollectionRun);
+    openRuns.forEach((item) => {
+      run(
+        'UPDATE collection_runs SET status = ?, finished_at = ?, note = ?, updated_at = ? WHERE id = ?',
+        ['canceled', now(), reason, now(), item.id]
+      );
+    });
+    if (openRuns.length) {
+      canceled.push({
+        caseId: caze.id,
+        reason,
+        canceledCount: openRuns.length,
+        canceledRuns: openRuns.map((item) => ({ ...item, status: 'canceled', note: reason }))
+      });
+    }
+  });
+  return canceled;
+}
+
 function latestUniqueVideoSnapshotsForCase(caseId, snapshots = null) {
   const rows = snapshots || all(
     'SELECT * FROM video_snapshots WHERE case_id = ? ORDER BY collected_at DESC, created_at DESC',
@@ -2698,6 +2727,7 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
     const pausedIds = new Set(autoPausedLostContact.map((item) => item.caseId));
     cases = cases.map((caze) => (pausedIds.has(caze.id) ? caseById(caze.id) : caze)).filter(Boolean);
   }
+  const canceledBlockedCollectionRuns = cancelBlockedDouyinCollectionRuns(cases);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const accountSnapshots = all('SELECT * FROM account_snapshots ORDER BY collected_at DESC, created_at DESC').map(rowAccountSnapshot);
   const videos = all('SELECT * FROM douyin_videos ORDER BY updated_at DESC').map(rowDouyinVideo);
@@ -2809,9 +2839,11 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
       dueCollection: accounts.filter((item) => item.dueCollection).length,
       collectionQueued: accounts.filter((item) => item.collectionQueued).length,
       waitingChrome: collectionRuns.filter((item) => item.status === 'waiting_chrome').length,
-      autoPausedLostContact: autoPausedLostContact.length
+      autoPausedLostContact: autoPausedLostContact.length,
+      canceledBlockedCollectionRuns: canceledBlockedCollectionRuns.reduce((sum, item) => sum + item.canceledCount, 0)
     },
     autoPausedLostContact,
+    canceledBlockedCollectionRuns,
     accounts,
     viralAlerts,
     videoLeaders,

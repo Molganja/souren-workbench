@@ -293,9 +293,34 @@ async function placeholderDouyinCollectionSmoke() {
     assert(demoCase.collectionQueue?.registeredCount === 0 && demoCase.collectionQueue?.count === 0, 'placeholder Douyin URL should not register Chrome collection');
     const queue = await api('/douyin-monitor/chrome-queue?includeFresh=1&limit=10', {}, placeholderBase);
     assert(!queue.targets.some((item) => item.caseId === demoCase.id), 'placeholder Douyin URL leaked into Chrome collection queue');
+    const legacyRunId = 'collect_legacy_placeholder_smoke';
+    const legacyDb = new DatabaseSync(path.join(PLACEHOLDER_ROOT_DIR, 'data', 'souren.sqlite'));
+    const createdAt = new Date().toISOString();
+    legacyDb.prepare(`
+      INSERT INTO collection_runs
+      (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      legacyRunId,
+      demoCase.id,
+      createdAt,
+      null,
+      'waiting_chrome',
+      'legacy-smoke',
+      '历史演示链接等待采集单',
+      createdAt,
+      createdAt
+    );
+    legacyDb.close();
     const monitor = await api('/douyin-monitor', {}, placeholderBase);
     const account = monitor.accounts.find((item) => item.case?.id === demoCase.id);
     assert(account?.collectionPolicy?.intervalHours == null && /演示|测试/.test(account.collectionPolicy.reason), 'placeholder Douyin URL missing no-collection policy');
+    assert(account.collectionQueued === false, 'placeholder Douyin URL kept legacy waiting Chrome collection');
+    assert(monitor.totals.canceledBlockedCollectionRuns >= 1, 'placeholder legacy collection run was not reported as canceled');
+    const cleanupDb = new DatabaseSync(path.join(PLACEHOLDER_ROOT_DIR, 'data', 'souren.sqlite'));
+    const legacyRun = cleanupDb.prepare('SELECT status, note FROM collection_runs WHERE id = ?').get(legacyRunId);
+    cleanupDb.close();
+    assert(legacyRun?.status === 'canceled' && /演示|测试/.test(legacyRun.note), 'placeholder legacy collection run not canceled');
   } finally {
     server.kill('SIGTERM');
     await sleep(300);
