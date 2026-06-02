@@ -2147,7 +2147,6 @@ function SettingsView({ config, onAct }) {
   const [sharedAssetsLoading, setSharedAssetsLoading] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState(null);
   const [agentWork, setAgentWork] = useState(null);
-  const [collectionLoading, setCollectionLoading] = useState(false);
   async function loadSharedAssets() {
     setSharedAssetsLoading(true);
     try {
@@ -2157,22 +2156,30 @@ function SettingsView({ config, onAct }) {
     }
   }
   async function loadCollectionStatus() {
-    setCollectionLoading(true);
-    try {
-      const [monitor, queue] = await Promise.all([
-        request('/douyin-monitor'),
-        request('/douyin-monitor/chrome-queue?limit=10')
-      ]);
-      const work = await request('/agent-work');
-      setCollectionStatus({ monitor, queue });
-      setAgentWork(work);
-    } finally {
-      setCollectionLoading(false);
-    }
+    const [monitor, queue, work] = await Promise.all([
+      request('/douyin-monitor'),
+      request('/douyin-monitor/chrome-queue?limit=10'),
+      request('/agent-work')
+    ]);
+    setCollectionStatus({ monitor, queue });
+    setAgentWork(work);
   }
   useEffect(() => {
+    let alive = true;
+    async function refreshCollectionStatus() {
+      try {
+        await loadCollectionStatus();
+      } catch (error) {
+        if (alive) console.warn('后台状态自动刷新失败', error);
+      }
+    }
     loadSharedAssets();
-    loadCollectionStatus();
+    refreshCollectionStatus();
+    const timer = setInterval(refreshCollectionStatus, 60 * 1000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, []);
   const monitorTotals = collectionStatus?.monitor?.totals || {};
   const collectionTargets = collectionStatus?.queue?.targets || [];
@@ -2185,7 +2192,7 @@ function SettingsView({ config, onAct }) {
         <div>
           <p className="eyebrow">运行状态</p>
           <h1>运行状态</h1>
-          <p>日常只看局域网网址、通用素材扫描、图片生成状态和验收清单；采集登记、爆款分析和图片生成排队放进系统后台，平时不用展开。</p>
+          <p>日常只看局域网网址、通用素材扫描、图片生成状态和验收清单；账号采集、爆款分析和图片生成排队放进系统后台，平时不用展开。</p>
         </div>
         <div className="stats">
           <Metric label="图片生成" value={config.image?.ready ? '已接入' : '待接入'} />
@@ -2234,7 +2241,7 @@ function SettingsView({ config, onAct }) {
           <summary>
             <div>
               <h2>系统后台</h2>
-              <p>采集登记、爆款分析和图片生成排队都在这里；只有排查或主机处理时展开。</p>
+              <p>账号采集、爆款分析和图片生成排队都在这里；系统自动排队，只有排查或主机处理时展开。</p>
             </div>
             <span>到期采集 {monitorTotals.dueCollection || 0} · 后台动作 {agentWorkCounts.total || 0}</span>
           </summary>
@@ -2242,28 +2249,19 @@ function SettingsView({ config, onAct }) {
             <div className="backstageBlock">
               <div className="sectionHead">
                 <h3>采集状态</h3>
-                <div className="headerActions">
-                  <button disabled={collectionLoading} onClick={loadCollectionStatus}>{collectionLoading ? '刷新中' : '刷新采集状态'}</button>
-                  <button disabled={collectionLoading} onClick={() => onAct(
-                    async () => {
-                      const result = await request('/douyin-monitor/chrome-queue', { method: 'POST', body: JSON.stringify({ limit: 20 }) });
-                      await loadCollectionStatus();
-                      return result;
-                    },
-                    (result) => `已登记 ${result.registeredCount} 个到期采集，已排队 ${result.skippedQueuedCount || 0} 个`
-                  )}>登记到期采集清单</button>
-                </div>
+                <span>后台自动排队，每分钟刷新状态</span>
               </div>
+              <div className="hintBox">系统会按账号活跃度自动排队采集任务；工作人员不需要在这里点采集，也不需要手工回填。</div>
               <div className="stats reviewStats">
                 <Metric label="监控账号" value={monitorTotals.monitoredAccounts || 0} />
                 <Metric label="到期采集" value={monitorTotals.dueCollection || 0} />
                 <Metric label="已排队" value={monitorTotals.collectionQueued || 0} />
-                <Metric label="等采集" value={monitorTotals.waitingChrome || 0} />
+                <Metric label="等待采集" value={monitorTotals.waitingChrome || 0} />
                 <Metric label="爆款提醒" value={monitorTotals.viralAlerts || 0} />
               </div>
               <div className="templateList settingsList">
                 {collectionTargets.length === 0 ? (
-                  <div className="empty">当前没有到期账号。后台会按活跃度登记采集，不进入首页队列。</div>
+                  <div className="empty">当前没有到期账号。后台会按活跃度自动排队，不进入首页队列。</div>
                 ) : collectionTargets.map((target) => (
                   <div className="templateRow" key={target.caseId}>
                     <div>

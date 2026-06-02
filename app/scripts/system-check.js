@@ -298,8 +298,8 @@ else fail('采集写入后仍可能留下旧的未来待生成或已准备未派
 if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)') && serverSource.includes('item.collectionPolicy?.intervalHours != null')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
 else fail('Chrome采集清单缺少活跃度优先排序');
 
-if (serverSource.includes('async function enqueueDouyinCollection') && serverSource.includes('return registerChromeCollectionQueue({ limit: 200, source })') && serverSource.includes('const toRegister = queue.targets.filter((target) => !target.collectionQueued)') && smokeSource.includes('monitor run duplicated already waiting Chrome collection tasks')) ok('定时/手动采集登记复用活跃度队列，不会重复排队已等待 Chrome 的账号');
-else fail('定时/手动采集登记仍可能绕过队列去重复创建 Chrome 采集单');
+if (serverSource.includes('async function enqueueDouyinCollection') && serverSource.includes('return registerChromeCollectionQueue({ limit: 200, source })') && serverSource.includes('const toRegister = queue.targets.filter((target) => !target.collectionQueued)') && serverSource.includes("setTimeout(() => runScheduledDouyinCollection('startup')") && serverSource.includes("setInterval(() => runScheduledDouyinCollection('scheduled')") && smokeSource.includes('monitor run duplicated already waiting Chrome collection tasks')) ok('启动和定时采集登记复用活跃度队列，不会重复排队已等待 Chrome 的账号');
+else fail('启动或定时采集登记仍可能缺失，或绕过队列重复创建 Chrome 采集单');
 
 if (
   packageSource.includes('collect:douyin')
@@ -327,11 +327,14 @@ if (
   mainSource.includes('<h3>采集状态</h3>')
   && mainSource.includes('systemBackstage')
   && mainSource.includes('/douyin-monitor/chrome-queue?limit=10')
-  && mainSource.includes('登记到期采集清单')
+  && mainSource.includes('系统会按账号活跃度自动排队采集任务')
+  && mainSource.includes('后台自动排队，每分钟刷新状态')
+  && !mainSource.includes('登记到期采集清单')
+  && !mainSource.includes('刷新采集状态')
   && !mainSource.includes('后台采集状态')
   && !mainSource.includes('采集回填入口')
-) ok('采集状态只放在折叠系统后台，不回到首页手工回填');
-else fail('采集状态缺少折叠后台入口，或前台仍保留手工回填旧口径');
+) ok('采集状态只放在折叠系统后台，前台不提供手动登记或回填入口');
+else fail('采集状态缺少折叠后台入口，或前台仍保留手动登记/回填旧口径');
 
 if (!mainSource.includes('打开抖音主页') && !mainSource.includes('target="_blank">打开主页</a>')) ok('前台不要求工作人员手动打开抖音主页');
 else fail('前台仍暴露手动打开抖音主页入口');
