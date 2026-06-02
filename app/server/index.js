@@ -1766,11 +1766,11 @@ function parseBulkCaseText(text) {
         douyinId: douyinIdFromUrl(normalizedDouyinUrl),
         douyinUrl: normalizedDouyinUrl,
         sourceMaterialDir: sourceMaterialDir || '',
-        project: project || '吸脂',
+        project: project || '',
         persona: randomPersona()
       };
     })
-    .filter((item) => item.weixinNick && item.douyinUrl && item.sourceMaterialDir);
+    .filter((item) => item.weixinNick || item.douyinUrl || item.project || item.sourceMaterialDir);
 }
 
 function prepareBulkCaseRows(rows = []) {
@@ -1786,6 +1786,12 @@ function prepareBulkCaseRows(rows = []) {
     const douyinUrl = normalizeDouyinUrl(row.douyinUrl || row.douyin_url || '');
     if (!douyinUrl) {
       const error = new Error(`第 ${line} 行缺少有效抖音主页或作品链接`);
+      error.status = 400;
+      throw error;
+    }
+    const project = String(row.project || '').trim();
+    if (!project) {
+      const error = new Error(`第 ${line} 行缺少项目`);
       error.status = 400;
       throw error;
     }
@@ -1808,7 +1814,7 @@ function prepareBulkCaseRows(rows = []) {
       douyinId: douyinIdFromUrl(douyinUrl),
       douyinUrl,
       sourceMaterialDir,
-      project: row.project || '吸脂'
+      project
     };
   });
 }

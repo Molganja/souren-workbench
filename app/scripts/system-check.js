@@ -354,7 +354,7 @@ const oldDeletedDirMarker = '_' + 'deleted';
 if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也会同步删除')) ok('删除案例会同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
-if (mainSource.includes('新建时只填四项') && !mainSource.includes('RANDOM_CASE_PROFILES') && !mainSource.includes('randomCaseDefaults') && !mainSource.includes('随机换一组') && !mainSource.includes('douyinId: initial') && mainSource.includes("!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim()")) ok('新建案例前端只保留四项录入，并要求微信、抖音、项目和共享素材路径');
+if (mainSource.includes('新建时只填四项') && mainSource.includes('caseFormMissingRequired') && !mainSource.includes('disabled={isCreate &&') && !mainSource.includes('RANDOM_CASE_PROFILES') && !mainSource.includes('randomCaseDefaults') && !mainSource.includes('随机换一组') && !mainSource.includes('douyinId: initial') && mainSource.includes("!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim()")) ok('新建和编辑案例前端只保留四项录入，并要求微信、抖音、项目和共享素材路径');
 else fail('新建案例仍暴露随机人设选择或允许缺少微信名');
 
 if (
@@ -374,7 +374,7 @@ else fail('后端仍可能随机生成兼职微信名或允许缺少抖音链接
 if (serverSource.includes("const sync = syncCaseSourceMaterials(created)") && serverSource.includes('res.json({ ...created, sync, slotsCreated: slots.length })') && smokeSource.includes('case create did not automatically sync shared source material') && smokeSource.includes('case create allowed missing shared source directory') && mainSource.includes('案例已创建：同步素材')) ok('普通新建案例会校验共享目录并自动同步一次素材');
 else fail('普通新建案例仍可能只建账号不校验/不同步共享素材');
 
-if (serverSource.includes('function prepareBulkCaseRows') && serverSource.includes('function createBulkCases') && serverSource.includes('seenSources.has(sourceMaterialDir)') && serverSource.includes('const sync = syncCaseSourceMaterials(created)') && !serverSource.includes('const created = rows.map((row) => createCaseFromBody(row))') && smokeSource.includes('bulk import created partial cases before failing validation') && mainSource.includes('批量导入完成：账号')) ok('批量导入会整批预检并自动同步素材，不会半导入');
+if (serverSource.includes('function prepareBulkCaseRows') && serverSource.includes('function createBulkCases') && serverSource.includes('seenSources.has(sourceMaterialDir)') && serverSource.includes('第 ${line} 行缺少项目') && !serverSource.includes("project: project || '吸脂'") && !serverSource.includes("project: row.project || '吸脂'") && serverSource.includes('const sync = syncCaseSourceMaterials(created)') && !serverSource.includes('const created = rows.map((row) => createCaseFromBody(row))') && smokeSource.includes('bulk import created partial cases before failing validation') && smokeSource.includes('bulk import allowed a row with missing project') && mainSource.includes('批量导入完成：账号')) ok('批量导入会整批预检四项并自动同步素材，不会半导入');
 else fail('批量导入仍可能逐条创建、半失败半成功或不自动同步素材');
 
 const staleOperatorDocs = [

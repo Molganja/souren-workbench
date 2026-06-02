@@ -378,6 +378,22 @@ async function main() {
     assert(invalidBulkRejected, 'bulk import allowed a row with missing shared source directory');
     const afterInvalidBulk = await api('/cases');
     assert(afterInvalidBulk.length === 0, 'bulk import created partial cases before failing validation');
+    const missingBulkProjectDir = makeSharedSourceDir(ROOT_DIR, '批量缺项目不应创建');
+    fs.writeFileSync(path.join(missingBulkProjectDir, '批量缺项目素材.jpg'), 'fake missing project material');
+    let missingBulkProjectRejected = false;
+    try {
+      await api('/cases/bulk', {
+        method: 'POST',
+        body: JSON.stringify({
+          text: `批量缺项目,https://www.douyin.com/user/bulk-missing-project,,${missingBulkProjectDir}`
+        })
+      });
+    } catch (error) {
+      missingBulkProjectRejected = /缺少项目/.test(error.message);
+    }
+    assert(missingBulkProjectRejected, 'bulk import allowed a row with missing project');
+    const afterMissingBulkProject = await api('/cases');
+    assert(afterMissingBulkProject.length === 0, 'bulk import created a case before rejecting missing project');
 
     const bulkLinDir = makeSharedSourceDir(ROOT_DIR, '批量小林');
     const bulkChenDir = makeSharedSourceDir(ROOT_DIR, '批量小陈');
@@ -388,8 +404,7 @@ async function main() {
       body: JSON.stringify({
         text: [
           `批量小林,https://www.douyin.com/user/bulk-lin,吸脂,${bulkLinDir}`,
-          `批量小陈,https://www.douyin.com/user/bulk-chen,复诊,${bulkChenDir}`,
-          '无效账号,不是抖音链接,吸脂,/Volumes/共享素材/无效账号'
+          `批量小陈,https://www.douyin.com/user/bulk-chen,复诊,${bulkChenDir}`
         ].join('\n')
       })
     });

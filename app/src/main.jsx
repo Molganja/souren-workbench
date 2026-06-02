@@ -2540,9 +2540,10 @@ function CaseForm({ initial, onClose, onSubmit }) {
       sourceMaterialDir: form.sourceMaterialDir
     });
   }
+  const caseFormMissingRequired = !form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim();
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      <div className="hintBox">{isCreate ? '新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。微信、抖音和共享原始素材路径都必须填，系统会自动建立目录、近期排期和采集链路。' : '编辑时只改对接必需信息：微信、抖音、项目和共享素材路径。人设和阶段由系统内部维护，不需要工作人员填写。'}</div>
+      <div className="hintBox">{isCreate ? '新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。四项都必须填，系统会自动建立目录、近期排期和采集链路。' : '编辑时只改对接必需信息：微信、抖音、项目和共享素材路径。四项都必须填，人设和阶段由系统内部维护。'}</div>
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
@@ -2551,7 +2552,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" disabled={isCreate && (!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim())} onClick={submit}>{initial ? '保存' : '创建'}</button>
+        <button className="primary" disabled={caseFormMissingRequired} onClick={submit}>{initial ? '保存' : '创建'}</button>
       </div>
     </Modal>
   );
