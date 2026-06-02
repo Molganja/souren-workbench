@@ -2064,9 +2064,8 @@ function bulkGenerateViral(template, onAct) {
 function CaseForm({ initial, onClose, onSubmit }) {
   const isCreate = !initial;
   const defaults = useMemo(() => initial ? null : randomCaseDefaults(), [initial]);
-  const showAdvanced = Boolean(initial);
   const [form, setForm] = useState(() => ({
-    weixinNick: initial?.weixinNick || defaults?.weixinNick || '',
+    weixinNick: initial?.weixinNick || '',
     douyinId: initial?.douyinId || '',
     douyinUrl: initial?.douyinUrl || '',
     project: initial?.project || '吸脂',
@@ -2085,31 +2084,20 @@ function CaseForm({ initial, onClose, onSubmit }) {
   function updatePersona(key, value) {
     setForm((prev) => ({ ...prev, persona: { ...prev.persona, [key]: value } }));
   }
-  function reroll() {
-    const next = randomCaseDefaults();
-    setForm((prev) => ({ ...prev, weixinNick: next.weixinNick, persona: next.persona }));
-  }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {isCreate && <div className="hintBox">新建时先填兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。人设默认随机生成，用来先建目录、排期和交付链路，后面需要再细改。</div>}
-      {isCreate && (
-        <div className="generatedPreview">
-          <strong>{form.weixinNick}</strong>
-          <span>{personaText(form.persona)}</span>
-          <small>{form.persona.motivation}</small>
-        </div>
-      )}
+      {isCreate && <div className="hintBox">新建时只填真实对接信息：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。人设由系统后台生成，后面需要再细改。</div>}
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
         <label className="wide">项目<input value={form.project} onChange={(e) => update('project', e.target.value)} placeholder="例如：吸脂 / 复诊 / 其他项目" /></label>
         <label className="wide">共享原始素材路径<input value={form.sourceMaterialDir} onChange={(e) => update('sourceMaterialDir', e.target.value)} placeholder="工作人员在共享盘/服务器里放素材的目录路径" /></label>
-        {(!isCreate || showAdvanced) && (
+        {!isCreate && (
           <>
             <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
           </>
         )}
-        {(!isCreate || showAdvanced) && (
+        {!isCreate && (
           <>
             <label>城市<input value={form.persona.city} onChange={(e) => updatePersona('city', e.target.value)} /></label>
             <label>年龄<input value={form.persona.age} onChange={(e) => updatePersona('age', e.target.value)} /></label>
@@ -2120,9 +2108,8 @@ function CaseForm({ initial, onClose, onSubmit }) {
         )}
       </div>
       <div className="modalActions">
-        {isCreate && <button onClick={reroll}>随机换一组</button>}
         <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>{initial ? '保存' : '创建'}</button>
+        <button className="primary" disabled={isCreate && !form.weixinNick.trim()} onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>{initial ? '保存' : '创建'}</button>
       </div>
     </Modal>
   );

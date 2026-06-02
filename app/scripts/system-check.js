@@ -102,6 +102,9 @@ const oldDeletedDirMarker = '_' + 'deleted';
 if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也不会保留')) ok('删除案例会同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
+if (mainSource.includes('新建时只填真实对接信息') && !mainSource.includes('generatedPreview') && !mainSource.includes('随机换一组') && mainSource.includes("disabled={isCreate && !form.weixinNick.trim()}")) ok('新建案例不再让工作人员挑随机人设');
+else fail('新建案例仍暴露随机人设选择或允许缺少微信名');
+
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');
 fs.mkdirSync(dataDir, { recursive: true });
