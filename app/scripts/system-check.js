@@ -61,6 +61,9 @@ else fail('首页缺少操作队列或账号概览');
 if (mainSource.includes('activePriority') && mainSource.includes('queueSummary') && mainSource.includes('后面还有')) ok('今日队列只开放队首任务操作');
 else fail('今日队列缺少队首防呆状态');
 
+if (mainSource.includes('activeCaseId') && mainSource.includes('排到今日队列队首后打开') && mainSource.includes('isActiveQueueCase')) ok('首页账号概览和异常账号不能打开非队首账号');
+else fail('首页仍可能从概览或异常账号绕过队首打开账号');
+
 const serverSource = fs.readFileSync(path.join(APP_DIR, 'server', 'index.js'), 'utf8');
 if (serverSource.includes('dashboardQueueHead') && serverSource.includes('当前队首不是准备类任务') && !serverSource.includes('for (const slot of dueSlots)')) ok('后台准备接口也只处理当前队首');
 else fail('后台准备接口仍可能批量推进今日队列');
