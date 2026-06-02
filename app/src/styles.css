@@ -704,6 +704,20 @@ button.primary, .button.primary {
   white-space: nowrap;
 }
 
+.libraryPanel {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-bottom: 14px;
+}
+
+.libraryList {
+  margin-top: 10px;
+}
+
+.libraryRow .inlineActions {
+  justify-content: flex-start;
+}
+
 .scheduleFilters {
   grid-template-columns: minmax(260px, 1fr) 130px 140px 140px auto;
 }

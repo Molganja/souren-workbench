@@ -10,11 +10,15 @@ export const MATERIAL_ROOT = path.join(ROOT_DIR, '素材库', '真实案例');
 export const SHARED_MATERIAL_ROOT = process.env.SOUREN_SHARED_MATERIAL_ROOT
   ? path.resolve(process.env.SOUREN_SHARED_MATERIAL_ROOT)
   : path.join(ROOT_DIR, '素材库', '通用素材');
+export const CASE_LIBRARY_ROOT = process.env.SOUREN_CASE_LIBRARY_ROOT
+  ? path.resolve(process.env.SOUREN_CASE_LIBRARY_ROOT)
+  : path.join(ROOT_DIR, '素材库', '服务器案例库');
 export const DB_PATH = path.join(DATA_DIR, 'souren.sqlite');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(MATERIAL_ROOT, { recursive: true });
 fs.mkdirSync(SHARED_MATERIAL_ROOT, { recursive: true });
+fs.mkdirSync(CASE_LIBRARY_ROOT, { recursive: true });
 ['医院素材', '套图素材', '备用素材'].forEach((name) => fs.mkdirSync(path.join(SHARED_MATERIAL_ROOT, name), { recursive: true }));
 
 export const db = new DatabaseSync(DB_PATH);

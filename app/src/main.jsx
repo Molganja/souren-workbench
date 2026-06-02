@@ -286,7 +286,7 @@ function App() {
           <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onCopy={copyText} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'cases' && (
-          <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
+          <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'case' && caseDetail && (
           <CaseDetail detail={caseDetail} onAct={act} onCopy={copyText} onBack={() => setView('cases')} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
@@ -1400,9 +1400,12 @@ function markCompleted(slot, onAct) {
   );
 }
 
-function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
+function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths }) {
   const [query, setQuery] = useState('');
   const [healthFilter, setHealthFilter] = useState('全部状态');
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [library, setLibrary] = useState(null);
+  const [libraryLoading, setLibraryLoading] = useState(false);
   const filtered = cases.filter((item) => {
     const q = query.trim().toLowerCase();
     const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.staff || ''} ${item.project} ${personaText(item.persona)}`.toLowerCase();
@@ -1411,38 +1414,135 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
     return matchQuery && matchHealth;
   });
   const healthOptions = ['全部状态', ...Array.from(new Set(cases.map((item) => item.healthStatus).filter(Boolean)))];
+  async function loadCaseLibrary() {
+    setLibraryOpen(true);
+    setLibraryLoading(true);
+    try {
+      setLibrary(await request('/case-library'));
+    } finally {
+      setLibraryLoading(false);
+    }
+  }
   return (
-    <section className="panel">
-      <div className="sectionHead">
-        <h2>案例库</h2>
-        <div className="inlineActions">
-          <button onClick={onBulk}>批量导入</button>
-          <button className="button primary" onClick={onNew}>新建案例</button>
+    <div className="stack">
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>案例库</h2>
+          <div className="inlineActions">
+            <button onClick={loadCaseLibrary}>{libraryOpen ? '重新扫描服务器案例库' : '扫描服务器案例库'}</button>
+            <button onClick={onBulk}>批量导入</button>
+            <button className="button primary" onClick={onNew}>新建案例</button>
+          </div>
+        </div>
+        {libraryOpen && (
+          <CaseLibraryPanel
+            library={library}
+            loading={libraryLoading}
+            onReload={loadCaseLibrary}
+            onRegister={(item) => registerLibraryCase(item, onAct, loadCaseLibrary)}
+            onOpenCase={onOpenCase}
+            onAct={onAct}
+            canOpenLocalPaths={canOpenLocalPaths}
+          />
+        )}
+        <div className="filters">
+          <input placeholder="搜索微信昵称 / 抖音号 / 对接人 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
+            {healthOptions.map((item) => <option key={item}>{item}</option>)}
+          </select>
+          <span>{filtered.length} / {cases.length}</span>
+        </div>
+        {cases.length === 0 ? <div className="empty">还没有案例</div> : filtered.length === 0 ? <div className="empty">没有匹配的案例</div> : (
+          <div className="caseGrid">
+            {filtered.map((item) => (
+              <div key={item.id} className="caseTile caseTileBox">
+                <button className="caseTileMain" onClick={() => onOpenCase(item.id)}>
+                  <strong>{item.weixinNick}</strong>
+                  <span>{item.caseCode} · {item.project}</span>
+                  <em>{item.douyinId || '未填抖音号'} · {item.staff ? `对接：${item.staff}` : '未填对接人'} · {item.healthStatus}</em>
+                </button>
+                <button className="dangerButton" onClick={() => deleteCase(item, onAct)}>删除</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function CaseLibraryPanel({ library, loading, onReload, onRegister, onOpenCase, onAct, canOpenLocalPaths }) {
+  const candidates = library?.candidates || [];
+  const pending = candidates.filter((item) => !item.alreadyRegistered);
+  return (
+    <div className="libraryPanel">
+      <div className="hintBox">
+        服务器案例库用于读取工作人员在共享盘里整理好的待分配案例。登记后会绑定这个目录、同步素材到本地案例目录，并自动生成近期排期。
+      </div>
+      <div className="templateList">
+        <div className="templateRow">
+          <strong>服务器案例库根目录</strong>
+          <span>{library?.root || '未扫描'}</span>
+          <div className="inlineActions">
+            <button onClick={onReload}>{loading ? '扫描中' : '刷新'}</button>
+            {canOpenLocalPaths && library?.root && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: library.root }) }), '已打开服务器案例库根目录')}>打开根目录</button>}
+          </div>
+        </div>
+        <div className="templateRow">
+          <strong>候选目录</strong>
+          <span>{loading ? '扫描中' : `${candidates.length} 个，未登记 ${pending.length} 个`}</span>
         </div>
       </div>
-      <div className="filters">
-        <input placeholder="搜索微信昵称 / 抖音号 / 对接人 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
-          {healthOptions.map((item) => <option key={item}>{item}</option>)}
-        </select>
-        <span>{filtered.length} / {cases.length}</span>
-      </div>
-      {cases.length === 0 ? <div className="empty">还没有案例</div> : filtered.length === 0 ? <div className="empty">没有匹配的案例</div> : (
-        <div className="caseGrid">
-          {filtered.map((item) => (
-            <div key={item.id} className="caseTile caseTileBox">
-              <button className="caseTileMain" onClick={() => onOpenCase(item.id)}>
-                <strong>{item.weixinNick}</strong>
-                <span>{item.caseCode} · {item.project}</span>
-                <em>{item.douyinId || '未填抖音号'} · {item.staff ? `对接：${item.staff}` : '未填对接人'} · {item.healthStatus}</em>
-              </button>
-              <button className="dangerButton" onClick={() => deleteCase(item, onAct)}>删除</button>
+      {!loading && candidates.length === 0 ? <div className="empty">没有扫到可登记的案例目录。把待分配案例文件夹放到服务器案例库根目录后再刷新。</div> : (
+        <div className="assetList libraryList">
+          {candidates.slice(0, 40).map((item) => (
+            <div className="assetRow libraryRow" key={item.sourceMaterialDir}>
+              <div className="rowTitle">
+                <span className={`status ${item.alreadyRegistered ? 's-ok' : 's-pending'}`}>{item.alreadyRegistered ? '已登记' : '未登记'}</span>
+                <strong>{item.name}</strong>
+              </div>
+              <span>{item.project} · 图片 {item.imageCount} · 视频 {item.videoCount} · 文案 {item.textCount}</span>
+              <small>{item.relativePath}</small>
+              <small>{item.sourceMaterialDir}</small>
+              <div className="inlineActions">
+                {item.alreadyRegistered ? (
+                  <button onClick={() => onOpenCase(item.caseId)}>打开案例</button>
+                ) : (
+                  <button className="primary" onClick={() => onRegister(item)}>登记案例</button>
+                )}
+                {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.sourceMaterialDir }) }), '已打开服务器案例目录')}>打开目录</button>}
+              </div>
             </div>
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
+}
+
+function registerLibraryCase(item, onAct, onDone) {
+  const weixinNick = window.prompt('兼职微信昵称（必须，用来知道发给谁）', item.suggestedWeixinNick || item.name || '');
+  if (!weixinNick || !weixinNick.trim()) return;
+  const douyinUrl = window.prompt('抖音主页/作品链接（可以先空着，后面编辑案例补）', '');
+  if (douyinUrl === null) return;
+  const staff = window.prompt('对接咨询/负责人（可以先空着）', '');
+  if (staff === null) return;
+  onAct(async () => {
+    const result = await request('/case-library/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        sourceMaterialDir: item.sourceMaterialDir,
+        weixinNick: weixinNick.trim(),
+        douyinUrl: douyinUrl.trim(),
+        staff: staff.trim(),
+        project: item.project,
+        generateSlots: true,
+        days: 14
+      })
+    });
+    await onDone();
+    return result;
+  }, (result) => `已登记「${result.case.weixinNick}」：同步素材 ${result.sync.inserted} 个，排期 ${result.slotsCreated} 条`);
 }
 
 function deleteCase(item, onAct) {
@@ -2032,6 +2132,16 @@ function SettingsView({ config, onCopy, onAct }) {
       <section className="panel">
         <div className="sectionHead"><h2>本地素材根目录</h2></div>
         <div className="path">{config.materialRoot}</div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead"><h2>服务器案例库</h2><span>未登记 {config.caseLibrary?.unregistered || 0} 个</span></div>
+        <div className="path">{config.caseLibraryRoot}</div>
+        <div className="templateList">
+          <div className="templateRow">
+            <strong>可登记目录</strong>
+            <span>{config.caseLibrary?.total || 0} 个</span>
+          </div>
+        </div>
       </section>
       <section className="panel">
         <div className="sectionHead">

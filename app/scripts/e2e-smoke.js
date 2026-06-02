@@ -296,6 +296,45 @@ async function main() {
     assert(syncedAgain.copied === 1 && syncedAgain.inserted === 1, 'second source material sync did not copy new file');
     const afterSyncDashboard = await api('/dashboard');
     assert(!afterSyncDashboard.materialSync.some((item) => item.case?.id === caze.id), 'dashboard still shows synced case as pending material sync');
+    const libraryCaseDir = path.join(ROOT_DIR, '素材库', '服务器案例库', '吸脂', '成都案例小库');
+    fs.mkdirSync(path.join(libraryCaseDir, '术前'), { recursive: true });
+    fs.mkdirSync(path.join(libraryCaseDir, '术后D7'), { recursive: true });
+    fs.writeFileSync(path.join(libraryCaseDir, '术前', '人物-术前.jpg'), 'fake library person image');
+    fs.writeFileSync(path.join(libraryCaseDir, '术后D7', '恢复过程.mp4'), 'fake library process video');
+    const libraryScan = await api('/case-library');
+    const libraryCandidate = libraryScan.candidates.find((item) => item.sourceMaterialDir === libraryCaseDir);
+    assert(libraryScan.root.endsWith(path.join('素材库', '服务器案例库')), 'case library root missing');
+    assert(libraryCandidate && libraryCandidate.fileCount === 2 && libraryCandidate.imageCount === 1 && libraryCandidate.videoCount === 1, 'case library scan missing candidate counts');
+    assert(libraryCandidate.project === '吸脂' && !libraryCandidate.alreadyRegistered, 'case library candidate metadata invalid');
+    const registeredLibraryCase = await api('/case-library/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        sourceMaterialDir: libraryCaseDir,
+        weixinNick: '库登记小李',
+        douyinUrl: 'https://www.douyin.com/user/library-li',
+        staff: '咨询库',
+        generateSlots: true,
+        days: 2
+      })
+    });
+    assert(registeredLibraryCase.case.sourceMaterialDir === libraryCaseDir, 'case library register did not bind source dir');
+    assert(registeredLibraryCase.sync.copied === 2 && registeredLibraryCase.sync.inserted === 2, 'case library register did not sync source materials');
+    assert(registeredLibraryCase.slotsCreated === 2, 'case library register did not generate slots');
+    const afterLibraryScan = await api('/case-library');
+    const registeredCandidate = afterLibraryScan.candidates.find((item) => item.sourceMaterialDir === libraryCaseDir);
+    assert(registeredCandidate?.alreadyRegistered === true && registeredCandidate.caseId === registeredLibraryCase.case.id, 'case library did not mark registered candidate');
+    const libraryDetail = await api(`/cases/${registeredLibraryCase.case.id}`);
+    assert(libraryDetail.assets.length === 2 && libraryDetail.assets.every((asset) => asset.originPath.startsWith(libraryCaseDir)), 'registered library case assets missing origin path');
+    let duplicateLibraryRejected = false;
+    try {
+      await api('/case-library/register', {
+        method: 'POST',
+        body: JSON.stringify({ sourceMaterialDir: libraryCaseDir, weixinNick: '重复登记' })
+      });
+    } catch (error) {
+      duplicateLibraryRejected = /已经登记/.test(error.message);
+    }
+    assert(duplicateLibraryRejected, 'case library allowed duplicate source directory');
     const minimalCase = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', staff: '咨询Z', generateSlots: true, days: 3 })
@@ -582,7 +621,7 @@ async function main() {
     await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
 
     const viralBulk = await api(`/viral-templates/${viral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-02' }) });
-    assert(viralBulk.createdCount === 3, 'viral bulk generation failed');
+    assert(viralBulk.createdCount === 4, 'viral bulk generation failed');
     const filteredBulk = await api(`/viral-templates/${filteredViral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-03' }) });
     assert(filteredBulk.createdCount >= 1 && filteredBulk.skippedCount >= 1, 'viral persona filter bulk generation failed');
     let pendingRejected = false;
@@ -608,7 +647,7 @@ async function main() {
     assert(analyzedBulk.createdCount >= 1, 'analyzed viral link did not generate filtered slots');
 
     const exported = await api('/export');
-    assert(exported.cases.length === 3, 'export missing cases');
+    assert(exported.cases.length === 4, 'export missing cases');
     assert(exported.accountSnapshots.length === 3, 'export missing account snapshots');
     assert(exported.douyinVideos.length === 2, 'export missing douyin videos');
     assert(exported.videoSnapshots.length === 2, 'export missing video snapshots');
@@ -631,9 +670,9 @@ async function main() {
     }
     assert(badImportRejected, 'bad import was not rejected');
     const afterBadImportCases = await api('/cases');
-    assert(afterBadImportCases.length === 3, 'bad import changed existing cases');
+    assert(afterBadImportCases.length === 4, 'bad import changed existing cases');
     const review = await api('/review');
-    assert(review.totals.cases === 3, 'review case total invalid');
+    assert(review.totals.cases === 4, 'review case total invalid');
     assert(review.totals.accountSnapshots === 3, 'review account snapshot total invalid');
     assert(review.totals.videoSnapshots === 2, 'review video snapshot total invalid');
     assert(review.contentKindStats.some((item) => item.kind === '爆款提权' && item.total >= 1), 'review content kind stats missing');
@@ -641,6 +680,7 @@ async function main() {
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');
+    assert(config.caseLibraryRoot.endsWith(path.join('素材库', '服务器案例库')) && config.caseLibrary.total >= 1, 'config missing case library status');
     const hiddenConfigKeys = ['back' + 'ups', 'local' + 'Ai', 'll' + 'm', 'll' + 'mKeyReady', 'operator' + 'PacketDir', 'ai' + 'ConsultDir'];
     assert(!hiddenConfigKeys.some((key) => key in config), 'config exposed removed operational keys');
     assert(config.readiness?.summary?.total >= 8, 'config readiness summary missing');

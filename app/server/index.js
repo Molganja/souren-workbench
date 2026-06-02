@@ -7,6 +7,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import {
+  CASE_LIBRARY_ROOT,
   DATA_DIR,
   MATERIAL_ROOT,
   ROOT_DIR,
@@ -64,7 +65,7 @@ const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
-const ALLOWED_OPEN_ROOTS = [ROOT_DIR, SHARED_MATERIAL_ROOT];
+const ALLOWED_OPEN_ROOTS = [ROOT_DIR, SHARED_MATERIAL_ROOT, CASE_LIBRARY_ROOT];
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
 const LEGACY_VIRAL_RAW_PREFIX = '待用' + '青' + '豆';
@@ -933,6 +934,194 @@ function createCaseFromBody(body = {}) {
   const createdCase = caseById(id);
   writeCaseManifest(createdCase);
   return createdCase;
+}
+
+const CASE_LIBRARY_PROJECT_WORDS = ['吸脂', '修复', '复诊', '鼻', '眼', '皮肤', '脂肪', '面诊', '医美'];
+const CASE_LIBRARY_CITY_WORDS = ['成都', '杭州', '重庆', '西安', '长沙', '武汉', '南京', '苏州', '广州', '深圳', '北京', '上海'];
+const CASE_LIBRARY_MATERIAL_FOLDER_WORDS = [
+  '00-原始素材',
+  '01-已筛选素材',
+  '02-生成补充',
+  '03-交付给兼职',
+  '04-发布回收',
+  '原始',
+  '原始素材',
+  '已筛选',
+  '筛选',
+  '图片',
+  '视频',
+  '文案',
+  '术前',
+  '术后',
+  '恢复',
+  '对比',
+  '面诊',
+  '医院',
+  '日常'
+];
+
+function inferProjectFromText(text = '') {
+  return CASE_LIBRARY_PROJECT_WORDS.find((word) => String(text).includes(word)) || '吸脂';
+}
+
+function inferCityFromText(text = '') {
+  return CASE_LIBRARY_CITY_WORDS.find((word) => String(text).includes(word)) || '';
+}
+
+function isBroadCaseLibraryBucket(name = '') {
+  const normalized = String(name).trim();
+  if (!normalized) return false;
+  return CASE_LIBRARY_PROJECT_WORDS.includes(normalized)
+    || ['待分配', '已分配', '案例', '案例库', '真实案例', '素材', '原始案例', '通用素材'].includes(normalized);
+}
+
+function isMaterialSubfolderName(name = '') {
+  const normalized = String(name).toLowerCase();
+  return CASE_LIBRARY_MATERIAL_FOLDER_WORDS.some((word) => normalized.includes(word.toLowerCase()));
+}
+
+function countCaseLibraryFiles(dir) {
+  const files = walkFiles(dir).filter(isSupportedAssetFile);
+  return {
+    fileCount: files.length,
+    imageCount: files.filter((file) => IMAGE_EXT.has(path.extname(file).toLowerCase())).length,
+    videoCount: files.filter((file) => VIDEO_EXT.has(path.extname(file).toLowerCase())).length,
+    textCount: files.filter((file) => TEXT_EXT.has(path.extname(file).toLowerCase())).length,
+    sampleFiles: files.slice(0, 5)
+  };
+}
+
+function caseLibraryDirectoryStats(root = CASE_LIBRARY_ROOT) {
+  const resolvedRoot = path.resolve(root);
+  if (!fs.existsSync(resolvedRoot) || !fs.statSync(resolvedRoot).isDirectory()) return [];
+  const stats = [];
+  function visit(dir) {
+    fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) return;
+      const full = path.join(dir, entry.name);
+      const counts = countCaseLibraryFiles(full);
+      if (counts.fileCount > 0) {
+        const rel = path.relative(resolvedRoot, full);
+        const parts = rel.split(path.sep).filter(Boolean);
+        const children = fs.readdirSync(full, { withFileTypes: true }).filter((child) => child.isDirectory());
+        const childAssetDirs = children
+          .map((child) => ({
+            name: child.name,
+            counts: countCaseLibraryFiles(path.join(full, child.name))
+          }))
+          .filter((child) => child.counts.fileCount > 0);
+        stats.push({
+          path: full,
+          name: entry.name,
+          rel,
+          depth: parts.length,
+          childCaseLikeCount: childAssetDirs.filter((child) => !isMaterialSubfolderName(child.name)).length,
+          directFileCount: fs.readdirSync(full, { withFileTypes: true }).filter((child) => child.isFile() && isSupportedAssetFile(path.join(full, child.name))).length,
+          ...counts
+        });
+      }
+      visit(full);
+    });
+  }
+  visit(resolvedRoot);
+  return stats;
+}
+
+function caseLibraryDirectories(root = CASE_LIBRARY_ROOT) {
+  const stats = caseLibraryDirectoryStats(root).sort((a, b) => a.depth - b.depth || a.rel.localeCompare(b.rel, 'zh-Hans-CN'));
+  const selected = [];
+  stats.forEach((item) => {
+    if (selected.some((parent) => item.path.startsWith(`${parent.path}${path.sep}`))) return;
+    if (item.depth === 1 && item.directFileCount === 0 && (item.childCaseLikeCount > 1 || isBroadCaseLibraryBucket(item.name))) return;
+    selected.push(item);
+  });
+  return selected;
+}
+
+function caseLibraryCandidates() {
+  const registered = new Map(
+    all('SELECT id, case_code, weixin_nick, source_material_dir FROM cases WHERE source_material_dir IS NOT NULL AND source_material_dir != ? ORDER BY created_at DESC', [''])
+      .map((item) => [path.resolve(item.source_material_dir), item])
+  );
+  const candidates = caseLibraryDirectories().map((item) => {
+    const registeredCase = registered.get(path.resolve(item.path));
+    const name = item.name.replace(/^\d+[-_ ]?/, '').trim() || item.name;
+    const project = inferProjectFromText(`${item.rel} ${name}`);
+    const city = inferCityFromText(`${item.rel} ${name}`);
+    return {
+      sourceMaterialDir: item.path,
+      relativePath: item.rel,
+      name,
+      suggestedWeixinNick: name,
+      project,
+      city,
+      fileCount: item.fileCount,
+      imageCount: item.imageCount,
+      videoCount: item.videoCount,
+      textCount: item.textCount,
+      sampleFiles: item.sampleFiles,
+      alreadyRegistered: Boolean(registeredCase),
+      caseId: registeredCase?.id || '',
+      caseCode: registeredCase?.case_code || '',
+      weixinNick: registeredCase?.weixin_nick || ''
+    };
+  });
+  return candidates.sort((a, b) => Number(a.alreadyRegistered) - Number(b.alreadyRegistered) || a.relativePath.localeCompare(b.relativePath, 'zh-Hans-CN'));
+}
+
+function assertInsideCaseLibraryRoot(targetPath) {
+  const resolved = path.resolve(targetPath);
+  if (resolved !== CASE_LIBRARY_ROOT && !resolved.startsWith(`${CASE_LIBRARY_ROOT}${path.sep}`)) {
+    const error = new Error('案例目录不在服务器案例库根目录内');
+    error.status = 400;
+    throw error;
+  }
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+    const error = new Error('服务器案例目录不存在或不是目录');
+    error.status = 404;
+    throw error;
+  }
+  return resolved;
+}
+
+function createCaseFromLibrary(input = {}) {
+  const sourceMaterialDir = assertInsideCaseLibraryRoot(input.sourceMaterialDir || input.source_material_dir || '');
+  const existing = get('SELECT id, weixin_nick FROM cases WHERE source_material_dir = ?', [sourceMaterialDir]);
+  if (existing) {
+    const error = new Error(`该服务器案例目录已经登记到「${existing.weixin_nick}」`);
+    error.status = 409;
+    throw error;
+  }
+  const candidate = caseLibraryCandidates().find((item) => path.resolve(item.sourceMaterialDir) === sourceMaterialDir);
+  if (!candidate) {
+    const error = new Error('该目录下没有可识别的图片、视频或文案素材');
+    error.status = 400;
+    throw error;
+  }
+  const created = createCaseFromBody({
+    weixinNick: input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick,
+    douyinId: input.douyinId || input.douyin_id || '',
+    douyinUrl: input.douyinUrl || input.douyin_url || '',
+    project: input.project || candidate.project || '吸脂',
+    stage: input.stage || '起号期',
+    staff: input.staff || '',
+    sourceMaterialDir,
+    persona: {
+      ...(input.persona || {}),
+      city: input.persona?.city || candidate.city || ''
+    },
+    healthStatus: input.healthStatus || '健康'
+  });
+  const sync = syncCaseSourceMaterials(created);
+  const slots = input.generateSlots === false
+    ? []
+    : generateSlotsForCase(created, { days: input.days || 14, startDate: input.startDate });
+  return {
+    case: { ...created, slotsCreated: slots.length },
+    source: candidate,
+    sync,
+    slotsCreated: slots.length
+  };
 }
 
 function writeCaseManifest(caze) {
@@ -2756,6 +2945,7 @@ function systemReadiness() {
     },
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
+    { key: 'case-library-root', label: '服务器案例库', status: fs.existsSync(CASE_LIBRARY_ROOT) ? 'ready' : 'warning', detail: CASE_LIBRARY_ROOT },
     { key: 'shared-material-root', label: '通用素材库', status: fs.existsSync(SHARED_MATERIAL_ROOT) ? 'ready' : 'warning', detail: SHARED_MATERIAL_ROOT },
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
@@ -3035,6 +3225,7 @@ app.get('/api/cases/:id', (req, res) => {
 
 app.get('/api/config', (_req, res) => {
   const image = imageSettings();
+  const caseLibrary = caseLibraryCandidates();
   res.json({
     stages: STAGES,
     contentKinds: CONTENT_KINDS,
@@ -3045,6 +3236,11 @@ app.get('/api/config', (_req, res) => {
     network: networkSettings(),
     readiness: systemReadiness(),
     materialRoot: MATERIAL_ROOT,
+    caseLibraryRoot: CASE_LIBRARY_ROOT,
+    caseLibrary: {
+      total: caseLibrary.length,
+      unregistered: caseLibrary.filter((item) => !item.alreadyRegistered).length
+    },
     sharedMaterialRoot: SHARED_MATERIAL_ROOT,
     sharedAssets: {
       total: all('SELECT id FROM shared_assets').length,
@@ -3052,6 +3248,21 @@ app.get('/api/config', (_req, res) => {
       byUsage: all('SELECT usage, COUNT(*) AS count FROM shared_assets GROUP BY usage ORDER BY usage')
     }
   });
+});
+
+app.get('/api/case-library', (_req, res) => {
+  res.json({
+    root: CASE_LIBRARY_ROOT,
+    candidates: caseLibraryCandidates()
+  });
+});
+
+app.post('/api/case-library/register', (req, res) => {
+  try {
+    res.json(createCaseFromLibrary(req.body || {}));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.get('/api/shared-assets', (_req, res) => {

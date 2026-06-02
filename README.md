@@ -97,6 +97,7 @@ npm run client:mac
 PORT=5174
 SOUREN_HOST=127.0.0.1
 SOUREN_ACCESS_CODE=
+SOUREN_CASE_LIBRARY_ROOT=
 SOUREN_SHARED_MATERIAL_ROOT=
 IMAGE_API_KEY=
 IMAGE_API_URL=
@@ -109,7 +110,9 @@ DOUYIN_COLLECTOR_URL=
 
 当前图片接口未接入时，文案、排期、网页交付和账号监控流程仍可正常使用。`DOUYIN_COLLECTOR_URL` 只是后续外部采集器的备用接入地址；留空时默认使用 Chrome 登录态采集清单。
 
-如果通用素材库放在共享盘或服务器挂载目录，可把 `SOUREN_SHARED_MATERIAL_ROOT` 设置为那个绝对路径；案例自己的原始素材路径仍在新建案例时单独填写。
+如果待分配案例集中放在共享盘或服务器挂载目录，可把 `SOUREN_CASE_LIBRARY_ROOT` 设置为那个“待分配案例根目录”，案例库页点击“扫描服务器案例库”后可一键登记。登记后系统会把该目录绑定为案例的共享原始素材路径，并同步进本地案例目录。
+
+如果通用素材库放在共享盘或服务器挂载目录，可把 `SOUREN_SHARED_MATERIAL_ROOT` 设置为那个绝对路径。两者分工不同：`SOUREN_CASE_LIBRARY_ROOT` 放某一个人/某一个案例的素材，`SOUREN_SHARED_MATERIAL_ROOT` 放医院环境、套图模板、生活场景这类所有账号都能复用的素材。
 
 ## 验证
 
