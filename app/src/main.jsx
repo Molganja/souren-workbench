@@ -1659,7 +1659,7 @@ function ViralView({ templates, onNew, onEdit, onAct, onCopy }) {
 }
 
 async function copyViralAnalysisTask(item, onCopy) {
-  const result = await request(`/viral-templates/${item.id}/qingdou-task`);
+  const result = await request(`/viral-templates/${item.id}/analysis-task`);
   onCopy(result.text, '爆款分析任务已复制');
 }
 
@@ -1936,6 +1936,7 @@ function SlotForm({ caze, onClose, onSubmit }) {
 }
 
 function ViralForm({ initial, onClose, onSubmit }) {
+  const isEditing = Boolean(initial);
   const [form, setForm] = useState(() => ({
     title: initial?.title || '',
     rawText: initial?.rawText || '',
@@ -1949,30 +1950,41 @@ function ViralForm({ initial, onClose, onSubmit }) {
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
+  function submit() {
+    if (!isEditing) {
+      onSubmit({ sourceLink: form.sourceLink });
+      return;
+    }
+    onSubmit({
+      ...form,
+      suitablePersonas: form.suitableText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean),
+      forbiddenPersonas: form.forbiddenText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean)
+    });
+  }
   return (
-    <Modal title={initial ? '补爆款分析' : '粘贴爆款链接'} onClose={onClose}>
-      <div className="hintBox">{initial ? '这里用于把原视频内容、结构分析和适合账号补回系统。补完后，这条爆款链接就可以批量生成人设化候选。' : '工作人员只需要贴抖音作品链接。标题、正文、爆点结构这些可以留空，后续由系统使用者分析后补充。'}</div>
+    <Modal title={isEditing ? '补爆款分析' : '粘贴爆款链接'} onClose={onClose}>
+      <div className="hintBox">{isEditing ? '这里用于把原视频内容、结构分析和适合账号补回系统。补完后，这条爆款链接就可以批量生成人设化候选。' : '工作人员只需要贴抖音作品链接，系统会先记录为待分析任务。'}</div>
       <div className="formGrid">
         <label className="wide">爆款视频链接<input placeholder="先贴抖音作品链接即可" value={form.sourceLink} onChange={(e) => update('sourceLink', e.target.value)} /></label>
-        <label className="wide">备注标题<input placeholder="可留空；需要区分来源时再写" value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
-        <label className="wide">原视频内容<textarea rows="5" placeholder="可留空，后续分析后补充" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
-        <label>类别<select value={form.category} onChange={(e) => update('category', e.target.value)}>
-          {['待分析', '情绪', '职场', '穿搭', '美食', '本地生活', '清单', '反差故事'].map((item) => <option key={item}>{item}</option>)}
-        </select></label>
-        <label>改写策略<select value={form.rewritePolicy} onChange={(e) => update('rewritePolicy', e.target.value)}>
-          {['结构模仿', '话题模仿', '仅参考'].map((item) => <option key={item}>{item}</option>)}
-        </select></label>
-        <label className="wide">适合人设关键词<input placeholder="例如：成都,上班族,起号期。留空表示全部适合" value={form.suitableText} onChange={(e) => update('suitableText', e.target.value)} /></label>
-        <label className="wide">禁用人设关键词<input placeholder="例如：自由职业,收尾期。命中则不批量生成" value={form.forbiddenText} onChange={(e) => update('forbiddenText', e.target.value)} /></label>
-        <label className="wide">分析结论<textarea placeholder="可留空，后续补结构、适合账号和下一步建议" value={form.hotStructure} onChange={(e) => update('hotStructure', e.target.value)} /></label>
+        {isEditing && (
+          <>
+            <label className="wide">备注标题<input placeholder="分析后填写，用来区分这个爆款" value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
+            <label className="wide">原视频内容<textarea rows="5" placeholder="提取后的标题、口播或字幕正文" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
+            <label>类别<select value={form.category} onChange={(e) => update('category', e.target.value)}>
+              {['待分析', '情绪', '职场', '穿搭', '美食', '本地生活', '清单', '反差故事'].map((item) => <option key={item}>{item}</option>)}
+            </select></label>
+            <label>改写策略<select value={form.rewritePolicy} onChange={(e) => update('rewritePolicy', e.target.value)}>
+              {['结构模仿', '话题模仿', '仅参考'].map((item) => <option key={item}>{item}</option>)}
+            </select></label>
+            <label className="wide">适合人设关键词<input placeholder="例如：成都,上班族,起号期。留空表示全部适合" value={form.suitableText} onChange={(e) => update('suitableText', e.target.value)} /></label>
+            <label className="wide">禁用人设关键词<input placeholder="例如：自由职业,收尾期。命中则不批量生成" value={form.forbiddenText} onChange={(e) => update('forbiddenText', e.target.value)} /></label>
+            <label className="wide">分析结论<textarea placeholder="补结构、适合账号和下一步建议" value={form.hotStructure} onChange={(e) => update('hotStructure', e.target.value)} /></label>
+          </>
+        )}
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={() => onSubmit({
-          ...form,
-          suitablePersonas: form.suitableText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean),
-          forbiddenPersonas: form.forbiddenText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean)
-        })}>{initial ? '保存分析' : '保存'}</button>
+        <button className="primary" onClick={submit}>{isEditing ? '保存分析' : '记录链接'}</button>
       </div>
     </Modal>
   );

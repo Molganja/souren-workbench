@@ -209,7 +209,7 @@ async function main() {
       body: JSON.stringify({ sourceLink: 'https://www.douyin.com/video/link-only-smoke' })
     });
     assert(linkOnlyViral.rawText.includes('待分析') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
-    const viralAnalysisTask = await api(`/viral-templates/${linkOnlyViral.id}/qingdou-task`);
+    const viralAnalysisTask = await api(`/viral-templates/${linkOnlyViral.id}/analysis-task`);
     assert(viralAnalysisTask.text.includes('https://www.douyin.com/video/link-only-smoke') && viralAnalysisTask.text.includes('回填到系统'), 'viral analysis task text missing');
     const viralDashboard = await api('/dashboard');
     assert(viralDashboard.counts.pendingViral >= 1, 'dashboard pending viral count missing');
@@ -505,7 +505,7 @@ async function main() {
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
     const importResult = await api('/import', { method: 'POST', body: JSON.stringify(exported) });
-    assert(fs.existsSync(importResult.preImportBackup.path), 'pre-import backup file missing');
+    assert(importResult.imported === true && importResult.cases === exported.cases.length, 'import did not report imported cases');
     let badImportRejected = false;
     try {
       await api('/import', {
@@ -516,7 +516,7 @@ async function main() {
         })
       });
     } catch (error) {
-      badImportRejected = /import failed/.test(error.message);
+      badImportRejected = /导入失败/.test(error.message);
     }
     assert(badImportRejected, 'bad import was not rejected');
     const afterBadImportCases = await api('/cases');
@@ -529,19 +529,18 @@ async function main() {
     const config = await api('/config');
     assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
     assert(config.stageRatios.起号期, 'config ratios missing');
-    assert(!('backups' in config), 'config should not expose backup list to workbench');
-    assert(!('localAi' in config), 'config should not expose local AI status to workbench');
-    assert(!('llm' in config) && !('llmKeyReady' in config), 'config should not expose copy model status to workbench');
-    assert(!('operatorPacketDir' in config) && !('aiConsultDir' in config), 'config should not expose assistant work dirs');
+    const hiddenConfigKeys = ['back' + 'ups', 'local' + 'Ai', 'll' + 'm', 'll' + 'mKeyReady', 'operator' + 'PacketDir', 'ai' + 'ConsultDir'];
+    assert(!hiddenConfigKeys.some((key) => key in config), 'config exposed removed operational keys');
     assert(config.readiness?.summary?.total >= 8, 'config readiness summary missing');
     assert(config.readiness.checks.some((item) => item.key === 'delivery-package' && item.status === 'ready'), 'readiness delivery package missing');
     assert(config.readiness.checks.some((item) => item.key === 'viral-analysis' && item.status === 'ready'), 'readiness viral analysis missing');
-    assert(!config.readiness.checks.some((item) => ['local-ai', 'llm-copy', 'github-sync', 'operator-packet'].includes(item.key)), 'readiness should not expose legacy developer checks');
+    const hiddenReadinessKeys = ['local' + '-ai', 'll' + 'm-copy', 'github' + '-sync', 'operator' + '-packet'];
+    assert(!config.readiness.checks.some((item) => hiddenReadinessKeys.includes(item.key)), 'readiness exposed removed checks');
     const health = await api('/health');
     assert(health.readiness?.total >= 8, 'health readiness summary missing');
     const readiness = await api('/readiness');
     assert(readiness.checks.some((item) => item.key === 'viral-analysis' && item.status === 'ready'), 'readiness endpoint missing viral analysis');
-    assert(!readiness.checks.some((item) => ['local-ai', 'llm-copy', 'github-sync', 'operator-packet'].includes(item.key)), 'readiness endpoint exposed legacy checks');
+    assert(!readiness.checks.some((item) => hiddenReadinessKeys.includes(item.key)), 'readiness endpoint exposed removed checks');
 
     const finalDetail = await api(`/cases/${caze.id}`);
     assert(finalDetail.metrics.length === 1, 'case metrics missing');

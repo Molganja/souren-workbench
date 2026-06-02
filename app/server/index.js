@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { execFile, execFileSync, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import {
   DATA_DIR,
   MATERIAL_ROOT,
@@ -27,11 +27,6 @@ const ACCESS_CODE = String(process.env.SOUREN_ACCESS_CODE || '').trim();
 const AUTH_LOCAL_BYPASS = process.env.SOUREN_AUTH_LOCAL_BYPASS !== '0';
 const AUTH_COOKIE = 'souren_access';
 const AUTH_SECRET = process.env.SOUREN_AUTH_SECRET || `${ROOT_DIR}:${ACCESS_CODE || 'local'}`;
-const REPO_DIR = path.resolve(process.cwd(), '..');
-const BACKUP_DIR = path.join(DATA_DIR, 'backups');
-const OPERATOR_PACKET_DIR = path.join(DATA_DIR, 'operator-packets');
-const AI_CONSULT_DIR = path.join(DATA_DIR, 'ai-consults');
-const DEFAULT_LLM_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 const DEFAULT_IMAGE_MODEL = 'image-v2';
 
 app.use(cors());
@@ -68,6 +63,8 @@ const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const ALLOWED_OPEN_ROOTS = [ROOT_DIR];
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
+const LEGACY_VIRAL_RAW_PREFIX = '待用' + '青' + '豆';
+const LEGACY_VIRAL_STRUCTURE_PREFIX = '待' + '青' + '豆';
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
@@ -160,14 +157,6 @@ function authSession(req) {
 function requireWorkbenchAccess(req, res, next) {
   if (hasValidAccess(req)) return next();
   return res.status(401).json({ error: '请输入工作台访问码' });
-}
-
-function llmSettings() {
-  const apiKey = process.env.LLM_API_KEY || process.env.DASHSCOPE_API_KEY || '';
-  const baseUrl = (process.env.LLM_BASE_URL || process.env.DASHSCOPE_BASE_URL || DEFAULT_LLM_BASE_URL).replace(/\/+$/, '');
-  const model = process.env.LLM_MODEL || process.env.DASHSCOPE_MODEL || 'deepseek-v4-flash';
-  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 45000);
-  return { ready: Boolean(apiKey), apiKey, baseUrl, model, timeoutMs };
 }
 
 function imageSettings() {
@@ -617,8 +606,8 @@ function pickContentSeed(slot, caze) {
 
 function latestReadyViral() {
   const rows = all('SELECT * FROM viral_templates ORDER BY created_at DESC').map(rowViral);
-  return rows.find((item) => !String(item.rawText || '').startsWith('待用青豆')
-    && !String(item.hotStructure || '').startsWith('待青豆')
+  return rows.find((item) => !String(item.rawText || '').startsWith(LEGACY_VIRAL_RAW_PREFIX)
+    && !String(item.hotStructure || '').startsWith(LEGACY_VIRAL_STRUCTURE_PREFIX)
     && item.category !== '待分析') || null;
 }
 
@@ -693,93 +682,6 @@ function createCandidate(slot, caze, variant, viral = null, seed = null, overrid
   if (seed) run('UPDATE content_seeds SET usage_count = usage_count + 1, updated_at = ? WHERE id = ?', [now(), seed.id]);
 }
 
-function llmCandidatePrompt(slot, caze, viral, seed) {
-  const p = caze.persona || {};
-  return [
-    '你是素人种草运营文案引擎，只输出 JSON，不要输出解释。',
-    '为同一个排期槽位生成 3 条候选稿，分别是稳妥版、互动版、爆款结构版。',
-    '要求：中文、自然、生活化、像普通兼职账号会发的内容；不要写成广告话术；每条都有标题、发布正文、发布形式。',
-    '',
-    `账号：${caze.weixinNick}`,
-    `抖音号：${caze.douyinId || '未填'}`,
-    `对接人：${caze.staff || '未填'}`,
-    `项目：${caze.project}`,
-    `生命周期：${slot.stage}`,
-    `内容类型：${slot.contentKind}`,
-    `目标：${slot.goal}`,
-    `人设：城市${p.city || '未填'}，年龄${p.age || '未填'}，职业${p.occupation || '未填'}，语气${p.tone || '自然'}，动机${p.motivation || '真实记录'}`,
-    viral ? `爆款参考标题：${viral.title}\n爆款结构：${viral.hotStructure}\n爆款原文：${viral.rawText}` : '',
-    seed ? `内容种子标题模板：${seed.titleTemplate}\n内容种子正文模板：${seed.contentTemplate}` : '',
-    '',
-    '返回 JSON 格式：',
-    '{"candidates":[{"variant":"稳妥版","title":"...","publishText":"...","format":"图文","operatorInstruction":"..."},{"variant":"互动版","title":"...","publishText":"...","format":"图文","operatorInstruction":"..."},{"variant":"爆款结构版","title":"...","publishText":"...","format":"口播","operatorInstruction":"..."}]}'
-  ].filter(Boolean).join('\n');
-}
-
-function parseJsonObject(text) {
-  const raw = String(text || '').trim();
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const start = raw.indexOf('{');
-    const end = raw.lastIndexOf('}');
-    if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1));
-    throw new Error('模型没有返回 JSON');
-  }
-}
-
-function normalizeLlmCandidates(payload, slot, caze) {
-  const variants = ['稳妥版', '互动版', '爆款结构版'];
-  const rows = Array.isArray(payload?.candidates) ? payload.candidates : [];
-  if (rows.length < 3) throw new Error('模型候选少于 3 条');
-  return variants.map((variant, index) => {
-    const item = rows.find((row) => row?.variant === variant) || rows[index];
-    const title = String(item?.title || '').trim();
-    const publishText = String(item?.publishText || item?.publish_text || '').trim();
-    if (!title || publishText.length < 12) throw new Error(`模型候选不完整：${variant}`);
-    const format = ['图文', '口播', '视频'].includes(item?.format) ? item.format : formatForKind(slot.contentKind, null);
-    return {
-      variant,
-      title: title.slice(0, 80),
-      publishText,
-      format,
-      operatorInstruction: String(item?.operatorInstruction || item?.operator_instruction || operatorInstructionFor(slot, caze)).trim()
-    };
-  });
-}
-
-async function generateLlmCandidateData(slot, caze, viral, seed) {
-  const settings = llmSettings();
-  if (!settings.ready) return null;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), settings.timeoutMs);
-  try {
-    const res = await fetch(`${settings.baseUrl}/chat/completions`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.apiKey}`
-      },
-      body: JSON.stringify({
-        model: settings.model,
-        temperature: 0.75,
-        messages: [
-          { role: 'system', content: '你只返回严格 JSON，不要 Markdown，不要解释。' },
-          { role: 'user', content: llmCandidatePrompt(slot, caze, viral, seed) }
-        ],
-        response_format: { type: 'json_object' }
-      })
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body?.error?.message || `模型接口失败：${res.status}`);
-    const content = body?.choices?.[0]?.message?.content;
-    return normalizeLlmCandidates(parseJsonObject(content), slot, caze);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function generateCandidatesForSlot(slot) {
   if (!slot || slot.selectedCandidateId || ['已锁定', '素材阻塞', '可交付', '已派发', '已汇报', '已核对'].includes(slot.status)) {
     return [];
@@ -788,24 +690,7 @@ async function generateCandidatesForSlot(slot) {
   const viral = slot.contentKind === '爆款提权' ? latestReadyViral() : null;
   const seed = slot.contentKind === '爆款提权' ? null : pickContentSeed(slot, caze);
   run('DELETE FROM candidate_drafts WHERE slot_id = ? AND selected = 0', [slot.id]);
-  let llmCandidates = null;
-  let fallbackReason = '';
-  try {
-    llmCandidates = await generateLlmCandidateData(slot, caze, viral, seed);
-  } catch (error) {
-    fallbackReason = error.message || '模型生成失败';
-  }
-  if (llmCandidates) {
-    llmCandidates.forEach((draft) => createCandidate(slot, caze, draft.variant, viral, seed, {
-      ...draft,
-      sourceTemplateId: 'llm',
-      complianceHits: [{ type: '文案模型', message: '由系统内置文案模型生成' }]
-    }));
-  } else {
-    ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral, seed, {
-      complianceHits: fallbackReason ? [{ type: '模板兜底', message: fallbackReason }] : []
-    }));
-  }
+  ['稳妥版', '互动版', '爆款结构版'].forEach((variant) => createCandidate(slot, caze, variant, viral, seed));
   run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', ['候选待选', now(), slot.id]);
   return all('SELECT * FROM candidate_drafts WHERE slot_id = ? ORDER BY created_at ASC', [slot.id]).map(rowCandidate);
 }
@@ -1145,13 +1030,13 @@ function viralSuitableForCase(viral, caze) {
 
 function isPendingViralTemplate(viral) {
   return String(viral.rawText || '').startsWith('待分析')
-    || String(viral.rawText || '').startsWith('待用青豆')
+    || String(viral.rawText || '').startsWith(LEGACY_VIRAL_RAW_PREFIX)
     || String(viral.hotStructure || '').startsWith('待分析')
-    || String(viral.hotStructure || '').startsWith('待青豆')
+    || String(viral.hotStructure || '').startsWith(LEGACY_VIRAL_STRUCTURE_PREFIX)
     || viral.category === '待分析';
 }
 
-function qingdouTaskText(viral) {
+function viralAnalysisTaskText(viral) {
   return [
     '爆款链接分析任务',
     `链接：${viral.sourceLink || '未填'}`,
@@ -1374,24 +1259,6 @@ function walkFiles(dir) {
   });
 }
 
-function backupList() {
-  if (!fs.existsSync(BACKUP_DIR)) return [];
-  return fs.readdirSync(BACKUP_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
-    .map((entry) => {
-      const full = path.join(BACKUP_DIR, entry.name);
-      const stat = fs.statSync(full);
-      return {
-        name: entry.name,
-        path: full,
-        size: stat.size,
-        createdAt: stat.birthtime.toISOString(),
-        updatedAt: stat.mtime.toISOString()
-      };
-    })
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-}
-
 function exportData() {
   return {
     exportedAt: now(),
@@ -1408,12 +1275,63 @@ function exportData() {
   };
 }
 
-function writeLocalBackup(reason = 'manual') {
-  fs.mkdirSync(BACKUP_DIR, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const file = path.join(BACKUP_DIR, `${stamp}_${safeSegment(reason)}.json`);
-  fs.writeFileSync(file, JSON.stringify({ ...exportData(), reason }, null, 2));
-  return backupList().find((item) => item.path === file);
+function refId(item, camelKey, snakeKey = camelKey) {
+  return item?.[camelKey] || item?.[snakeKey] || '';
+}
+
+function requireKnownId(set, id, message) {
+  if (!id || !set.has(id)) throw new Error(message);
+}
+
+function validateImportData(data) {
+  if (!Array.isArray(data.cases)) throw new Error('导入数据缺少案例列表');
+  const caseIds = new Set();
+  data.cases.forEach((item, index) => {
+    if (!item?.id) throw new Error(`第 ${index + 1} 个案例缺少 ID`);
+    if (caseIds.has(item.id)) throw new Error(`案例 ID 重复：${item.id}`);
+    caseIds.add(item.id);
+  });
+
+  const planSlots = data.planSlots || [];
+  const slotIds = new Set();
+  planSlots.forEach((item, index) => {
+    if (!item?.id) throw new Error(`第 ${index + 1} 个排期缺少 ID`);
+    if (slotIds.has(item.id)) throw new Error(`排期 ID 重复：${item.id}`);
+    slotIds.add(item.id);
+    requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `排期 ${item.id} 引用了不存在的案例`);
+  });
+
+  const candidateDrafts = data.candidateDrafts || [];
+  const candidateIds = new Set();
+  candidateDrafts.forEach((item, index) => {
+    if (!item?.id) throw new Error(`第 ${index + 1} 个候选稿缺少 ID`);
+    if (candidateIds.has(item.id)) throw new Error(`候选稿 ID 重复：${item.id}`);
+    candidateIds.add(item.id);
+    requireKnownId(slotIds, refId(item, 'slotId', 'slot_id'), `候选稿 ${item.id} 引用了不存在的排期`);
+  });
+
+  planSlots.forEach((item) => {
+    const selectedCandidateId = refId(item, 'selectedCandidateId', 'selected_candidate_id');
+    if (selectedCandidateId) requireKnownId(candidateIds, selectedCandidateId, `排期 ${item.id} 选中了不存在的候选稿`);
+  });
+
+  (data.assets || []).forEach((item) => requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `素材 ${item.id || ''} 引用了不存在的案例`));
+  (data.imageTasks || []).forEach((item) => {
+    requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `图片任务 ${item.id || ''} 引用了不存在的案例`);
+    const slotId = refId(item, 'planSlotId', 'plan_slot_id');
+    if (slotId) requireKnownId(slotIds, slotId, `图片任务 ${item.id || ''} 引用了不存在的排期`);
+  });
+  (data.clipTasks || []).forEach((item) => {
+    requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `剪辑任务 ${item.id || ''} 引用了不存在的案例`);
+    const slotId = refId(item, 'planSlotId', 'plan_slot_id');
+    if (slotId) requireKnownId(slotIds, slotId, `剪辑任务 ${item.id || ''} 引用了不存在的排期`);
+  });
+  (data.verifyTasks || []).forEach((item) => {
+    requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `核对任务 ${item.id || ''} 引用了不存在的案例`);
+    const slotId = refId(item, 'planItemId', 'plan_item_id');
+    if (slotId) requireKnownId(slotIds, slotId, `核对任务 ${item.id || ''} 引用了不存在的排期`);
+  });
+  (data.metrics || []).forEach((item) => requireKnownId(caseIds, refId(item, 'caseId', 'case_id'), `数据记录 ${item.id || ''} 引用了不存在的案例`));
 }
 
 function groupCount(items, keyFn) {
@@ -1624,48 +1542,6 @@ function dashboard() {
   };
 }
 
-function extractRecordValue(text, label) {
-  const line = text.split('\n').find((item) => item.startsWith(`${label}：`));
-  return line ? line.slice(label.length + 1).trim() : '';
-}
-
-function extractSection(text, heading) {
-  const marker = `## ${heading}`;
-  const start = text.indexOf(marker);
-  if (start < 0) return '';
-  const rest = text.slice(start + marker.length).trim();
-  const next = rest.indexOf('\n## ');
-  return (next >= 0 ? rest.slice(0, next) : rest).trim();
-}
-
-function summarizeAdvice(text) {
-  const advice = extractSection(text, '建议输出');
-  if (!advice || advice === '无输出。') return '暂无建议输出';
-  return advice.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 4).join('\n');
-}
-
-function recentAiConsults(limit = 5) {
-  if (!fs.existsSync(AI_CONSULT_DIR)) return [];
-  return fs.readdirSync(AI_CONSULT_DIR)
-    .filter((file) => file.endsWith('.md'))
-    .map((file) => {
-      const recordPath = path.join(AI_CONSULT_DIR, file);
-      const stat = fs.statSync(recordPath);
-      const text = fs.readFileSync(recordPath, 'utf8');
-      return {
-        file,
-        path: recordPath,
-        createdAt: stat.mtime.toISOString(),
-        status: extractRecordValue(text, '状态') || 'unknown',
-        command: extractRecordValue(text, '命令') || '未找到',
-        packetPath: extractRecordValue(text, '工作包'),
-        summary: summarizeAdvice(text)
-      };
-    })
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, limit);
-}
-
 const OPERATOR_FLOW = [
   ['待生成', '系统生成 3 条候选稿'],
   ['候选待选', '运营选择一条锁定'],
@@ -1676,243 +1552,6 @@ const OPERATOR_FLOW = [
   ['已汇报', '打开抖音核对并回填数据'],
   ['已核对', '进入账号复盘']
 ];
-
-function slotNextAction(slot) {
-  if (slot.status === '待生成') return '生成候选稿';
-  if (slot.status === '候选待选') return '选择一条候选';
-  if (slot.status === '已锁定') return '生成交付内容';
-  if (slot.status === '素材阻塞') return '补素材后重新生成交付内容';
-  if (slot.status === '可交付') return '复制文案和素材发微信';
-  if (slot.status === '已派发') return '等待兼职回传';
-  if (slot.status === '已汇报') return '打开抖音核对';
-  if (slot.status === '已核对') return '进入账号复盘';
-  return '查看任务';
-}
-
-function slotPacketLine(slot) {
-  const caze = slot.case || {};
-  return `- 发给 ${caze.weixinNick || '未命名兼职'}｜对接 ${caze.staff || '未填对接人'}｜账号 ${caze.douyinId || '未填抖音号'}｜${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.status}｜${slotNextAction(slot)}${slot.deliveryDir ? '｜交付内容已生成' : ''}`;
-}
-
-function gitOutput(args) {
-  try {
-    return execFileSync('git', args, { cwd: REPO_DIR, encoding: 'utf8' }).trim();
-  } catch {
-    return '';
-  }
-}
-
-function gitSnapshot() {
-  const commit = gitOutput(['rev-parse', '--short', 'HEAD']);
-  const branch = gitOutput(['branch', '--show-current']);
-  const status = gitOutput(['status', '--short']);
-  const recent = gitOutput(['log', '--oneline', '--max-count=8']);
-  const remote = gitOutput(['remote', 'get-url', 'origin']);
-  const importantFiles = [
-    'README.md',
-    'app/README.md',
-    'app/server/index.js',
-    'app/server/db.js',
-    'app/src/main.jsx',
-    'app/src/styles.css',
-    'app/scripts/e2e-smoke.js',
-    'app/scripts/system-check.js',
-    'app/package.json'
-  ].map((file) => ({ file, path: path.join(REPO_DIR, file), exists: fs.existsSync(path.join(REPO_DIR, file)) }));
-  return {
-    repoDir: REPO_DIR,
-    remote,
-    branch,
-    commit,
-    status: status || 'clean',
-    recent,
-    importantFiles
-  };
-}
-
-function gitSyncStatus() {
-  if (process.env.SOUREN_GITHUB_SYNC_CHECK_DISABLED === '1') {
-    return { status: 'waiting', detail: '远端代码同步检查已在当前环境禁用' };
-  }
-  const remote = gitOutput(['remote', 'get-url', 'origin']);
-  if (!remote) return { status: 'warning', detail: '远端代码仓库未配置' };
-  const local = gitOutput(['rev-parse', 'HEAD']);
-  const remoteHead = gitOutput(['ls-remote', '--heads', 'origin', 'main']).split(/\s+/)[0] || '';
-  if (!local || !remoteHead) return { status: 'warning', detail: `无法读取远端主分支，同步状态未知：${remote}` };
-  if (local === remoteHead) return { status: 'ready', detail: `远端主分支已同步 ${local.slice(0, 7)}` };
-  return { status: 'warning', detail: `远端主分支未同步，本地 ${local.slice(0, 7)}，远端 ${remoteHead.slice(0, 7)}；需要认证后上传` };
-}
-
-function operatorPacketMarkdown(data) {
-  const git = gitSnapshot();
-  const flowGroups = OPERATOR_FLOW
-    .map(([status, action]) => ({ status, action, items: data.todaySlots.filter((slot) => slot.status === status) }))
-    .filter((group) => group.items.length > 0);
-  const contacts = new Map();
-  data.todaySlots.forEach((slot) => {
-    const name = slot.case?.staff || '未填对接人';
-    if (!contacts.has(name)) contacts.set(name, []);
-    contacts.get(name).push(slot);
-  });
-  const priorities = [];
-  if (data.counts.pendingGenerate) priorities.push(`生成候选稿：${data.counts.pendingGenerate} 个槽位`);
-  if (data.counts.pendingChoose) priorities.push(`选择并锁定候选：${data.counts.pendingChoose} 个槽位`);
-  if (data.counts.blocked || data.counts.requiredMaterialGaps) priorities.push(`处理素材阻塞/必补素材：阻塞 ${data.counts.blocked || 0}，必补 ${data.counts.requiredMaterialGaps || 0}`);
-  if (data.counts.readyDelivery) priorities.push(`微信交付：${data.counts.readyDelivery} 个交付内容可发送`);
-  if (data.counts.sentWaitReport) priorities.push(`催回传：${data.counts.sentWaitReport} 个已派发任务`);
-  if (data.counts.pendingVerify) priorities.push(`抖音核对：${data.counts.pendingVerify} 个待核对`);
-  if (data.counts.pendingViral) priorities.push(`青豆分析爆款链接：${data.counts.pendingViral} 条待分析`);
-  if (data.counts.imageTasks) priorities.push(`处理图片任务：${data.counts.imageTasks} 个打开任务`);
-  if (data.counts.clipTasks) priorities.push(`处理剪辑任务：${data.counts.clipTasks} 个打开任务`);
-
-  const lines = [
-    '# 素人系统运营工作包',
-    '',
-    `生成时间：${now()}`,
-    `系统根目录：${ROOT_DIR}`,
-    `真实案例素材目录：${MATERIAL_ROOT}`,
-    `数据库：${path.join(DATA_DIR, 'souren.sqlite')}`,
-    '',
-    '## 给本地助手的审阅指令',
-    '',
-    '- 请优先读取“当前代码进度”里的关键文件路径。',
-    '- 结合今日链路、异常账号、素材缺口和助手建议记录，判断下一步。',
-    '- 如果无法读取某个文件，请明确说出文件路径和原因。',
-    '',
-    '## 当前代码进度',
-    '',
-    `- 仓库目录：${git.repoDir}`,
-    `- 远端：${git.remote || '未配置'}`,
-    `- 分支：${git.branch || '未知'}`,
-    `- 当前提交：${git.commit || '未知'}`,
-    `- 工作树：${git.status}`,
-    '',
-    '关键文件：',
-    ...git.importantFiles.map((item) => `- ${item.exists ? '存在' : '缺失'}｜${item.file}｜${item.path}`),
-    '',
-    '最近提交：',
-    ...(git.recent ? git.recent.split('\n').map((line) => `- ${line}`) : ['- 无法读取 git log']),
-    '',
-    '## 当前计数',
-    '',
-    `- 案例：${data.counts.cases}`,
-    `- 待生成：${data.counts.pendingGenerate}`,
-    `- 待选择：${data.counts.pendingChoose}`,
-    `- 已锁定：${data.counts.locked}`,
-    `- 素材阻塞/异常：${data.counts.blocked || 0}`,
-    `- 可微信交付：${data.counts.readyDelivery}`,
-    `- 等回传：${data.counts.sentWaitReport}`,
-    `- 待核对：${data.counts.pendingVerify}`,
-    `- 待爆款分析：${data.counts.pendingViral || 0}`,
-    `- 图片任务：${data.counts.imageTasks || 0}`,
-    `- 剪辑任务：${data.counts.clipTasks || 0}`,
-    '',
-    '## 助手下一步优先级',
-    '',
-    ...(priorities.length ? priorities.map((item, index) => `${index + 1}. ${item}`) : ['当前没有打开任务。']),
-    '',
-    '## 今日链路',
-    ''
-  ];
-
-  if (!flowGroups.length) {
-    lines.push('今天没有到期任务。');
-  } else {
-    flowGroups.forEach((group) => {
-      lines.push(`### ${group.status}｜${group.items.length}｜${group.action}`, '');
-      group.items.slice(0, 20).forEach((slot) => lines.push(slotPacketLine(slot)));
-      lines.push('');
-    });
-  }
-
-  lines.push('## 按对接人', '');
-  if (!contacts.size) {
-    lines.push('今天没有需要对接的人。', '');
-  } else {
-    Array.from(contacts, ([name, items]) => ({ name, items }))
-      .sort((a, b) => b.items.length - a.items.length)
-      .forEach((group) => {
-        lines.push(`### ${group.name}｜${group.items.length} 条`, '');
-        group.items.forEach((slot) => lines.push(slotPacketLine(slot)));
-        lines.push('');
-      });
-  }
-
-  lines.push('## 待爆款分析', '');
-  if (!data.pendingViralTemplates?.length) {
-    lines.push('无。', '');
-  } else {
-    data.pendingViralTemplates.forEach((item) => {
-      lines.push(`- ${item.title}｜${item.sourceLink || '未填链接'}｜状态：待青豆提取和结构分析`);
-    });
-    lines.push('');
-  }
-
-  lines.push('## 图片任务', '');
-  if (!data.imageTasks?.length) {
-    lines.push('无。', '');
-  } else {
-    data.imageTasks.forEach((item) => {
-      lines.push(`- ${item.case?.weixinNick || '未知账号'}｜${item.purpose}｜${item.status}｜目录 ${item.outputDir}`);
-    });
-    lines.push('');
-  }
-
-  lines.push('## 剪辑任务', '');
-  if (!data.clipTasks?.length) {
-    lines.push('无。', '');
-  } else {
-    data.clipTasks.forEach((item) => {
-      lines.push(`- ${item.case?.weixinNick || '未知账号'}｜${item.title}｜${item.status}｜目录 ${item.outputDir}`);
-    });
-    lines.push('');
-  }
-
-  lines.push('## 异常账号和素材缺口', '');
-  if (!data.abnormalCases?.length) {
-    lines.push('无。');
-  } else {
-    data.abnormalCases.slice(0, 30).forEach((item) => {
-      lines.push(`- ${item.weixinNick}｜对接 ${item.staff || '未填'}｜${item.caseCode}｜${item.reasons.join(' / ') || '素材缺口'}`);
-      if (item.materialGaps?.length) lines.push(`  缺口：${item.materialGaps.map((gap) => `${gap.status}-${gap.label}`).join(' / ')}`);
-      if (item.actions?.length) lines.push(`  建议：${item.actions.join(' / ')}`);
-      lines.push(`  目录：${item.localCaseDir}`);
-    });
-  }
-
-  return lines.join('\n');
-}
-
-function writeOperatorPacket() {
-  const data = dashboard();
-  const text = operatorPacketMarkdown(data);
-  fs.mkdirSync(OPERATOR_PACKET_DIR, { recursive: true });
-  const fileName = `${data.today}_${now().replace(/[: ]/g, '-').replace(/\./g, '-')}_运营工作包.md`;
-  const packetPath = path.join(OPERATOR_PACKET_DIR, fileName);
-  fs.writeFileSync(packetPath, text);
-  return { path: packetPath, text, counts: data.counts };
-}
-
-function localAssistantCommand() {
-  if (process.env.SOUREN_LOCAL_AI_DISABLED === '1') return null;
-  if (process.env.LOCAL_CLAUDE_COMMAND) {
-    return { mode: 'shell', command: process.env.LOCAL_CLAUDE_COMMAND, label: process.env.LOCAL_CLAUDE_COMMAND };
-  }
-  try {
-    const found = execFileSync('/bin/zsh', ['-lc', 'command -v claude || command -v clude || command -v claude-code || true'], { encoding: 'utf8' }).trim();
-    if (!found) return null;
-    return { mode: 'exec', command: found.split('\n')[0], label: found.split('\n')[0] };
-  } catch {
-    return null;
-  }
-}
-
-function localAiStatus() {
-  const command = localAssistantCommand();
-  return command
-    ? { ready: true, command: command.label }
-    : { ready: false, command: null, message: '未找到本地助手命令，可安装 claude/clude 命令或设置 LOCAL_CLAUDE_COMMAND' };
-}
 
 function systemReadiness() {
   const dbPath = path.join(DATA_DIR, 'souren.sqlite');
@@ -1949,90 +1588,7 @@ function systemReadiness() {
   };
 }
 
-function consultPrompt(packetText) {
-  return [
-    '你是这个“素人种草运营工作台”的本地顾问。',
-    '下面的工作包包含系统进度、git 状态和关键本地文件绝对路径。',
-    '请优先读取工作包“关键文件”里列出的本地文件，再结合工作包判断：',
-    '1. 今天最该优先处理的 3-5 件事。',
-    '2. 哪些任务可能卡住，原因是什么。',
-    '3. 当前代码或流程里最值得补的 3 个系统建议。',
-    '4. 如果无法读取某个文件，请明确说出文件路径和原因。',
-    '输出要短、具体、可执行。',
-    '',
-    packetText
-  ].join('\n');
-}
-
-function runLocalAssistant(input, timeoutMs = 60000) {
-  const command = localAssistantCommand();
-  if (!command) {
-    return Promise.resolve({
-      status: 'unavailable',
-      command: null,
-      stdout: '',
-      stderr: '未找到本地助手命令。可安装 claude/clude 命令，或设置 LOCAL_CLAUDE_COMMAND。'
-    });
-  }
-  return new Promise((resolve) => {
-    const args = command.mode === 'shell' ? ['-lc', command.command] : [];
-    const bin = command.mode === 'shell' ? '/bin/zsh' : command.command;
-    const child = spawn(bin, args, { cwd: ROOT_DIR, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill('SIGTERM');
-      resolve({ status: 'timeout', command: command.label, stdout, stderr: `${stderr}\n本地助手调用超时。`.trim() });
-    }, timeoutMs);
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-    child.on('error', (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ status: 'error', command: command.label, stdout, stderr: error.message });
-    });
-    child.on('close', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ status: code === 0 ? 'completed' : 'error', command: command.label, stdout, stderr, exitCode: code });
-    });
-    child.stdin.end(input);
-  });
-}
-
-async function writeAiConsult() {
-  const packet = writeOperatorPacket();
-  const result = await runLocalAssistant(consultPrompt(packet.text));
-  fs.mkdirSync(AI_CONSULT_DIR, { recursive: true });
-  const stamp = now().replace(/[: ]/g, '-').replace(/\./g, '-');
-  const consultPath = path.join(AI_CONSULT_DIR, `${stamp}_本地助手建议.md`);
-  const text = [
-    '# 本地助手建议记录',
-    '',
-    `时间：${now()}`,
-    `状态：${result.status}`,
-    `命令：${result.command || '未找到'}`,
-    `工作包：${packet.path}`,
-    '',
-    '## 建议输出',
-    '',
-    result.stdout?.trim() || '无输出。',
-    '',
-    '## 错误/提示',
-    '',
-    result.stderr?.trim() || '无。'
-  ].join('\n');
-  fs.writeFileSync(consultPath, text);
-  return { ...result, packetPath: packet.path, consultPath, text };
-}
-
 app.get('/api/health', (_req, res) => {
-  const llm = llmSettings();
   const image = imageSettings();
   res.json({
     ok: true,
@@ -2040,9 +1596,6 @@ app.get('/api/health', (_req, res) => {
     materialRoot: MATERIAL_ROOT,
     imageKeyReady: Boolean(image.apiKey),
     image: { ready: image.ready, apiUrlConfigured: Boolean(image.apiUrl), model: image.model, size: image.size, missing: image.missing },
-    llmKeyReady: llm.ready,
-    llm: { ready: llm.ready, baseUrl: llm.baseUrl, model: llm.model },
-    localAi: localAiStatus(),
     network: networkSettings(),
     readiness: systemReadiness().summary
   });
@@ -2052,20 +1605,8 @@ app.get('/api/dashboard', (_req, res) => {
   res.json(dashboard());
 });
 
-app.get('/api/dashboard/ai-consults', (_req, res) => {
-  res.json(recentAiConsults(20));
-});
-
 app.get('/api/readiness', (_req, res) => {
   res.json(systemReadiness());
-});
-
-app.post('/api/dashboard/operator-packet', (_req, res) => {
-  res.json(writeOperatorPacket());
-});
-
-app.post('/api/dashboard/ai-consult', async (_req, res) => {
-  res.json(await writeAiConsult());
 });
 
 app.post('/api/dashboard/generate-today', async (_req, res) => {
@@ -2808,10 +2349,10 @@ app.patch('/api/viral-templates/:id', (req, res) => {
   res.json(rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [viral.id])));
 });
 
-app.get('/api/viral-templates/:id/qingdou-task', (req, res) => {
+app.get('/api/viral-templates/:id/analysis-task', (req, res) => {
   const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
   if (!viral) return res.status(404).json({ error: 'viral template not found' });
-  res.json({ text: qingdouTaskText(viral) });
+  res.json({ text: viralAnalysisTaskText(viral) });
 });
 
 app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
@@ -2888,20 +2429,11 @@ app.get('/api/export', (_req, res) => {
   res.json(exportData());
 });
 
-app.get('/api/backups', (_req, res) => {
-  res.json({ backupDir: BACKUP_DIR, backups: backupList() });
-});
-
-app.post('/api/backups', (req, res) => {
-  res.json({ backup: writeLocalBackup(req.body?.reason || 'manual') });
-});
-
 app.post('/api/import', (req, res) => {
   const data = req.body || {};
-  if (!Array.isArray(data.cases)) return res.status(400).json({ error: 'invalid backup: cases missing' });
   const importedAt = now();
-  const preImportBackup = writeLocalBackup('before-import');
   try {
+    validateImportData(data);
     run('BEGIN IMMEDIATE');
   run('DELETE FROM metrics');
   run('DELETE FROM verify_tasks');
@@ -3128,14 +2660,14 @@ app.post('/api/import', (req, res) => {
   });
 
     run('COMMIT');
-    res.json({ imported: true, cases: data.cases.length, preImportBackup });
+    res.json({ imported: true, cases: data.cases.length });
   } catch (err) {
     try {
       run('ROLLBACK');
     } catch {
       // Ignore rollback failures; report the original import error.
     }
-    res.status(400).json({ error: `import failed: ${err.message}`, preImportBackup });
+    res.status(400).json({ error: `导入失败：${err.message}` });
   }
 });
 

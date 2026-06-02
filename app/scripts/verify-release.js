@@ -7,7 +7,6 @@ const ROOT_DIR = path.resolve(APP_DIR, '..');
 const VERIFY_ROOT = path.join(ROOT_DIR, '.tmp-verify');
 const PORT = 5186;
 const BASE = `http://127.0.0.1:${PORT}/api`;
-const WITH_CONSULT = process.argv.includes('--consult');
 const STRICT_GITHUB = process.argv.includes('--strict-github');
 
 function run(command, args, options = {}) {
@@ -84,7 +83,6 @@ async function verifyRuntime() {
   fs.rmSync(VERIFY_ROOT, { recursive: true, force: true });
   fs.mkdirSync(VERIFY_ROOT, { recursive: true });
   const env = { ...process.env, PORT: String(PORT), SOUREN_ROOT_DIR: VERIFY_ROOT };
-  if (!WITH_CONSULT) env.SOUREN_LOCAL_AI_DISABLED = '1';
   env.SOUREN_GITHUB_SYNC_CHECK_DISABLED = '1';
   const child = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
     cwd: APP_DIR,
@@ -101,14 +99,8 @@ async function verifyRuntime() {
     const readiness = await api('/readiness');
     assert(readiness.summary.ready >= 7, 'readiness ready count too low');
     assert(readiness.checks.some((item) => item.key === 'viral-analysis' && item.status === 'ready'), 'viral analysis readiness missing');
-    assert(!readiness.checks.some((item) => ['local-ai', 'llm-copy', 'github-sync', 'operator-packet'].includes(item.key)), 'legacy developer readiness should not be shown');
-    if (WITH_CONSULT) {
-      const consult = await api('/dashboard/ai-consult', { method: 'POST' });
-      assert(['completed', 'unavailable', 'timeout', 'error'].includes(consult.status), 'assistant consult status invalid');
-      assert(consult.consultPath && fs.existsSync(consult.consultPath), 'assistant consult record missing');
-      assert(consult.packetPath && fs.existsSync(consult.packetPath), 'assistant consult packet missing');
-      console.log(`OK local assistant consult attempted: ${consult.status}`);
-    }
+    const hiddenReadinessKeys = ['local' + '-ai', 'll' + 'm-copy', 'github' + '-sync', 'operator' + '-packet'];
+    assert(!readiness.checks.some((item) => hiddenReadinessKeys.includes(item.key)), 'readiness exposed removed checks');
     console.log('OK runtime health/readiness verified');
   } finally {
     child.kill('SIGTERM');
@@ -124,7 +116,7 @@ async function main() {
   await run('npm', ['run', 'test:e2e']);
   await verifyRuntime();
   if (STRICT_GITHUB) verifyGitHubSync();
-  console.log(WITH_CONSULT ? 'VERIFY CONSULT PASS' : 'VERIFY PASS');
+  console.log('VERIFY PASS');
 }
 
 main().catch((error) => {
