@@ -221,7 +221,7 @@ if (
 ) ok('排期规划页只读，不再提供生成、交付或打开案例入口');
 else fail('排期规划页仍可能绕过今日队列执行任务或文档未说明只读边界');
 
-if (serverSource.includes('function caseIntakeIssue') && serverSource.includes('intakeIssues: intakeIssueRows') && serverSource.includes("kind: '补登记'") && serverSource.includes('缺少抖音链接') && serverSource.includes('缺少项目') && serverSource.includes('缺少共享原始素材路径') && serverSource.includes('补齐微信、抖音主页、项目和共享原始素材路径') && mainSource.includes('item.intakeIssue') && smokeSource.includes('legacy missing account did not enter intake issue queue') && smokeSource.includes("intakeIssue.issues.includes('缺少项目')")) ok('旧账号缺抖音、项目或共享素材路径会进入补登记队列');
+if (serverSource.includes('function caseIntakeIssue') && serverSource.includes('intakeIssues: intakeIssueRows') && serverSource.includes("kind: '补登记'") && serverSource.includes('缺少抖音链接') && serverSource.includes('缺少项目') && serverSource.includes('缺少共享原始素材路径') && serverSource.includes('点“补资料”直接填写缺失项') && mainSource.includes('item.intakeIssue') && smokeSource.includes('legacy missing account did not enter intake issue queue') && smokeSource.includes("intakeIssue.issues.includes('缺少项目')")) ok('旧账号缺抖音、项目或共享素材路径会进入补登记队列');
 else fail('缺登记资料的旧账号仍可能躲在异常列表之外，不进入首页队列');
 
 if (
@@ -240,6 +240,10 @@ if (
   && mainSource.includes('editRequest?.token')
   && mainSource.includes('onAfterEditSaved?.({ returnToDashboard })')
   && mainSource.includes("setView('dashboard')")
+  && serverSource.includes('点“补资料”直接填写缺失项')
+  && mainSource.includes('点补资料直接补齐缺失登记项')
+  && smokeSource.includes('intake issue queue still tells staff to use the old edit flow')
+  && !serverSource.includes('打开案例，点“编辑案例”')
 ) ok('队首补资料直接打开编辑弹窗，保存后回到首页队列');
 else fail('补登记仍需要先打开案例再手动找编辑入口，或保存后不能回到首页队列');
 

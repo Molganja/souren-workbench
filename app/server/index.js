@@ -3555,7 +3555,7 @@ function caseIntakeIssue(caze = {}) {
     issues,
     title: `${caze.weixinNick || '未命名账号'} 登记资料缺失`,
     detail: issues.join(' / '),
-    action: '打开案例，点“编辑案例”，补齐微信、抖音主页、项目和共享原始素材路径。',
+    action: '点“补资料”直接填写缺失项：微信、抖音主页、项目和共享原始素材路径。',
     case: caze
   };
 }
@@ -3794,7 +3794,7 @@ function dashboardPriorityActions(data = {}) {
       statusClass: 'bad',
       title: row.title || `${row.case?.weixinNick || '未知账号'} 登记资料缺失`,
       detail: row.detail || (row.issues || []).join(' / '),
-      note: row.action || '打开案例，编辑微信、抖音主页、项目和共享原始素材路径。',
+      note: row.action || '点“补资料”直接填写微信、抖音主页、项目和共享原始素材路径。',
       case: row.case,
       intakeIssue: row
     });

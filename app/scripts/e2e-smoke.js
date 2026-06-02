@@ -534,6 +534,7 @@ async function main() {
     assert(intakeDashboard.counts.intakeIssues >= 1, 'dashboard missing intake issue count');
     const legacyQueueActions = intakeDashboard.priorityActions.filter((item) => item.case?.id === legacyCase.id);
     assert(legacyQueueActions.length === 1 && legacyQueueActions[0].kind === '补登记', 'intake issue should gate other queue actions for same account');
+    assert(legacyQueueActions[0].note.includes('点“补资料”') && !legacyQueueActions[0].note.includes('点“编辑案例”'), 'intake issue queue still tells staff to use the old edit flow');
     assert(!intakeDashboard.readyDelivery.some((item) => item.id === legacyReadySlot.id), 'intake issue ready delivery leaked into dashboard delivery queue');
     assert(!intakeDashboard.todaySlots.some((item) => item.id === legacyReadySlot.id), 'intake issue active slot leaked into dashboard today slots');
     let invalidSourcePatchRejected = false;

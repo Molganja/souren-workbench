@@ -768,7 +768,7 @@ function accountStatusSummary(group) {
 
 function nextActionText(item) {
   if (item.alert) return '安排助理号/阑尾号评论区互动';
-  if (item.intakeIssue) return '打开案例补齐微信、抖音主页、项目和共享素材路径';
+  if (item.intakeIssue) return '点补资料直接补齐缺失登记项';
   if (item.materialSync) return item.materialSync.status === '目录不可用' ? '检查共享素材路径' : '同步共享素材';
   if (item.monitorAction) return monitorActionSlotLabel(item.monitorAction.kind) || item.monitorAction.action || '处理账号策略';
   if (item.clipTask) return '打开固定剪辑配方，剪完或安排发布后标记完成';
