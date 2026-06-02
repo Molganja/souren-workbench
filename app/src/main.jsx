@@ -244,7 +244,7 @@ function App() {
           <Dashboard data={dashboard} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} onClipTask={setClipTaskOpen} />
         )}
         {!loading && canUseWorkbench && view === 'review' && review && (
-          <ReviewView data={review} onOpenCase={openCase} />
+          <ReviewView data={review} />
         )}
         {!loading && canUseWorkbench && view === 'schedule' && schedule && (
           <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} activeQueueItem={activeQueueItem} />
@@ -901,14 +901,14 @@ function nextActionText(item) {
   return '查看任务';
 }
 
-function ReviewView({ data, onOpenCase }) {
+function ReviewView({ data }) {
   return (
     <div className="stack">
       <section className="hero">
         <div>
           <p className="eyebrow">复盘 {data.today}</p>
           <h1>账号表现和运营复盘</h1>
-          <p>把排期进度、交付、素材、账号快照和作品表现放在一起看，用来决定下一轮是补养号、加爆款提权，还是推进种草内容。</p>
+          <p>把排期进度、交付、素材、账号快照和作品表现放在一起看，用来决定下一轮是补养号、加爆款提权，还是推进种草内容；具体处理回到今日操作队列。</p>
         </div>
         <div className="stats reviewStats">
           <Metric label="总排期" value={data.totals.slots} />
@@ -955,12 +955,12 @@ function ReviewView({ data, onOpenCase }) {
         {data.needsAttention.length === 0 ? <div className="empty">暂无需要优先处理的账号</div> : (
           <div className="caseGrid">
             {data.needsAttention.map((item) => (
-              <button key={item.id} className="caseTile" onClick={() => onOpenCase(item.id)}>
+              <div key={item.id} className="caseTile caseTileBox">
                 <strong>{item.weixinNick}</strong>
                 <span>{item.caseCode} · {item.project}</span>
                 <em>{[...item.reasons, item.activeViralAlerts?.length ? `爆款 ${item.activeViralAlerts.length}` : '', item.materialGaps ? `素材缺口 ${item.materialGaps}` : ''].filter(Boolean).join(' / ')}</em>
                 {item.actions?.[0] && <small>{item.actions[0]}</small>}
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -973,7 +973,7 @@ function ReviewView({ data, onOpenCase }) {
             <div className="metricHeader reviewMetricHeader"><span>账号</span><span>采集时间</span><span>粉丝</span><span>最高播放</span><span>点赞</span><span>评论</span><span>变化</span></div>
             {data.topAccounts.map((item) => (
               <div className="metricLine reviewMetricLine" key={item.id}>
-                <button className="linkButton" onClick={() => onOpenCase(item.id)}>{item.weixinNick}</button>
+                <strong className="metricName">{item.weixinNick}</strong>
                 <span>{shortTime(item.latestSnapshot?.collectedAt || item.topVideo?.latestSnapshot?.collectedAt)}</span>
                 <span>{formatNumber(item.latestSnapshot?.fans)}</span>
                 <span>{formatNumber(item.topVideo?.latestSnapshot?.plays)}</span>
@@ -993,7 +993,7 @@ function ReviewView({ data, onOpenCase }) {
             <div className="metricHeader reviewMetricHeader"><span>账号</span><span>类型</span><span>时间</span><span>粉丝/播放</span><span>点赞</span><span>评论</span><span>备注</span></div>
             {data.recentCollections.map((item) => (
               <div className="metricLine reviewMetricLine" key={item.id}>
-                <button className="linkButton" onClick={() => item.case && onOpenCase(item.case.id)}>{item.case?.weixinNick || '未知账号'}</button>
+                <strong className="metricName">{item.case?.weixinNick || '未知账号'}</strong>
                 <span>{item.type}</span>
                 <span>{shortTime(item.collectedAt)}</span>
                 <span>{item.type === '账号快照' ? formatNumber(item.fans) : formatNumber(item.plays)}</span>

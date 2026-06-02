@@ -1274,6 +1274,13 @@ button:disabled:hover,
   margin-left: 4px;
 }
 
+.metricName {
+  font-weight: 800;
+  color: var(--ink);
+  min-width: 0;
+  word-break: break-all;
+}
+
 .reviewGrid {
   display: grid;
   gap: 10px;

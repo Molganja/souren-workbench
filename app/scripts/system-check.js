@@ -148,6 +148,16 @@ else fail('首页仍可能从后续预览或异常账号绕过队首打开账号
 if (mainSource.includes('const accountGroups = groupQueueByAccount(priorityActions)') && !mainSource.includes('const accountGroups = groupTodayByAccount(data.todaySlots)') && mainSource.includes('actionCounts') && mainSource.includes('同账号动作') && mainSource.includes('个待处理账号')) ok('后续账号预览按操作队列聚合，不只看排期槽位');
 else fail('后续账号预览仍可能只按今日排期显示，漏掉素材同步、剪辑或爆款互动');
 
+if (
+  mainSource.includes('function ReviewView({ data })') &&
+  mainSource.includes('具体处理回到今日操作队列') &&
+  mainSource.includes('className="metricName"') &&
+  !mainSource.includes('<ReviewView data={review} onOpenCase={openCase} />') &&
+  readmeSource.includes('数据复盘只看趋势和表现') &&
+  sopSource.includes('「数据复盘」只用于看趋势')
+) ok('数据复盘页只读，不再提供打开案例的执行入口');
+else fail('数据复盘页仍可能绕过今日队列打开案例或文档未说明只读边界');
+
 if (serverSource.includes('function caseIntakeIssue') && serverSource.includes('intakeIssues: intakeIssueRows') && serverSource.includes("kind: '补登记'") && serverSource.includes('缺少抖音链接') && serverSource.includes('缺少项目') && serverSource.includes('缺少共享原始素材路径') && serverSource.includes('补齐微信、抖音主页、项目和共享原始素材路径') && mainSource.includes('item.intakeIssue') && smokeSource.includes('legacy missing account did not enter intake issue queue') && smokeSource.includes("intakeIssue.issues.includes('缺少项目')")) ok('旧账号缺抖音、项目或共享素材路径会进入补登记队列');
 else fail('缺登记资料的旧账号仍可能躲在异常列表之外，不进入首页队列');
 
