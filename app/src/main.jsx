@@ -325,7 +325,6 @@ function App() {
           onClose={() => setDeliverySlotOpen(null)}
           onAct={act}
           onCopy={copyText}
-          canOpenLocalPaths={canOpenLocalPaths}
           activeQueueItem={activeQueueItem}
         />
       )}
@@ -1604,7 +1603,7 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
   );
 }
 
-function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths, activeQueueItem }) {
+function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const [view, setView] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -1713,11 +1712,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths, active
             <TextPanel title="口播/字幕文案" text={texts.voiceover} onCopy={onCopy} copyable={copyAllowed} />
             <TextPanel title="剪辑要求" text={texts.editBrief} onCopy={onCopy} copyable={copyAllowed} />
           </div>
-          <div className="deliveryPaths">
-            <div><strong>成片保存到</strong><span>{view.editing?.finalVideoPath}</span></div>
-            <div><strong>封面保存到</strong><span>{view.editing?.coverPath}</span></div>
-            {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: view.deliveryDir }) }), '已打开剪辑目录')}>打开剪辑目录</button>}
-          </div>
+          <div className="hintBox">{view.editing?.completionNote || '剪辑或发布完成后，在系统里标记「已完成」。'}</div>
           {view.sourceAssets?.length > 0 && (
             <div className="sourceList">
               <strong>可用源素材</strong>

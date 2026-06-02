@@ -645,6 +645,7 @@ async function main() {
     const clipBrief = fs.readFileSync(path.join(clip.outputDir, '剪辑任务单.txt'), 'utf8');
     assert(clip.brief.includes('固定剪辑配方'), 'clip task response missing fixed edit recipe');
     assert(clipBrief.includes('固定剪辑配方') && clipBrief.includes('不临时改结构'), 'clip brief file missing fixed edit recipe');
+    assert(clipBrief.includes('不需要上传成片') && !clipBrief.includes('final.mp4 放回'), 'clip brief still asks for final video upload');
     const clipDashboard = await api('/dashboard');
     assert(clipDashboard.counts.clipTasks >= 1, 'dashboard clip task count missing');
     assert(clipDashboard.clipTasks.some((item) => item.id === clip.id && item.case?.id === caze.id), 'dashboard clip task list missing case task');
@@ -756,12 +757,13 @@ async function main() {
     const videoDelivery = await api(`/slots/${videoSlot.id}/delivery`, { method: 'POST' });
     assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '03-口播字幕文案.txt')), 'video delivery missing script file');
     assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '04-剪辑要求.txt')), 'video delivery missing edit brief');
-    assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '07-成片回收说明.txt')), 'video delivery missing final video return note');
+    assert(!fs.existsSync(path.join(videoDelivery.deliveryDir, '07-成片回收说明.txt')), 'video delivery should not ask for final video return');
     assert(videoDelivery.copiedAssets.some((asset) => asset.fileName.startsWith('08-')), 'video delivery asset numbering did not avoid task files');
     const videoDeliveryView = await api(`/slots/${videoSlot.id}/delivery-view`);
-    assert(videoDeliveryView.isVideo === true && videoDeliveryView.editing.finalVideoPath.endsWith('final.mp4'), 'video delivery view missing editing output path');
+    assert(videoDeliveryView.isVideo === true && videoDeliveryView.editing.completionNote.includes('不需要上传成片'), 'video delivery view missing completion-only note');
     assert(videoDeliveryView.texts.editBrief.includes('剪辑要求'), 'video delivery view missing edit brief');
     assert(videoDeliveryView.texts.editBrief.includes('固定剪辑配方') && videoDeliveryView.texts.editBrief.includes('只替换素材和标题'), 'video delivery edit brief missing fixed recipe');
+    assert(!videoDeliveryView.texts.editBrief.includes('final.mp4') && !('finalVideoPath' in videoDeliveryView.editing), 'video delivery still exposes final video path');
     await api(`/cases/${videoCase.id}`, { method: 'DELETE' });
 
     const batchDeliverySlot = await api(`/cases/${caze.id}/slots`, {

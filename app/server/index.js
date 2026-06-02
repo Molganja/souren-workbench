@@ -473,7 +473,6 @@ function rowClipTask(row) {
     brief: row.brief,
     outputDir: row.output_dir,
     status: row.status,
-    finalVideoPath: row.final_video_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -3851,8 +3850,8 @@ function createDeliveryForSlot(slot) {
       '',
       '素材使用：',
       '1. 优先使用本次交付内容内视频素材，其次使用图片做轻动态。',
-      '2. 封面图如需单独制作，输出 cover.jpg 放回本目录。',
-      '3. 成片输出 final.mp4 放回本目录。'
+      '2. 封面图如需单独制作，直接随视频素材一起发给兼职。',
+      '3. 剪辑或发布完成后，只需要在系统里标记「已完成」，不要求回传成片文件。'
     ].join('\n'));
   }
   const assets = deliveryAssetsForSlot(slot, caze, 9);
@@ -3906,17 +3905,6 @@ function createDeliveryForSlot(slot) {
     '素材顺序：',
     assetLines
   ].join('\n'));
-  if (videoDelivery) {
-    fs.writeFileSync(path.join(deliveryDir, '07-成片回收说明.txt'), [
-      '如需要剪辑成片，请输出到：',
-      path.join(deliveryDir, 'final.mp4'),
-      '',
-      '可选文件：',
-      path.join(deliveryDir, 'cover.jpg'),
-      '',
-      '剪辑或发布确认完成后，在系统中标记「已完成」。账号数据等待系统自动采集。'
-    ].join('\n'));
-  }
   run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['可交付', deliveryDir, now(), slot.id]);
   return { deliveryDir, copiedAssets: copied, slot: slotById(slot.id) };
 }
@@ -3982,7 +3970,6 @@ function deliveryViewForSlot(slot) {
       editBrief: readDeliveryText(deliveryDir, '04-剪辑要求.txt'),
       assetOrder: readDeliveryText(deliveryDir, '05-素材顺序清单.txt'),
       publishRules: readDeliveryText(deliveryDir, '06-发布要求.txt'),
-      finalVideoNote: readDeliveryText(deliveryDir, '07-成片回收说明.txt'),
       blockedNote: readDeliveryText(deliveryDir, '00-素材阻塞说明.txt'),
       complianceNote: readDeliveryText(deliveryDir, '00-合规阻塞说明.txt')
     },
@@ -3992,8 +3979,7 @@ function deliveryViewForSlot(slot) {
     editing: videoDelivery ? {
       sourceDir: caze.localCaseDir,
       deliveryDir,
-      finalVideoPath: path.join(deliveryDir, 'final.mp4'),
-      coverPath: path.join(deliveryDir, 'cover.jpg')
+      completionNote: '剪辑或发布完成后，在系统里标记「已完成」；不需要上传成片或放回本地目录。'
     } : null
   };
 }
@@ -4124,7 +4110,7 @@ app.post('/api/clip-tasks', (req, res) => {
     '可用视频素材：',
     assets.length ? assets.map((asset, index) => `${index + 1}. ${asset.path}`).join('\n') : '暂无已扫描视频素材，请先放入 00-原始素材 后扫描。',
     '',
-    '交付要求：输出 final.mp4 放回本目录；如需要封面图，放 cover.jpg。'
+    '交付要求：剪完或安排发布后，在系统标记「已完成」；不需要上传成片或把文件放回目录。'
   ].join('\n');
   const brief = body.brief ? `${String(body.brief).trim()}\n\n${editRecipe}` : generatedBrief;
   fs.writeFileSync(path.join(outputDir, '剪辑任务单.txt'), brief);
@@ -4141,7 +4127,7 @@ app.post('/api/clip-tasks', (req, res) => {
       brief,
       outputDir,
       body.status || 'waiting_edit',
-      body.finalVideoPath || '',
+      '',
       now(),
       now()
     ]
@@ -4153,14 +4139,12 @@ app.patch('/api/clip-tasks/:id', (req, res) => {
   const task = rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [req.params.id]));
   if (!task) return res.status(404).json({ error: 'clip task not found' });
   const body = req.body || {};
-  const finalPath = body.finalVideoPath ?? task.finalVideoPath;
   run(
-    `UPDATE clip_tasks SET title = ?, brief = ?, status = ?, final_video_path = ?, updated_at = ? WHERE id = ?`,
+    `UPDATE clip_tasks SET title = ?, brief = ?, status = ?, updated_at = ? WHERE id = ?`,
     [
       body.title ?? task.title,
       body.brief ?? task.brief,
       body.status ?? task.status,
-      finalPath,
       now(),
       task.id
     ]
