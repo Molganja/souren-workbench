@@ -4616,7 +4616,6 @@ app.post('/api/clip-tasks', (req, res) => {
   if (existing) return res.json({ ...existing, alreadyExisting: true });
   const selected = slot?.selectedCandidateId ? rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId])) : null;
   const title = body.title || selected?.title || `${caze.weixinNick}剪辑任务`;
-  const outputDir = '';
   const assets = all('SELECT * FROM assets WHERE case_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 8', [caze.id, '视频']).map(rowAsset);
   const clipContentKind = slot?.contentKind || body.contentKind || '日常养号';
   const editRecipe = fixedEditRecipe(slot || { contentKind: clipContentKind }, caze, selected || { title });
@@ -4643,17 +4642,15 @@ app.post('/api/clip-tasks', (req, res) => {
   const id = uid('clip');
   run(
     `INSERT INTO clip_tasks
-    (id, case_id, plan_slot_id, title, brief, output_dir, status, final_video_path, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    (id, case_id, plan_slot_id, title, brief, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       caze.id,
       body.planSlotId,
       title,
       brief,
-      outputDir,
       body.status || 'waiting_edit',
-      '',
       now(),
       now()
     ]

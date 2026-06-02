@@ -145,9 +145,7 @@ CREATE TABLE IF NOT EXISTS clip_tasks (
   plan_slot_id TEXT REFERENCES plan_slots(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
   brief TEXT NOT NULL,
-  output_dir TEXT NOT NULL,
   status TEXT NOT NULL,
-  final_video_path TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -239,8 +237,15 @@ function ensureColumn(table, column, definition) {
   if (!columns.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
 }
 
+function dropColumn(table, column) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((item) => item.name);
+  if (columns.includes(column)) db.exec(`ALTER TABLE ${table} DROP COLUMN ${column};`);
+}
+
 ensureColumn('cases', 'source_material_dir', 'TEXT');
 ensureColumn('assets', 'origin_path', 'TEXT');
+dropColumn('clip_tasks', 'output_dir');
+dropColumn('clip_tasks', 'final_video_path');
 
 export function now() {
   return new Date().toISOString();

@@ -904,6 +904,10 @@ async function main() {
     assert(clip.brief.includes('固定剪辑配方') && clip.brief.includes('不临时改结构'), 'clip brief missing fixed edit recipe');
     assert(clip.brief.includes('不需要上传成片') && !clip.brief.includes('final.mp4 放回'), 'clip brief still asks for final video upload');
     assert(!('outputDir' in clip), 'clip task still exposes a local output directory');
+    const clipSchemaDb = new DatabaseSync(path.join(ROOT_DIR, 'data', 'souren.sqlite'));
+    const clipColumns = clipSchemaDb.prepare('PRAGMA table_info(clip_tasks)').all().map((item) => item.name);
+    clipSchemaDb.close();
+    assert(!clipColumns.includes('output_dir') && !clipColumns.includes('final_video_path'), 'clip task table still keeps local output columns');
     let clipCompletedWithoutRecipeRejected = false;
     try {
       await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) });

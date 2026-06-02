@@ -173,8 +173,18 @@ const retiredReturnLabel = '发布' + '回收';
 if (![serverSource, dbSource, readmeSource].some((source) => source.includes(retiredReturnDir) || source.includes(retiredReturnLabel))) ok('新案例不再创建旧回收目录');
 else fail('仍保留旧回收目录');
 
-if (!mainSource.includes('打开剪辑目录') && !mainSource.includes('task.outputDir') && !mainSource.includes('clipTask.outputDir') && !serverSource.includes('剪辑任务单.txt') && serverSource.includes("const outputDir = '';")) ok('剪辑任务只在网页内展示，不生成本地任务单或打开目录');
-else fail('剪辑任务仍暴露本地目录或任务单');
+const clipTaskSchema = dbSource.match(/CREATE TABLE IF NOT EXISTS clip_tasks \([\\s\\S]*?\);/)?.[0] || '';
+if (
+  !mainSource.includes('打开剪辑目录') &&
+  !mainSource.includes('task.outputDir') &&
+  !mainSource.includes('clipTask.outputDir') &&
+  !serverSource.includes('剪辑任务单.txt') &&
+  !serverSource.includes("const outputDir = '';") &&
+  !serverSource.includes('final_video_path') &&
+  !clipTaskSchema.includes('output_dir') &&
+  !clipTaskSchema.includes('final_video_path')
+) ok('剪辑任务只在网页内展示，不保留本地输出字段、任务单或打开目录');
+else fail('剪辑任务仍保留本地输出字段、目录或任务单');
 
 if (!mainSource.includes('等回传') && !serverSource.includes('回传要求') && !serverSource.includes('sentWaitReport') && mainSource.includes('等待兼职确认') && serverSource.includes('sentWaitDone')) ok('已派发任务统一为等待确认口径');
 else fail('已派发任务仍保留回传口径或旧计数字段');
