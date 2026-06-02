@@ -435,6 +435,7 @@ function Dashboard({ data, onOpenCase, onAct, onOpenViral, onDelivery, canOpenLo
 
 function monitorActionClass(kind) {
   if (kind === '爆款互动') return 'bad';
+  if (kind === '失联处理') return 'bad';
   if (kind === '账号采集') return 'wait';
   if (kind === '偏冷补内容') return 'report';
   if (kind === '增长承接') return 'ok';
@@ -740,6 +741,10 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onOpenViral, onDeliver
     return (
       <div className="rowActions">
         {item.case?.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
+        {item.monitorAction.kind === '失联处理' && item.case?.id && <button onClick={() => onAct(
+          () => request(`/cases/${item.case.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) }),
+          '已暂停这个账号的自动排期和采集'
+        )}>确认暂停</button>}
         {monitorActionSlotLabel(item.monitorAction.kind) && item.case?.id && <button onClick={() => onAct(
           () => request('/douyin-monitor/actions/slot', { method: 'POST', body: JSON.stringify({ caseId: item.case.id, kind: item.monitorAction.kind }) }),
           (result) => result.created ? `已生成：${result.slot.date} ${result.slot.contentKind}` : `已有对应排期：${result.slot.date} ${result.slot.contentKind}`
@@ -1622,6 +1627,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
       )}
 
       <div className="deliveryTextGrid">
+        {texts.freelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} />}
         <TextPanel title="发给兼职文案" text={texts.operatorInstruction} onCopy={onCopy} />
         <TextPanel title="抖音发布文案" text={texts.publishText} onCopy={onCopy} />
       </div>

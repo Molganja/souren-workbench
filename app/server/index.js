@@ -811,12 +811,56 @@ function isVideoDelivery(format) {
   return ['视频', '口播'].includes(format);
 }
 
+function freelancerGuideForCase(caze = {}) {
+  return [
+    `账号：${caze.weixinNick || '未命名兼职'} / ${caze.douyinId || '未填抖音号'}`,
+    '',
+    '兼职须知：',
+    '1. 每次会收到两段文字：第一段是发给你的说明，第二段是抖音发布文案。',
+    '2. 抖音发布时直接使用第二段文案，第一行作为标题。',
+    '3. 图片或视频按微信收到的顺序上传；没有特别说明时，第一张图默认做封面。',
+    '4. 不临时改标题、正文、素材顺序和封面逻辑；有问题先微信确认。',
+    '5. 发完后回复“已发 + 作品链接或截图”。',
+    '6. 如果是剪辑任务，按固定剪辑配方换素材，不临时改结构。'
+  ].join('\n');
+}
+
+function writeFreelancerGuide(caze) {
+  if (!caze?.localCaseDir) return '';
+  const guide = freelancerGuideForCase(caze);
+  fs.writeFileSync(path.join(caze.localCaseDir, '00-兼职须知.txt'), guide);
+  return guide;
+}
+
+function fixedPublishRulesText() {
+  return [
+    '固定发布说明：',
+    '1. 下一段“抖音发布文案”直接复制到抖音，第一行做标题。',
+    '2. 图片或视频按微信收到的顺序上传；没有特别说明时，第一张图做封面。',
+    '3. 不临时改标题、正文、素材顺序和封面逻辑。',
+    '4. 发完后回复“已发 + 作品链接或截图”。'
+  ].join('\n');
+}
+
 function operatorInstructionFor(slot, caze) {
   return [
     `今天发：${slot.contentKind}`,
     `账号：${caze.weixinNick} / ${caze.douyinId || '未填抖音号'}`,
     `时间窗：${slot.date} ${slot.timeWindow || ''}`,
-    '发布前确认图片/视频顺序，发完并确认发布/交付完成后，在系统标记“已完成”。'
+    '',
+    fixedPublishRulesText(),
+    '',
+    '系统动作：工作人员发完微信后标记“已派发”，确认发布/交付完成后标记“已完成”。'
+  ].join('\n');
+}
+
+function deliveryOperatorInstructionText(text, slot, caze) {
+  const base = String(text || '').trim() || operatorInstructionFor(slot, caze);
+  if (base.includes('固定发布说明')) return base;
+  return [
+    base,
+    '',
+    fixedPublishRulesText()
   ].join('\n');
 }
 
@@ -972,6 +1016,7 @@ function createCaseFromBody(body = {}) {
     ]
   );
   const createdCase = caseById(id);
+  writeFreelancerGuide(createdCase);
   writeCaseManifest(createdCase);
   return createdCase;
 }
@@ -1873,6 +1918,28 @@ function recentActiveSlots(slots = [], today = new Date().toISOString().slice(0,
   });
 }
 
+function lostContactSignal(slots = [], today = new Date().toISOString().slice(0, 10)) {
+  const overdueSent = slots
+    .filter((slot) => slot.status === '已派发')
+    .map((slot) => ({ ...slot, overdueDays: daysBetween(slot.date, today) }))
+    .filter((slot) => slot.overdueDays >= 3)
+    .sort((a, b) => b.overdueDays - a.overdueDays);
+  if (!overdueSent.length) {
+    return { active: false, overdueSentCount: 0, oldestOverdueDays: 0, reason: '' };
+  }
+  const oldest = overdueSent[0];
+  return {
+    active: true,
+    overdueSentCount: overdueSent.length,
+    oldestOverdueDays: oldest.overdueDays,
+    reason: `已派发 ${oldest.overdueDays} 天仍未确认完成，先按失联处理。`
+  };
+}
+
+function caseIsPaused(caze) {
+  return ['失联暂停', '已放弃', '停用'].includes(caze?.healthStatus);
+}
+
 function latestUniqueVideoSnapshotsForCase(caseId, snapshots = null) {
   const rows = snapshots || all(
     'SELECT * FROM video_snapshots WHERE case_id = ? ORDER BY collected_at DESC, created_at DESC',
@@ -1905,10 +1972,19 @@ function accountStrategy(input = {}) {
   const topComments = Number(topVideo?.latestSnapshot?.comments || 0);
   const coldCount = consecutiveColdVideos(recentVideoSnapshots);
   const hasHotSignal = activeViralAlerts.length > 0 || topPlays >= 5000 || (fanDelta != null && fanDelta >= 50);
+  const lostContact = lostContactSignal(slots, today);
+  const paused = caseIsPaused(caze);
 
   let activityTier = '观察';
   let postingStrategy = { mode: '每日', intervalDays: 1, reason: '没有连续低播放证据，保持常规排期。' };
-  if (!latestSnapshot) {
+  if (paused || lostContact.active) {
+    activityTier = '失联暂停';
+    postingStrategy = {
+      mode: '暂停自动补',
+      intervalDays: 0,
+      reason: paused ? '账号已标记失联暂停，不再自动补排期。' : lostContact.reason
+    };
+  } else if (!latestSnapshot) {
     activityTier = caze?.douyinUrl ? '待首采' : '未绑定抖音';
     postingStrategy = { mode: '每日', intervalDays: 1, reason: '新账号先保持基础更新，等待首次采集数据。' };
   } else if (hasHotSignal) {
@@ -1927,7 +2003,10 @@ function accountStrategy(input = {}) {
 
   let collectionIntervalHours = 168;
   let collectionReason = '账号近期没有投放动作，按一周一次采集。';
-  if (!caze?.douyinUrl) {
+  if (activityTier === '失联暂停') {
+    collectionIntervalHours = null;
+    collectionReason = '账号已失联暂停，不进入采集队列。';
+  } else if (!caze?.douyinUrl) {
     collectionIntervalHours = null;
     collectionReason = '未填写抖音主页，不进入采集队列。';
   } else if (!latestSnapshot) {
@@ -1953,6 +2032,11 @@ function accountStrategy(input = {}) {
     topPlays,
     topComments,
     activeSlotCount: activeSlots.length,
+    lostContact: {
+      ...lostContact,
+      active: paused || lostContact.active,
+      paused
+    },
     postingStrategy,
     collectionPolicy: {
       intervalHours: collectionIntervalHours,
@@ -2264,6 +2348,7 @@ function monitorData(cases = all('SELECT * FROM cases ORDER BY created_at DESC')
       activeViralAlerts: alertsByCase[caze.id] || [],
       activityTier: strategy.activityTier,
       coldVideoCount: strategy.coldVideoCount,
+      lostContact: strategy.lostContact,
       postingStrategy: strategy.postingStrategy,
       collectionPolicy: strategy.collectionPolicy,
       collectionIntervalHours
@@ -2321,6 +2406,22 @@ function monitorActionQueue(monitor = {}) {
   (monitor.accounts || []).forEach((item) => {
     const caze = item.case;
     if (!caze?.id) return;
+    if (item.lostContact?.active && !item.lostContact?.paused) {
+      actions.push({
+        id: `lost-${caze.id}`,
+        priority: 75,
+        kind: '失联处理',
+        title: '已派发多天未完成，确认是否暂停',
+        reason: item.lostContact.reason,
+        action: '确认暂停后，这个号不再自动补排期，也不进入采集清单；后续回来再从案例库恢复。',
+        case: caze,
+        latestSnapshot: item.latestSnapshot,
+        postingStrategy: item.postingStrategy,
+        lostContact: item.lostContact
+      });
+      return;
+    }
+    if (item.activityTier === '失联暂停') return;
     if (item.dueCollection) {
       const interval = item.collectionPolicy?.intervalHours;
       const intervalText = interval == null ? '不采集' : interval === 0 ? '优先采集' : `${interval}小时采集周期到期`;
@@ -2700,6 +2801,10 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
     reasons.push('出现爆款作品');
     actions.push('安排助理号/阑尾号互动，优先顶评论、回复咨询问题并承接转化');
   }
+  if (monitor.activityTier === '失联暂停') {
+    reasons.push('失联暂停');
+    actions.push(monitor.lostContact?.paused ? '账号已暂停自动排期和采集' : '首页确认是否暂停这个账号，避免继续消耗普通队列');
+  }
   if (futureSlots === 0) {
     reasons.push('缺少排期');
     actions.push('补未来 7-30 天排期，起号期优先日常养号和爆款提权');
@@ -2912,12 +3017,17 @@ function dashboard() {
   const clipTasks = all('SELECT * FROM clip_tasks ORDER BY created_at DESC').map(rowClipTask);
   const monitor = monitorData(cases);
   const monitorActions = monitorActionQueue(monitor);
+  const pausedCaseIds = new Set((monitor.accounts || [])
+    .filter((item) => item.activityTier === '失联暂停' || item.lostContact?.active || caseIsPaused(item.case))
+    .map((item) => item.case?.id)
+    .filter(Boolean));
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
   const operatorStatuses = new Set(OPERATOR_FLOW.map(([status]) => status));
-  const dueSlots = slots.filter((s) => s.date <= today && operatorStatuses.has(s.status));
+  const dueSlots = slots.filter((s) => s.date <= today && operatorStatuses.has(s.status) && !pausedCaseIds.has(s.caseId));
   const dueCaseIds = new Set(dueSlots.map((slot) => slot.caseId));
   const materialSyncRows = cases
+    .filter((caze) => !pausedCaseIds.has(caze.id))
     .map((caze) => {
       const caseAssets = assets.filter((asset) => asset.caseId === caze.id);
       return {
@@ -2957,6 +3067,12 @@ function dashboard() {
       selectedCandidate: slotCandidates.find((item) => item.selected) || null
     };
   };
+  const openImageTasks = imageTasks
+    .filter((item) => OPEN_IMAGE_STATUSES.includes(item.status))
+    .filter((item) => !pausedCaseIds.has(item.caseId));
+  const openClipTasks = clipTasks
+    .filter((item) => OPEN_CLIP_STATUSES.includes(item.status))
+    .filter((item) => !pausedCaseIds.has(item.caseId));
   return {
     today,
     maintenance: { rollingSchedule },
@@ -2976,9 +3092,9 @@ function dashboard() {
       monitoredAccounts: monitor.totals.monitoredAccounts,
       dueCollection: monitor.totals.dueCollection,
       pendingViral: viralTemplates.filter(isPendingViralTemplate).length,
-      imageTasks: imageTasks.filter((item) => OPEN_IMAGE_STATUSES.includes(item.status)).length,
-      imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
-      clipTasks: clipTasks.filter((item) => OPEN_CLIP_STATUSES.includes(item.status)).length,
+      imageTasks: openImageTasks.length,
+      imageWaitingKey: openImageTasks.filter((item) => item.status === 'waiting_key').length,
+      clipTasks: openClipTasks.length,
       materialGaps: caseHealthRows.filter((item) => dueCaseIds.has(item.id)).reduce((sum, item) => sum + item.materialGaps.length, 0),
       requiredMaterialGaps: caseHealthRows.filter((item) => dueCaseIds.has(item.id)).reduce((sum, item) => sum + item.requiredGapCount, 0),
       materialSync: materialSyncRows.length,
@@ -2989,17 +3105,16 @@ function dashboard() {
     pendingGenerate: dueSlots.filter((s) => s.status === '待生成').slice(0, 30).map(withCase),
     pendingChoose: dueSlots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
     readyDelivery: dueSlots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
-    imageTasks: imageTasks
-      .filter((item) => OPEN_IMAGE_STATUSES.includes(item.status))
+    imageTasks: openImageTasks
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
-    clipTasks: clipTasks
-      .filter((item) => OPEN_CLIP_STATUSES.includes(item.status))
+    clipTasks: openClipTasks
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
     materialSync: materialSyncRows,
     abnormalCases: caseHealthRows
+      .filter((caze) => !pausedCaseIds.has(caze.id))
       .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0 || caze.activeViralAlerts.length > 0)
       .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.requiredGapCount + b.materialGaps.length + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.requiredGapCount + a.materialGaps.length + a.reasons.length))
   };
@@ -3507,6 +3622,8 @@ function createDeliveryForSlot(slot) {
     run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['异常', deliveryDir, now(), slot.id]);
     return { blocked: true, reason: 'compliance_hits', complianceHits, deliveryDir, copiedAssets: [], slot: slotById(slot.id) };
   }
+  const freelancerGuide = writeFreelancerGuide(caze);
+  fs.writeFileSync(path.join(deliveryDir, '00-兼职须知.txt'), freelancerGuide);
   fs.writeFileSync(path.join(deliveryDir, '00-微信发送清单.txt'), [
     `发给：${caze.weixinNick || '未命名兼职'}`,
     `抖音号：${caze.douyinId || '未填'}`,
@@ -3515,6 +3632,7 @@ function createDeliveryForSlot(slot) {
     `标题：${candidate.title}`,
     '',
     '发送顺序：',
+    '0. 第一次给这个兼职发内容时，先发送 00-兼职须知.txt',
     '1. 复制并发送 01-发给兼职文案.txt',
     '2. 复制并发送 02-抖音发布文案.txt',
     '3. 按 05-素材顺序清单.txt 的顺序，把图片或视频拖进微信发送',
@@ -3671,8 +3789,9 @@ function deliveryViewForSlot(slot) {
     deliveryDir,
     isVideo: videoDelivery,
     texts: {
+      freelancerGuide: readDeliveryText(deliveryDir, '00-兼职须知.txt') || freelancerGuideForCase(caze),
       checklist: readDeliveryText(deliveryDir, '00-微信发送清单.txt'),
-      operatorInstruction: readDeliveryText(deliveryDir, '01-发给兼职文案.txt'),
+      operatorInstruction: deliveryOperatorInstructionText(readDeliveryText(deliveryDir, '01-发给兼职文案.txt'), slot, caze),
       publishText: readDeliveryText(deliveryDir, '02-抖音发布文案.txt'),
       voiceover: readDeliveryText(deliveryDir, '03-口播字幕文案.txt'),
       editBrief: readDeliveryText(deliveryDir, '04-剪辑要求.txt'),

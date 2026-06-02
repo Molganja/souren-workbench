@@ -438,8 +438,31 @@ async function main() {
     await api('/dashboard');
     const sleepDetail = await api(`/cases/${sleepCase.id}`);
     assert(sleepDetail.slots.length === 0, 'sleeping account should not auto generate future slots');
+
+    const lostCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({ weixinNick: '失联验收兼职', douyinUrl: 'https://www.douyin.com/user/lost-smoke', project: '吸脂' })
+    });
+    await api(`/cases/${lostCase.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-05-28', contentKind: '日常养号', stage: '起号期', goal: '失联派发验收', status: '已派发' })
+    });
+    const lostMonitor = await api('/douyin-monitor');
+    const lostAccount = lostMonitor.accounts.find((item) => item.case?.id === lostCase.id);
+    assert(lostAccount?.activityTier === '失联暂停', 'overdue sent slot should mark account lost');
+    assert(lostAccount.postingStrategy?.mode === '暂停自动补', 'lost account should pause automatic posting');
+    assert(lostAccount.collectionPolicy?.intervalHours == null, 'lost account should not enter collection queue');
+    const lostDashboard = await api('/dashboard');
+    assert(lostDashboard.monitorActions.some((item) => item.kind === '失联处理' && item.case?.id === lostCase.id), 'lost account action missing');
+    assert(!lostDashboard.todaySlots.some((item) => item.case?.id === lostCase.id), 'lost account leaked into normal due slots');
+    const lostAfterPrune = await api(`/cases/${lostCase.id}`);
+    assert(!lostAfterPrune.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'lost account future pending slots were not pruned');
+    await api(`/cases/${lostCase.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) });
+    const lostPausedDashboard = await api('/dashboard');
+    assert(!lostPausedDashboard.monitorActions.some((item) => item.kind === '失联处理' && item.case?.id === lostCase.id), 'paused lost account still prompted action');
     await api(`/cases/${throttleCase.id}`, { method: 'DELETE' });
     await api(`/cases/${sleepCase.id}`, { method: 'DELETE' });
+    await api(`/cases/${lostCase.id}`, { method: 'DELETE' });
     const noAssetSlot = minimalDetail.slots[0];
     const noAssetDrafts = await api(`/slots/${noAssetSlot.id}/generate-candidates`, { method: 'POST' });
     await api(`/candidates/${noAssetDrafts[0].id}/select`, { method: 'POST' });
@@ -561,14 +584,18 @@ async function main() {
     const delivery = await api(`/slots/${slot.id}/delivery`, { method: 'POST' });
     const wxChecklistPath = path.join(delivery.deliveryDir, '00-微信发送清单.txt');
     assert(fs.existsSync(wxChecklistPath), 'delivery package missing WeChat checklist');
+    assert(fs.existsSync(path.join(delivery.deliveryDir, '00-兼职须知.txt')), 'delivery package missing freelancer guide');
+    assert(fs.existsSync(path.join(caze.localCaseDir, '00-兼职须知.txt')), 'case folder missing freelancer guide');
     const wxChecklist = fs.readFileSync(wxChecklistPath, 'utf8');
     assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('抖音号：smoke_dy'), 'WeChat checklist missing recipient routing');
-    assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('完成口径'), 'WeChat checklist missing send or completion instructions');
+    assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('兼职须知') && wxChecklist.includes('完成口径'), 'WeChat checklist missing send or completion instructions');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');
     assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');
     const deliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(deliveryView.texts.operatorInstruction.includes('账号：验收兼职改名'), 'delivery view missing operator instruction');
+    assert(deliveryView.texts.operatorInstruction.includes('固定发布说明'), 'delivery view missing fixed publish instructions');
+    assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
     const mediaResponse = await fetch(`${ORIGIN}${deliveryView.mediaFiles[0].url}`);
