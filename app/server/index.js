@@ -2089,7 +2089,7 @@ function monitorActionQueue(monitor = {}) {
         kind: '账号采集',
         title: item.latestSnapshot ? '超过24小时未采集' : '首次采集账号数据',
         reason: item.latestSnapshot ? `上次采集：${item.lastCollectedAt}` : '这个账号还没有粉丝和作品数据',
-        action: '登记给我采集；我用已登录抖音的 Chrome 打开主页，再通过采集回填入口写回粉丝和作品数据。',
+        action: '登记采集清单；主机端用已登录抖音的 Chrome 打开主页，再通过采集回填入口写回粉丝和作品数据。',
         case: caze,
         latestSnapshot: item.latestSnapshot,
         topVideo: item.topVideo
@@ -2289,7 +2289,7 @@ function registerChromeCollectionQueue(options = {}) {
         null,
         'waiting_chrome',
         'chrome-agent',
-        '已生成 Chrome 采集清单，等待我用已登录抖音的 Chrome 打开主页并回填账号/作品数据',
+        '已生成 Chrome 采集清单，等待主机端用已登录抖音的 Chrome 打开主页并回填账号/作品数据',
         now(),
         now()
       ]
@@ -2337,7 +2337,7 @@ async function enqueueDouyinCollection(source = 'manual') {
     const status = DOUYIN_COLLECTOR_URL ? 'waiting' : 'waiting_chrome';
     const note = DOUYIN_COLLECTOR_URL
       ? '已登记采集任务，正在提交给抖音采集器'
-      : '已按 24 小时周期登记 Chrome 采集任务，等待我用已登录抖音的 Chrome 回填账号和作品数据';
+      : '已按 24 小时周期登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 回填账号和作品数据';
     run(
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
@@ -2796,7 +2796,7 @@ function systemReadiness() {
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
-    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；我控制已登录抖音的 Chrome 逐个查看并通过采集回填入口写回数据' },
+    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并通过采集回填入口写回数据' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
     { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }

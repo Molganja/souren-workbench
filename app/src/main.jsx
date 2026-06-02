@@ -1041,7 +1041,7 @@ function DouyinIngestForm({ account, onClose, onSubmit }) {
   return (
     <Modal title="写回抖音采集结果" onClose={onClose}>
       <div className="hintBox">
-        账号：{caze.weixinNick || '未命名'}。这是给我用的采集回填入口：用已登录抖音的 Chrome 打开主页后，把看到的数据写回系统；工作人员日常不需要逐条填写。
+        账号：{caze.weixinNick || '未命名'}。这是后台采集写回入口：用已登录抖音的 Chrome 打开主页后，把看到的数据写回系统；日常交付不需要使用。
       </div>
       <div className="formGrid">
         <label className="wide">抖音主页<input value={caze.douyinUrl || ''} readOnly /></label>
@@ -2328,7 +2328,7 @@ function ViralView({ templates, onNew, onEdit, onAct, onCopy }) {
           <button className="button primary" onClick={onNew}>粘贴爆款链接</button>
         </div>
       </div>
-      <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会作为待分析任务，后续由系统使用者完成提文案、拆结构、判断适合账号，再生成同类型候选。</div>
+      <div className="hintBox">工作人员只需要把找到的抖音爆款链接放进来。链接会进入待分析状态，完成内容提取、结构拆解和适合账号判断后，才能批量生成同类型候选。</div>
       {sortedTemplates.length === 0 ? <div className="empty">还没有待分析链接。先粘贴作品链接即可，不需要填写模板内容。</div> : (
         <div className="templateList">
           {sortedTemplates.map((item) => (
