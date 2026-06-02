@@ -1590,6 +1590,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
   const imageFiles = mediaFiles.filter((item) => item.kind === '图片');
   const videoFiles = mediaFiles.filter((item) => item.kind === '视频');
   const steps = deliverySteps(view, mediaFiles.length);
+  const copyAllowed = view.slot.status === '可交付';
   return (
     <Modal title="交付内容" onClose={onClose}>
       <div className="deliveryHeader">
@@ -1599,6 +1600,12 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
         </div>
         <span className={`status ${statusClass(view.slot.status)}`}>{view.slot.status}</span>
       </div>
+
+      {!copyAllowed && (
+        <div className="readonlyNotice">
+          这条已经进入「{view.slot.status}」状态，交付内容只读，避免重复发给同一个兼职。
+        </div>
+      )}
 
       <div className="handoffSteps">
         {steps.map((item) => (
@@ -1626,9 +1633,9 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
       )}
 
       <div className="deliveryTextGrid">
-        {texts.freelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} />}
-        <TextPanel title="发给兼职文案" text={texts.operatorInstruction} onCopy={onCopy} />
-        <TextPanel title="抖音发布文案" text={texts.publishText} onCopy={onCopy} />
+        {texts.freelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} copyable={copyAllowed} />}
+        <TextPanel title="发给兼职文案" text={texts.operatorInstruction} onCopy={onCopy} copyable={copyAllowed} />
+        <TextPanel title="抖音发布文案" text={texts.publishText} onCopy={onCopy} copyable={copyAllowed} />
       </div>
 
       <section className="deliverySection">
@@ -1645,14 +1652,14 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
       </section>
 
       {texts.assetOrder && <TextPanel title="素材发送顺序" text={texts.assetOrder} onCopy={onCopy} copyable={false} />}
-      {texts.publishRules && <TextPanel title="发布要求" text={texts.publishRules} onCopy={onCopy} />}
+      {texts.publishRules && <TextPanel title="发布要求" text={texts.publishRules} onCopy={onCopy} copyable={copyAllowed} />}
 
       {view.isVideo && (
         <section className="deliverySection">
           <div className="sectionHead"><h2>视频剪辑</h2><span>剪辑人员使用</span></div>
           <div className="deliveryTextGrid">
-            <TextPanel title="口播/字幕文案" text={texts.voiceover} onCopy={onCopy} />
-            <TextPanel title="剪辑要求" text={texts.editBrief} onCopy={onCopy} />
+            <TextPanel title="口播/字幕文案" text={texts.voiceover} onCopy={onCopy} copyable={copyAllowed} />
+            <TextPanel title="剪辑要求" text={texts.editBrief} onCopy={onCopy} copyable={copyAllowed} />
           </div>
           <div className="deliveryPaths">
             <div><strong>成片保存到</strong><span>{view.editing?.finalVideoPath}</span></div>
@@ -1694,6 +1701,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
 }
 
 function deliverySteps(view, mediaCount) {
+  const readonlyDelivery = view.slot.status !== '可交付';
   const steps = [
     {
       order: '1',
@@ -1702,25 +1710,25 @@ function deliverySteps(view, mediaCount) {
     },
     {
       order: '2',
-      label: '复制发给兼职文案',
-      detail: '这段是微信里的任务说明，不发到抖音。'
+      label: readonlyDelivery ? '核对发给兼职文案' : '复制发给兼职文案',
+      detail: readonlyDelivery ? '这段已经发过，只用于确认，不再复制发送。' : '这段是微信里的任务说明，不发到抖音。'
     },
     {
       order: '3',
-      label: '复制抖音发布文案',
-      detail: '这段给兼职发布抖音，第一行默认做标题。'
+      label: readonlyDelivery ? '核对抖音发布文案' : '复制抖音发布文案',
+      detail: readonlyDelivery ? '这段已经发过，只用于确认兼职发布内容。' : '这段给兼职发布抖音，第一行默认做标题。'
     },
     {
       order: '4',
-      label: view.isVideo ? '下载或发送视频素材' : '下载或发送图片素材',
-      detail: mediaCount ? `按页面顺序发送 ${mediaCount} 个素材。` : '没有素材时不要派发，先补素材。'
+      label: readonlyDelivery ? '核对素材顺序' : (view.isVideo ? '下载或发送视频素材' : '下载或发送图片素材'),
+      detail: readonlyDelivery ? `已派发素材只用于核对，本次记录 ${mediaCount} 个素材。` : (mediaCount ? `按页面顺序发送 ${mediaCount} 个素材。` : '没有素材时不要派发，先补素材。')
     }
   ];
   if (view.texts?.freelancerGuide) {
     steps.splice(1, 0, {
       order: '首次',
-      label: '第一次先发兼职须知',
-      detail: '同一个兼职以前发过就不用重复发。'
+      label: readonlyDelivery ? '兼职须知已进入记录' : '第一次先发兼职须知',
+      detail: readonlyDelivery ? '只用于核对首次口径，不再重复发送。' : '同一个兼职以前发过就不用重复发。'
     });
   }
   steps.push({

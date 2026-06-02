@@ -80,6 +80,9 @@ else fail('缺少固定发布说明或兼职须知');
 if (mainSource.includes('当前只发给') && mainSource.includes('deliverySteps') && mainSource.includes('发完微信后标记已派发')) ok('交付弹窗按单账号固定步骤防呆');
 else fail('交付弹窗缺少单账号固定步骤');
 
+if (mainSource.includes("copyAllowed = view.slot.status === '可交付'") && mainSource.includes('交付内容只读，避免重复发给同一个兼职') && mainSource.includes('核对发给兼职文案')) ok('已派发交付内容只读，避免重复发送');
+else fail('已派发交付内容仍可能继续复制重发');
+
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');
 fs.mkdirSync(dataDir, { recursive: true });
