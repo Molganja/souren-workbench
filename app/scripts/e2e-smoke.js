@@ -1021,12 +1021,16 @@ async function main() {
     const wxChecklist = fs.readFileSync(wxChecklistPath, 'utf8');
     assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('抖音：https://www.douyin.com/') && !wxChecklist.includes('smoke_dy'), 'WeChat checklist missing recipient routing');
     assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('兼职须知') && wxChecklist.includes('完成口径'), 'WeChat checklist missing send or completion instructions');
-    assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
+    const operatorTextPath = path.join(delivery.deliveryDir, '01-发给兼职文案.txt');
+    assert(fs.existsSync(operatorTextPath), 'delivery package missing operator text');
+    const operatorTextFile = fs.readFileSync(operatorTextPath, 'utf8');
+    assert(!operatorTextFile.includes('系统动作'), 'operator text should not include internal system action');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');
     assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');
     const deliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(deliveryView.texts.operatorInstruction.includes('微信收件人：验收兼职改名'), 'delivery view missing operator instruction');
     assert(deliveryView.texts.operatorInstruction.includes('固定发布说明') && deliveryView.texts.operatorInstruction.includes('时间窗') && deliveryView.texts.operatorInstruction.includes('话题只用文案里已有的'), 'delivery view missing fixed publish instructions');
+    assert(!deliveryView.texts.operatorInstruction.includes('系统动作'), 'delivery view should not expose internal system action');
     assert(!deliveryView.texts.operatorInstruction.includes('smoke_dy /') && !deliveryView.texts.operatorInstruction.includes(' / https://www.douyin.com/'), 'delivery view still displays derived Douyin id');
     assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复') && deliveryView.texts.freelancerGuide.includes('话题只用抖音发布文案里已有的'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');

@@ -280,6 +280,15 @@ else fail('前台仍暴露手动打开抖音主页入口');
 if (serverSource.includes('兼职须知') && serverSource.includes('固定发布说明') && serverSource.includes('话题只用文案里已有的') && serverSource.includes('话题只用抖音发布文案里已有的') && mainSource.includes('兼职须知（首次发送）')) ok('交付内容内置固定发布说明和兼职须知');
 else fail('缺少固定发布说明或兼职须知');
 
+if (
+  serverSource.includes('sanitizeOperatorInstruction') &&
+  serverSource.includes("line.trim().startsWith('系统动作：')") &&
+  !serverSource.includes('工作人员发完微信后标记“已派发”') &&
+  smokeSource.includes('operator text should not include internal system action') &&
+  smokeSource.includes('delivery view should not expose internal system action')
+) ok('发给兼职文案不暴露系统内部状态动作');
+else fail('发给兼职文案仍可能夹带系统内部状态动作');
+
 if (serverSource.includes('caseGuideAlreadySent') && serverSource.includes('shouldSendFreelancerGuide') && mainSource.includes('showFreelancerGuide') && mainSource.includes('freelancerGuideNote')) ok('兼职须知只在首次交付时显示，后续不重复复制');
 else fail('兼职须知仍可能在后续交付里重复显示');
 

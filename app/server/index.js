@@ -851,21 +851,28 @@ function fixedPublishRulesText() {
   ].join('\n');
 }
 
+function sanitizeOperatorInstruction(text = '') {
+  return String(text || '')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('系统动作：'))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function operatorInstructionFor(slot, caze) {
-  return [
+  return sanitizeOperatorInstruction([
     `今天发：${slot.contentKind}`,
     `微信收件人：${caze.weixinNick}`,
     `抖音：${douyinAccountText(caze)}`,
     `时间窗：${slot.date} ${slot.timeWindow || ''}`,
     '',
-    fixedPublishRulesText(),
-    '',
-    '系统动作：工作人员发完微信后标记“已派发”，确认发布/交付完成后标记“已完成”。'
-  ].join('\n');
+    fixedPublishRulesText()
+  ].join('\n'));
 }
 
 function deliveryOperatorInstructionText(text, slot, caze) {
-  const base = String(text || '').trim() || operatorInstructionFor(slot, caze);
+  const base = sanitizeOperatorInstruction(text) || operatorInstructionFor(slot, caze);
   if (base.includes('固定发布说明')) return base;
   return [
     base,
@@ -4315,7 +4322,7 @@ function createDeliveryForSlot(slot) {
     '1. 兼职或剪辑人员确认已按要求发布/交付后，系统标记「已完成」',
     '2. 账号主页数据由系统按账号活跃度分层采集，不需要工作人员逐条填写'
   ].join('\n'));
-  fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
+  fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), deliveryOperatorInstructionText(candidate.operatorInstruction, slot, caze));
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);
   const videoDelivery = isVideoDelivery(candidate.format);
   const editRecipe = fixedEditRecipe(slot, caze, candidate);
