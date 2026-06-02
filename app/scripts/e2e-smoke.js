@@ -9,7 +9,8 @@ const TEST_LLM_APP_PORT = 5186;
 const TEST_LLM_PORT = 5187;
 const TEST_IMAGE_APP_PORT = 5188;
 const TEST_IMAGE_PORT = 5189;
-const BASE = `http://127.0.0.1:${TEST_PORT}/api`;
+const ORIGIN = `http://127.0.0.1:${TEST_PORT}`;
+const BASE = `${ORIGIN}/api`;
 const APP_DIR = path.resolve(import.meta.dirname, '..');
 const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
 const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
@@ -453,6 +454,12 @@ async function main() {
     assert(deliveryView.texts.operatorInstruction.includes('对接人：咨询D'), 'delivery view missing operator instruction');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
+    const mediaResponse = await fetch(`${ORIGIN}${deliveryView.mediaFiles[0].url}`);
+    assert(mediaResponse.ok, 'delivery media url did not serve material file');
+    const envLeak = await fetch(`${ORIGIN}/files/app/.env`);
+    assert(envLeak.status === 404, 'files route exposed app env file');
+    const dbLeak = await fetch(`${ORIGIN}/files/data/souren.sqlite`);
+    assert(dbLeak.status === 404, 'files route exposed sqlite database');
     const deliveryDashboard = await api('/dashboard');
     const deliveryDashboardSlot = deliveryDashboard.readyDelivery.find((item) => item.id === slot.id)
       || deliveryDashboard.todaySlots.find((item) => item.id === slot.id);

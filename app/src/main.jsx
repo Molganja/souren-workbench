@@ -70,6 +70,12 @@ function displayStatus(status) {
   return STATUS_LABELS[status] || status || '未知';
 }
 
+async function generateDeliveryAndOpen(slot, onDelivery) {
+  const result = await request(`/slots/${slot.id}/delivery`, { method: 'POST' });
+  onDelivery({ ...(result.slot || slot), case: result.slot?.case || slot.case });
+  return result;
+}
+
 function pickRandom(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
@@ -325,8 +331,8 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onVerify, onD
             )}>批量生成今日候选</button>
             <button onClick={() => onAct(
               () => request('/dashboard/deliver-today', { method: 'POST' }),
-              (result) => `已生成交付包：${result.deliveryCount}`
-            )}>批量生成今日交付包</button>
+              (result) => `已生成交付内容：${result.deliveryCount}`
+            )}>批量生成今日交付内容</button>
               <button onClick={() => copyOperatorPacket(onCopy)}>复制助手工作包</button>
               <button onClick={() => askLocalAi(onAct)}>请本地助手建议</button>
           </div>
@@ -640,7 +646,7 @@ function buildContactChecklist(date, groups) {
 const TODAY_FLOW = [
   ['待生成', '系统生成 3 条候选稿'],
   ['候选待选', '运营选择一条锁定'],
-  ['已锁定', '系统生成微信交付包'],
+  ['已锁定', '系统生成微信交付内容'],
   ['素材阻塞', '补素材或创建图片/剪辑任务'],
   ['可交付', '复制文案和素材发微信'],
   ['已派发', '等待兼职回传作品链接'],
@@ -679,8 +685,8 @@ function buildDailyBrief(date, contactGroups, flowGroups) {
 function nextActionText(slot) {
   if (slot.status === '待生成') return '生成候选稿';
   if (slot.status === '候选待选') return '选择一条候选';
-  if (slot.status === '已锁定') return '生成交付包';
-  if (slot.status === '素材阻塞') return '补素材后重新生成交付包';
+  if (slot.status === '已锁定') return '生成交付内容';
+  if (slot.status === '素材阻塞') return '补素材后重新生成交付内容';
   if (slot.status === '可交付') return '复制文案和素材发微信';
   if (slot.status === '已派发') return '等待兼职回传';
   if (slot.status === '已汇报') return '打开抖音核对';
@@ -897,7 +903,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy, onVerify, onDelivery }) 
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
-        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), (result) => result.blocked ? '缺少素材，已标记素材阻塞' : '交付包已生成')}>生成交付包</button>}
+        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), (result) => result.blocked ? '缺少素材，已打开阻塞说明' : '交付内容已生成')}>生成交付内容</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
         {slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
@@ -970,7 +976,7 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy, onVerify, onDelivery }) {
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>}
-        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), (result) => result.blocked ? '缺少素材，已标记素材阻塞' : '交付包已生成')}>生成交付包</button>}
+        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), (result) => result.blocked ? '缺少素材，已打开阻塞说明' : '交付内容已生成')}>生成交付内容</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
         {slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
@@ -1330,7 +1336,7 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery }) {
         {!selected && ['待生成', '候选待选', '素材阻塞', '异常'].includes(slot.status) && (
           <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
         )}
-        {selected && <button onClick={() => onAct(() => request(`/slots/${slot.id}/delivery`, { method: 'POST' }), (result) => result.blocked ? '缺少素材，已标记素材阻塞' : '交付包已生成')}>生成交付包</button>}
+        {selected && <button onClick={() => onAct(() => generateDeliveryAndOpen({ ...slot, case: caze }, onDelivery), (result) => result.blocked ? '缺少素材，已打开阻塞说明' : '交付内容已生成')}>生成交付内容</button>}
         {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}

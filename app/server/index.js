@@ -384,6 +384,16 @@ function assertInsideRoot(targetPath) {
   return resolved;
 }
 
+function assertInsideMaterialRoot(targetPath) {
+  const resolved = path.resolve(targetPath);
+  if (resolved !== MATERIAL_ROOT && !resolved.startsWith(`${MATERIAL_ROOT}${path.sep}`)) {
+    const err = new Error('file is outside material library');
+    err.status = 400;
+    throw err;
+  }
+  return resolved;
+}
+
 function openLocalPath(target, callback) {
   if (process.platform === 'darwin') return execFile('open', [target], callback);
   if (process.platform === 'win32') return execFile('cmd', ['/c', 'start', '', target], callback);
@@ -391,8 +401,8 @@ function openLocalPath(target, callback) {
 }
 
 function fileUrl(filePath) {
-  const resolved = assertInsideRoot(filePath);
-  const rel = path.relative(ROOT_DIR, resolved);
+  const resolved = assertInsideMaterialRoot(filePath);
+  const rel = path.relative(MATERIAL_ROOT, resolved);
   return `/files/${rel.split(path.sep).map(encodeURIComponent).join('/')}`;
 }
 
@@ -1081,7 +1091,7 @@ function materialIntakeText(caze, gaps = []) {
     '1. 回到系统案例详情',
     '2. 点击“扫描素材”',
     '3. 把可用素材标记为“可用”',
-    '4. 再生成候选或交付包'
+    '4. 再生成候选或交付内容'
   ].join('\n');
 }
 
@@ -1111,7 +1121,7 @@ function verifyChecklistText(task) {
     '需要核对：',
     '1. 是否已经发布',
     '2. 发布时间是否和排期一致',
-    '3. 标题/正文是否和交付包一致',
+    '3. 标题/正文是否和交付内容一致',
     '4. 图片/视频素材是否匹配，顺序是否正确',
     '5. 是否有违规、缺图、错图、错文案、未按要求发布',
     '6. 记录播放、点赞、评论、粉丝',
@@ -1548,7 +1558,7 @@ function recentAiConsults(limit = 5) {
 const OPERATOR_FLOW = [
   ['待生成', '系统生成 3 条候选稿'],
   ['候选待选', '运营选择一条锁定'],
-  ['已锁定', '系统生成微信交付包'],
+  ['已锁定', '系统生成微信交付内容'],
   ['素材阻塞', '补素材或创建图片/剪辑任务'],
   ['可交付', '复制文案和素材发微信'],
   ['已派发', '等待兼职回传作品链接'],
@@ -1559,8 +1569,8 @@ const OPERATOR_FLOW = [
 function slotNextAction(slot) {
   if (slot.status === '待生成') return '生成候选稿';
   if (slot.status === '候选待选') return '选择一条候选';
-  if (slot.status === '已锁定') return '生成交付包';
-  if (slot.status === '素材阻塞') return '补素材后重新生成交付包';
+  if (slot.status === '已锁定') return '生成交付内容';
+  if (slot.status === '素材阻塞') return '补素材后重新生成交付内容';
   if (slot.status === '可交付') return '复制文案和素材发微信';
   if (slot.status === '已派发') return '等待兼职回传';
   if (slot.status === '已汇报') return '打开抖音核对';
@@ -1637,7 +1647,7 @@ function operatorPacketMarkdown(data) {
   if (data.counts.pendingGenerate) priorities.push(`生成候选稿：${data.counts.pendingGenerate} 个槽位`);
   if (data.counts.pendingChoose) priorities.push(`选择并锁定候选：${data.counts.pendingChoose} 个槽位`);
   if (data.counts.blocked || data.counts.requiredMaterialGaps) priorities.push(`处理素材阻塞/必补素材：阻塞 ${data.counts.blocked || 0}，必补 ${data.counts.requiredMaterialGaps || 0}`);
-  if (data.counts.readyDelivery) priorities.push(`微信交付：${data.counts.readyDelivery} 个交付包可发送`);
+  if (data.counts.readyDelivery) priorities.push(`微信交付：${data.counts.readyDelivery} 个交付内容可发送`);
   if (data.counts.sentWaitReport) priorities.push(`催回传：${data.counts.sentWaitReport} 个已派发任务`);
   if (data.counts.pendingVerify) priorities.push(`抖音核对：${data.counts.pendingVerify} 个待核对`);
   if (data.counts.pendingViral) priorities.push(`青豆分析爆款链接：${data.counts.pendingViral} 条待分析`);
@@ -1805,7 +1815,7 @@ function systemReadiness() {
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已汇报、已核对、助手记录' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '对接人 + 抖音链接即可先建链路' },
-    { key: 'delivery-package', label: '微信交付包', status: 'ready', detail: '写入收件人、对接人、发布文案、素材顺序和回传要求' },
+    { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
     { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '默认人工回填；系统负责打开链接、给清单、记录播放/点赞/评论/粉丝' },
     { key: 'douyin-capture-mode', label: '抖音数据采集方式', status: 'ready', detail: '人工回填和浏览器协同为默认可用链路；自动采集只作为后续可选插件验收' },
     { key: 'viral-qingdou', label: '爆款链接与青豆任务', status: 'ready', detail: '链接先入库，复制青豆提取任务后回填结构' },
@@ -2273,7 +2283,7 @@ function createDeliveryForSlot(slot) {
       `建议时长：20-35秒`,
       '',
       '剪辑要求：',
-      '1. 优先使用本交付包内视频素材，其次使用图片做轻动态。',
+      '1. 优先使用本次交付内容内视频素材，其次使用图片做轻动态。',
       '2. 首屏保留标题信息，字幕不要遮挡主体。',
       '3. 封面图如需单独制作，输出 cover.jpg 放回本目录。',
       '4. 成片输出 final.mp4 放回本目录。'
@@ -2305,7 +2315,7 @@ function createDeliveryForSlot(slot) {
       '1. 把图片或视频放入 00-原始素材 或 01-已筛选素材',
       '2. 回到系统点击“扫描素材”',
       '3. 把可用素材标记为“可用”',
-      '4. 再重新生成交付包'
+      '4. 再重新生成交付内容'
     ].join('\n'));
     run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['素材阻塞', deliveryDir, now(), slot.id]);
     return { blocked: true, reason: 'missing_assets', deliveryDir, copiedAssets: copied, slot: slotById(slot.id) };
@@ -2434,7 +2444,7 @@ app.get('/api/slots/:id/delivery-view', (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   const view = deliveryViewForSlot(slot);
-  if (!view) return res.status(404).json({ error: '还没有可查看的交付内容，请先生成交付包' });
+  if (!view) return res.status(404).json({ error: '还没有可查看的交付内容，请先生成交付内容' });
   res.json(view);
 });
 
@@ -3047,7 +3057,8 @@ app.post('/api/open-path', (req, res) => {
   }
 });
 
-app.use('/files', express.static(ROOT_DIR));
+app.use('/files', express.static(MATERIAL_ROOT));
+app.use('/files', (_req, res) => res.status(404).json({ error: 'file not found' }));
 
 seedDefaultContentSeeds();
 
