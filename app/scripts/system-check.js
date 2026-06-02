@@ -89,6 +89,9 @@ else fail('列表页仍有绕过交付弹窗的派发按钮');
 if (!mainSource.includes('markCompleted') && mainSource.includes('打开交付内容，核对后标记完成') && mainSource.includes("view.slot.status === '已派发'")) ok('完成确认只保留在交付弹窗内');
 else fail('列表页仍有绕过交付弹窗的完成按钮');
 
+if (serverSource.includes('canGenerateDeliveryForSlot') && serverSource.includes('CANDIDATE_SELECT_STATUSES') && serverSource.includes('不能再改候选') && mainSource.includes('canGenerateDelivery') && mainSource.includes('lockedNote')) ok('交付后禁止重生成交付或改候选');
+else fail('交付后仍可能重生成交付或改候选');
+
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');
 fs.mkdirSync(dataDir, { recursive: true });

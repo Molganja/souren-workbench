@@ -267,7 +267,7 @@ async function main() {
     const videoSeed = await api('/content-seeds', {
       method: 'POST',
       body: JSON.stringify({
-        project: '吸脂',
+        project: '视频验收项目',
         stage: '起号期',
         contentKind: '日常养号',
         format: '视频',
@@ -607,6 +607,16 @@ async function main() {
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
     const mediaResponse = await fetch(`${ORIGIN}${deliveryView.mediaFiles[0].url}`);
     assert(mediaResponse.ok, 'delivery media url did not serve material file');
+    const lockedDeliveryResponse = await fetch(`${BASE}/slots/${slot.id}/delivery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    assert(lockedDeliveryResponse.status === 409, 'ready delivery allowed regeneration');
+    const lockedCandidateResponse = await fetch(`${BASE}/candidates/${drafts[1].id}/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    assert(lockedCandidateResponse.status === 409, 'delivered slot allowed candidate reselection');
     const envLeak = await fetch(`${ORIGIN}/files/app/.env`);
     assert(envLeak.status === 404, 'files route exposed app env file');
     const dbLeak = await fetch(`${ORIGIN}/files/data/souren.sqlite`);
@@ -659,7 +669,20 @@ async function main() {
     await authAccessSmoke();
     await lanFailClosedSmoke();
 
-    const videoSlot = await api(`/cases/${caze.id}/slots`, {
+    const videoCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '视频验收兼职',
+        douyinUrl: 'https://www.douyin.com/user/video-smoke',
+        project: '视频验收项目'
+      })
+    });
+    fs.writeFileSync(path.join(videoCase.localCaseDir, '00-原始素材', '视频素材.mp4'), 'fake video asset');
+    const videoScan = await api(`/cases/${videoCase.id}/scan-assets`, { method: 'POST' });
+    for (const asset of videoScan.assets) {
+      await api(`/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: '可用' }) });
+    }
+    const videoSlot = await api(`/cases/${videoCase.id}/slots`, {
       method: 'POST',
       body: JSON.stringify({ date: '2026-06-06', contentKind: '日常养号', stage: '起号期', goal: '视频交付包验收' })
     });
@@ -675,6 +698,7 @@ async function main() {
     assert(videoDeliveryView.isVideo === true && videoDeliveryView.editing.finalVideoPath.endsWith('final.mp4'), 'video delivery view missing editing output path');
     assert(videoDeliveryView.texts.editBrief.includes('剪辑要求'), 'video delivery view missing edit brief');
     assert(videoDeliveryView.texts.editBrief.includes('固定剪辑配方') && videoDeliveryView.texts.editBrief.includes('只替换素材和标题'), 'video delivery edit brief missing fixed recipe');
+    await api(`/cases/${videoCase.id}`, { method: 'DELETE' });
 
     const batchDeliverySlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',

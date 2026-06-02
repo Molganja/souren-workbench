@@ -1488,6 +1488,9 @@ function deliveryResultMessage(result) {
 
 function SlotCard({ slot, candidates, caze, onAct, onDelivery, canOpenLocalPaths }) {
   const selected = candidates.find((item) => item.selected);
+  const canSelectCandidate = slot.status === '候选待选';
+  const canGenerateDelivery = selected && (['素材阻塞', '异常'].includes(slot.status) || (slot.status === '已锁定' && !slot.deliveryDir));
+  const canCreateClipTask = selected && ['已锁定', '素材阻塞', '可交付'].includes(slot.status);
   return (
     <div className="slotCard">
       <div className="slotTop">
@@ -1502,8 +1505,8 @@ function SlotCard({ slot, candidates, caze, onAct, onDelivery, canOpenLocalPaths
         {!selected && ['待生成', '候选待选', '素材阻塞', '异常'].includes(slot.status) && (
           <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
         )}
-        {selected && <button onClick={() => onAct(() => generateDeliveryAndOpen({ ...slot, case: caze }, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
-        {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
+        {canGenerateDelivery && <button onClick={() => onAct(() => generateDeliveryAndOpen({ ...slot, case: caze }, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
+        {canCreateClipTask && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
         {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
         {slot.status !== '已完成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
@@ -1525,7 +1528,8 @@ function SlotCard({ slot, candidates, caze, onAct, onDelivery, canOpenLocalPaths
                 </div>
               )}
               <div className="inlineActions">
-                <button onClick={() => onAct(() => request(`/candidates/${draft.id}/select`, { method: 'POST' }), '已锁定候选')}>{draft.selected ? '已选择' : '选择这条'}</button>
+                {canSelectCandidate && <button onClick={() => onAct(() => request(`/candidates/${draft.id}/select`, { method: 'POST' }), '已锁定候选')}>{draft.selected ? '已选择' : '选择这条'}</button>}
+                {!canSelectCandidate && draft.selected && <span className="lockedNote">已锁定</span>}
               </div>
             </div>
           ))}

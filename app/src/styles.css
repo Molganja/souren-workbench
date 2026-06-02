@@ -522,6 +522,17 @@ button.activeSmall {
   margin-bottom: 12px;
 }
 
+.lockedNote {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #334155;
+  font-weight: 800;
+}
+
 .deliveryMediaGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));

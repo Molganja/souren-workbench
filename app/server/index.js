@@ -70,6 +70,8 @@ app.use('/shared-files', requireWorkbenchAccess);
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
 const PLAN_SLOT_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常', '已取消'];
+const DELIVERY_GENERATION_STATUSES = ['已锁定', '素材阻塞', '异常'];
+const CANDIDATE_SELECT_STATUSES = ['候选待选'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
@@ -914,6 +916,13 @@ function selectRecommendedCandidate(slotId) {
   run('UPDATE candidate_drafts SET selected = 1 WHERE id = ?', [candidate.id]);
   run('UPDATE plan_slots SET selected_candidate_id = ?, status = ?, updated_at = ? WHERE id = ?', [candidate.id, '已锁定', now(), candidate.slotId]);
   return rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [candidate.id]));
+}
+
+function canGenerateDeliveryForSlot(slot) {
+  if (!slot) return false;
+  if (['素材阻塞', '异常'].includes(slot.status)) return true;
+  if (slot.status === '已锁定') return !slot.deliveryDir;
+  return false;
 }
 
 function createSlotForCase(caze, input = {}) {
@@ -3573,6 +3582,11 @@ app.post('/api/slots/:id/generate-candidates', async (req, res) => {
 app.post('/api/candidates/:id/select', (req, res) => {
   const candidate = rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [req.params.id]));
   if (!candidate) return res.status(404).json({ error: 'candidate not found' });
+  const slot = slotById(candidate.slotId);
+  if (!slot) return res.status(404).json({ error: 'slot not found' });
+  if (!CANDIDATE_SELECT_STATUSES.includes(slot.status)) {
+    return res.status(409).json({ error: '这个排期已经锁定或进入交付链路，不能再改候选' });
+  }
   run('UPDATE candidate_drafts SET selected = 0 WHERE slot_id = ?', [candidate.slotId]);
   run('UPDATE candidate_drafts SET selected = 1 WHERE id = ?', [candidate.id]);
   run('UPDATE plan_slots SET selected_candidate_id = ?, status = ?, updated_at = ? WHERE id = ?', [candidate.id, '已锁定', now(), candidate.slotId]);
@@ -3854,6 +3868,9 @@ function deliveryViewForSlot(slot) {
 app.post('/api/slots/:id/delivery', (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
+  if (!DELIVERY_GENERATION_STATUSES.includes(slot.status) || !canGenerateDeliveryForSlot(slot)) {
+    return res.status(409).json({ error: '这个排期已经生成交付或进入派发链路，不能重新生成交付内容' });
+  }
   const result = createDeliveryForSlot(slot);
   if (!result) return res.status(400).json({ error: 'select a candidate first' });
   res.json(result);
