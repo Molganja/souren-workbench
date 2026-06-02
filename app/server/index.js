@@ -10,6 +10,7 @@ import {
   DATA_DIR,
   MATERIAL_ROOT,
   ROOT_DIR,
+  SHARED_MATERIAL_ROOT,
   all,
   ensureCaseDirs,
   get,
@@ -56,13 +57,14 @@ app.use('/api', (req, res, next) => {
   return requireWorkbenchAccess(req, res, next);
 });
 app.use('/files', requireWorkbenchAccess);
+app.use('/shared-files', requireWorkbenchAccess);
 
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
-const ALLOWED_OPEN_ROOTS = [ROOT_DIR];
+const ALLOWED_OPEN_ROOTS = [ROOT_DIR, SHARED_MATERIAL_ROOT];
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
 const LEGACY_VIRAL_RAW_PREFIX = '待用' + '青' + '豆';
@@ -295,6 +297,7 @@ function rowCase(row) {
     stage: row.stage,
     persona: parseJson(row.persona, {}),
     staff: row.staff,
+    sourceMaterialDir: row.source_material_dir || '',
     localCaseDir: row.local_case_dir,
     healthStatus: row.health_status,
     createdAt: row.created_at,
@@ -345,6 +348,21 @@ function rowAsset(row) {
     path: row.path,
     kind: row.kind,
     stage: row.stage,
+    source: row.source,
+    usage: row.usage,
+    originPath: row.origin_path || '',
+    reviewStatus: row.review_status,
+    createdAt: row.created_at
+  };
+}
+
+function rowSharedAsset(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    path: row.path,
+    kind: row.kind,
+    category: row.category,
     source: row.source,
     usage: row.usage,
     reviewStatus: row.review_status,
@@ -578,7 +596,9 @@ function rowViralAlert(row) {
 
 function assertInsideRoot(targetPath) {
   const resolved = path.resolve(targetPath);
-  const ok = ALLOWED_OPEN_ROOTS.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
+  const caseSourceRoots = all("SELECT source_material_dir FROM cases WHERE source_material_dir IS NOT NULL AND TRIM(source_material_dir) != ''")
+    .map((row) => path.resolve(row.source_material_dir));
+  const ok = [...ALLOWED_OPEN_ROOTS, ...caseSourceRoots].some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`));
   if (!ok) {
     const err = new Error('path is outside allowed workspace');
     err.status = 400;
@@ -607,6 +627,16 @@ function fileUrl(filePath) {
   const resolved = assertInsideMaterialRoot(filePath);
   const rel = path.relative(MATERIAL_ROOT, resolved);
   return `/files/${rel.split(path.sep).map(encodeURIComponent).join('/')}`;
+}
+
+function assetFileUrl(filePath) {
+  const resolved = path.resolve(filePath);
+  if (resolved === MATERIAL_ROOT || resolved.startsWith(`${MATERIAL_ROOT}${path.sep}`)) return fileUrl(resolved);
+  if (resolved === SHARED_MATERIAL_ROOT || resolved.startsWith(`${SHARED_MATERIAL_ROOT}${path.sep}`)) {
+    const rel = path.relative(SHARED_MATERIAL_ROOT, resolved);
+    return `/shared-files/${rel.split(path.sep).map(encodeURIComponent).join('/')}`;
+  }
+  return '';
 }
 
 function caseById(id) {
@@ -881,8 +911,8 @@ function createCaseFromBody(body = {}) {
   ensureCaseDirs(caseDir);
   run(
     `INSERT INTO cases
-    (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, local_case_dir, health_status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, source_material_dir, local_case_dir, health_status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       caseCode,
@@ -893,6 +923,7 @@ function createCaseFromBody(body = {}) {
       stage,
       JSON.stringify(persona),
       body.staff || '',
+      body.sourceMaterialDir || body.source_material_dir || '',
       caseDir,
       body.healthStatus || '健康',
       created,
@@ -1188,10 +1219,13 @@ function materialIntakeText(caze, gaps = []) {
     `项目：${caze.project}`,
     `对接人：${caze.staff || '未填'}`,
     '',
-    '请把原始素材复制到：',
+    caze.sourceMaterialDir ? '工作人员优先把挑好的原始素材放到共享路径：' : '如果有共享盘/服务器目录，先在案例里填写“共享原始素材路径”。',
+    caze.sourceMaterialDir || '未填写',
+    '',
+    '系统同步后会复制到本地受控目录：',
     path.join(caze.localCaseDir, '00-原始素材'),
     '',
-    '也可以把已筛选好的素材放到：',
+    '也可以直接把已筛选好的素材放到本地：',
     path.join(caze.localCaseDir, '01-已筛选素材'),
     '',
     required.length ? '必补素材：' : '必补素材：暂无',
@@ -1202,9 +1236,10 @@ function materialIntakeText(caze, gaps = []) {
     '',
     '放完素材后：',
     '1. 回到系统案例详情',
-    '2. 点击“扫描素材”',
-    '3. 把可用素材标记为“可用”',
-    '4. 再生成候选或交付内容'
+    '2. 如果填了共享路径，先点“同步共享素材”',
+    '3. 再点“扫描素材”',
+    '4. 把可用素材标记为“可用”',
+    '5. 再生成候选或交付内容'
   ].join('\n');
 }
 
@@ -1256,13 +1291,14 @@ function parseBulkCaseText(text) {
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => {
       const parts = line.split(/,|\t/).map((item) => item.trim());
-      if (parts.length <= 4 && /^https?:\/\//i.test(parts[1] || '')) {
-        const [weixinNick, douyinUrl, project, staff] = parts;
+      if (parts.length <= 5 && /^https?:\/\//i.test(parts[1] || '')) {
+        const [weixinNick, douyinUrl, project, staff, sourceMaterialDir] = parts;
         return {
           weixinNick,
           douyinId: '',
           douyinUrl,
           staff: staff || '',
+          sourceMaterialDir: sourceMaterialDir || '',
           project: project || '吸脂',
           stage: '起号期',
           persona: randomPersona()
@@ -1274,6 +1310,7 @@ function parseBulkCaseText(text) {
         douyinId,
         douyinUrl,
         staff: staff || '',
+        sourceMaterialDir: '',
         project: project || '吸脂',
         stage: STAGES.includes(stage) ? stage : '起号期',
         persona: {
@@ -1318,6 +1355,146 @@ function materialGaps(project, assets) {
             : `可补充${item.label}，或创建图片/剪辑任务作为辅助`
     };
   });
+}
+
+function isSupportedAssetFile(file) {
+  const ext = path.extname(file).toLowerCase();
+  return [...IMAGE_EXT, ...VIDEO_EXT, ...TEXT_EXT].includes(ext);
+}
+
+function assetSourceForPath(file) {
+  if (file.includes('02-生成补充')) return 'AI生成';
+  if (file.includes('共享同步')) return '共享导入';
+  return '真实';
+}
+
+function insertCaseAsset(caze, file, options = {}) {
+  run(
+    `INSERT INTO assets (id, case_id, path, kind, stage, source, usage, origin_path, review_status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uid('asset'),
+      caze.id,
+      file,
+      inferAssetKind(file),
+      options.stage || inferStage(file),
+      options.source || assetSourceForPath(file),
+      options.usage || '备用',
+      options.originPath || '',
+      options.reviewStatus || '待处理',
+      now()
+    ]
+  );
+}
+
+function scanCaseAssets(caze) {
+  const roots = ['00-原始素材', '01-已筛选素材', '02-生成补充', '04-发布回收'].map((name) => path.join(caze.localCaseDir, name));
+  let inserted = 0;
+  roots.flatMap(walkFiles).forEach((file) => {
+    if (!isSupportedAssetFile(file)) return;
+    try {
+      insertCaseAsset(caze, file);
+      inserted += 1;
+    } catch {
+      // Existing file path for this case; keep current review status.
+    }
+  });
+  return inserted;
+}
+
+function syncCaseSourceMaterials(caze) {
+  const sourceDir = String(caze.sourceMaterialDir || '').trim();
+  if (!sourceDir) {
+    const error = new Error('该案例还没有填写共享原始素材路径');
+    error.status = 400;
+    throw error;
+  }
+  const resolvedSource = path.resolve(sourceDir);
+  if (!fs.existsSync(resolvedSource) || !fs.statSync(resolvedSource).isDirectory()) {
+    const error = new Error('共享原始素材路径不存在或不是目录');
+    error.status = 404;
+    throw error;
+  }
+  const targetRoot = path.join(caze.localCaseDir, '00-原始素材', '共享同步');
+  fs.mkdirSync(targetRoot, { recursive: true });
+  let copied = 0;
+  let inserted = 0;
+  walkFiles(resolvedSource).forEach((file) => {
+    if (!isSupportedAssetFile(file)) return;
+    const rel = path.relative(resolvedSource, file);
+    const target = path.join(targetRoot, rel);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    if (!fs.existsSync(target)) {
+      fs.copyFileSync(file, target);
+      copied += 1;
+    }
+    try {
+      insertCaseAsset(caze, target, { source: '共享导入', originPath: file });
+      inserted += 1;
+    } catch {
+      // Already synced into this case.
+    }
+  });
+  return { sourceDir: resolvedSource, targetRoot, copied, inserted };
+}
+
+function sharedAssetCategory(file) {
+  const rel = path.relative(SHARED_MATERIAL_ROOT, file);
+  const first = rel.split(path.sep)[0];
+  return first && first !== rel ? first : '备用素材';
+}
+
+function scanSharedAssets() {
+  let inserted = 0;
+  walkFiles(SHARED_MATERIAL_ROOT).forEach((file) => {
+    if (!isSupportedAssetFile(file)) return;
+    try {
+      run(
+        `INSERT INTO shared_assets (id, path, kind, category, source, usage, review_status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          uid('shared_asset'),
+          file,
+          inferAssetKind(file),
+          sharedAssetCategory(file),
+          '工作人员导入',
+          '通用',
+          '可用',
+          now()
+        ]
+      );
+      inserted += 1;
+    } catch {
+      // Existing shared file; keep current review status.
+    }
+  });
+  const assets = all('SELECT * FROM shared_assets ORDER BY created_at DESC').map(rowSharedAsset);
+  return { inserted, assets };
+}
+
+function sharedAssetsForDelivery(limit = 12) {
+  return all('SELECT * FROM shared_assets WHERE review_status IN (?, ?) ORDER BY created_at DESC LIMIT ?', ['可用', '待处理', limit])
+    .map(rowSharedAsset)
+    .filter((asset) => fs.existsSync(asset.path))
+    .map((asset) => ({
+      id: asset.id,
+      path: asset.path,
+      kind: asset.kind,
+      stage: asset.category,
+      source: '通用素材',
+      usage: asset.usage,
+      originPath: '',
+      reviewStatus: asset.reviewStatus,
+      createdAt: asset.createdAt
+    }));
+}
+
+function deliveryAssetsForSlot(slot, caze, limit = 9) {
+  const caseAssets = all('SELECT * FROM assets WHERE case_id = ? AND review_status IN (?, ?) ORDER BY created_at DESC LIMIT ?', [caze.id, '可用', '待处理', limit])
+    .map(rowAsset)
+    .filter((asset) => fs.existsSync(asset.path));
+  if (slot.contentKind === '素人种草') return caseAssets.slice(0, limit);
+  return [...caseAssets, ...sharedAssetsForDelivery(limit)].slice(0, limit);
 }
 
 function numberOrNull(value) {
@@ -2005,7 +2182,7 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   }
   if (caseAssets.length === 0) {
     reasons.push('素材未扫描');
-    actions.push('打开素材目录，把原始素材放入 00-原始素材 后扫描素材');
+    actions.push(caze.sourceMaterialDir ? '先同步共享素材，再扫描并标记可用素材' : '填写共享原始素材路径，或把原始素材放入 00-原始素材 后扫描素材');
   }
   if (requiredMissing > 0) {
     reasons.push(`必补素材 ${requiredMissing} 项`);
@@ -2059,6 +2236,7 @@ function exportData() {
     viralTemplates: all('SELECT * FROM viral_templates').map(rowViral),
     contentSeeds: all('SELECT * FROM content_seeds').map(rowContentSeed),
     assets: all('SELECT * FROM assets').map(rowAsset),
+    sharedAssets: all('SELECT * FROM shared_assets').map(rowSharedAsset),
     imageTasks: all('SELECT * FROM image_tasks').map(rowImageTask),
     clipTasks: all('SELECT * FROM clip_tasks').map(rowClipTask),
     verifyTasks: all('SELECT * FROM verify_tasks').map(rowVerify),
@@ -2409,6 +2587,7 @@ function systemReadiness() {
     },
     { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
     { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
+    { key: 'shared-material-root', label: '通用素材库', status: fs.existsSync(SHARED_MATERIAL_ROOT) ? 'ready' : 'warning', detail: SHARED_MATERIAL_ROOT },
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
@@ -2614,7 +2793,7 @@ app.patch('/api/cases/:id', (req, res) => {
   if (!caze) return res.status(404).json({ error: 'case not found' });
   const body = req.body || {};
   run(
-    `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, stage=?, persona=?, staff=?, health_status=?, updated_at=? WHERE id=?`,
+    `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, stage=?, persona=?, staff=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
     [
       body.weixinNick ?? caze.weixinNick,
       body.douyinId ?? caze.douyinId,
@@ -2623,6 +2802,7 @@ app.patch('/api/cases/:id', (req, res) => {
       body.stage ?? caze.stage,
       JSON.stringify(body.persona ?? caze.persona),
       body.staff ?? caze.staff,
+      body.sourceMaterialDir ?? body.source_material_dir ?? caze.sourceMaterialDir,
       body.healthStatus ?? caze.healthStatus,
       now(),
       req.params.id
@@ -2695,8 +2875,21 @@ app.get('/api/config', (_req, res) => {
     image: { ready: image.ready, apiUrlConfigured: Boolean(image.apiUrl), model: image.model, size: image.size, missing: image.missing },
     network: networkSettings(),
     readiness: systemReadiness(),
-    materialRoot: MATERIAL_ROOT
+    materialRoot: MATERIAL_ROOT,
+    sharedMaterialRoot: SHARED_MATERIAL_ROOT,
+    sharedAssets: {
+      total: all('SELECT id FROM shared_assets').length,
+      byCategory: all('SELECT category, COUNT(*) AS count FROM shared_assets GROUP BY category ORDER BY category')
+    }
   });
+});
+
+app.get('/api/shared-assets', (_req, res) => {
+  res.json(all('SELECT * FROM shared_assets ORDER BY created_at DESC').map(rowSharedAsset));
+});
+
+app.post('/api/shared-assets/scan', (_req, res) => {
+  res.json(scanSharedAssets());
 });
 
 app.get('/api/cases/:id/material-intake-note', (req, res) => {
@@ -2710,33 +2903,22 @@ app.get('/api/cases/:id/material-intake-note', (req, res) => {
 app.post('/api/cases/:id/scan-assets', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });
-  const roots = ['00-原始素材', '01-已筛选素材', '02-生成补充', '04-发布回收'].map((name) => path.join(caze.localCaseDir, name));
-  let inserted = 0;
-  roots.flatMap(walkFiles).forEach((file) => {
-    const ext = path.extname(file).toLowerCase();
-    if (![...IMAGE_EXT, ...VIDEO_EXT, ...TEXT_EXT].includes(ext)) return;
-    try {
-      run(
-        `INSERT INTO assets (id, case_id, path, kind, stage, source, usage, review_status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          uid('asset'),
-          caze.id,
-          file,
-          inferAssetKind(file),
-          inferStage(file),
-          file.includes('02-生成补充') ? 'AI生成' : '真实',
-          '备用',
-          '待处理',
-          now()
-        ]
-      );
-      inserted += 1;
-    } catch {
-      // Existing file path for this case; keep current review status.
-    }
-  });
+  const inserted = scanCaseAssets(caze);
   res.json({ inserted, assets: all('SELECT * FROM assets WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowAsset) });
+});
+
+app.post('/api/cases/:id/sync-source-materials', (req, res) => {
+  try {
+    const caze = caseById(req.params.id);
+    if (!caze) return res.status(404).json({ error: 'case not found' });
+    const result = syncCaseSourceMaterials(caze);
+    res.json({
+      ...result,
+      assets: all('SELECT * FROM assets WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowAsset)
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.post('/api/cases/:id/generate-slots', (req, res) => {
@@ -2854,7 +3036,7 @@ function createDeliveryForSlot(slot) {
       '4. 成片输出 final.mp4 放回本目录。'
     ].join('\n'));
   }
-  const assets = all('SELECT * FROM assets WHERE case_id = ? AND review_status IN (?, ?) ORDER BY created_at DESC LIMIT 9', [caze.id, '可用', '待处理']).map(rowAsset);
+  const assets = deliveryAssetsForSlot(slot, caze, 9);
   const copied = [];
   assets.forEach((asset, index) => {
     if (!fs.existsSync(asset.path)) return;
@@ -2877,7 +3059,7 @@ function createDeliveryForSlot(slot) {
       '当前不能标记为可交付：本次没有复制到任何可用素材。',
       '',
       '下一步：',
-      '1. 把图片或视频放入 00-原始素材 或 01-已筛选素材',
+      caze.sourceMaterialDir ? '1. 把素材放入共享原始素材路径，并点击“同步共享素材”' : '1. 填写共享原始素材路径，或把图片/视频放入 00-原始素材 或 01-已筛选素材',
       '2. 回到系统点击“扫描素材”',
       '3. 把可用素材标记为“可用”',
       '4. 再重新生成交付内容'
@@ -2960,12 +3142,11 @@ function deliveryViewForSlot(slot) {
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
   const mediaFiles = files.filter((item) => ['图片', '视频'].includes(item.kind));
-  const sourceAssets = all('SELECT * FROM assets WHERE case_id = ? AND review_status IN (?, ?) ORDER BY created_at DESC LIMIT 30', [caze.id, '可用', '待处理'])
-    .map(rowAsset)
-    .filter((asset) => fs.existsSync(asset.path))
+  const sourceAssets = [...deliveryAssetsForSlot(slot, caze, 30), ...sharedAssetsForDelivery(12)]
+    .filter((asset, index, list) => list.findIndex((item) => item.path === asset.path) === index)
     .map((asset) => ({
       ...asset,
-      url: fileUrl(asset.path)
+      url: assetFileUrl(asset.path)
     }));
   const videoDelivery = isVideoDelivery(candidate.format);
   return {
@@ -3357,6 +3538,7 @@ app.post('/api/import', (req, res) => {
   run('DELETE FROM clip_tasks');
   run('DELETE FROM image_tasks');
   run('DELETE FROM assets');
+  run('DELETE FROM shared_assets');
   run('DELETE FROM candidate_drafts');
   run('DELETE FROM plan_slots');
   run('DELETE FROM content_seeds');
@@ -3368,8 +3550,8 @@ app.post('/api/import', (req, res) => {
     ensureCaseDirs(caseDir);
     run(
       `INSERT INTO cases
-      (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, local_case_dir, health_status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, source_material_dir, local_case_dir, health_status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         item.id,
         item.caseCode || item.case_code || uid('code'),
@@ -3380,6 +3562,7 @@ app.post('/api/import', (req, res) => {
         item.stage || '起号期',
         JSON.stringify(item.persona || {}),
         item.staff || '',
+        item.sourceMaterialDir || item.source_material_dir || '',
         caseDir,
         item.healthStatus || item.health_status || '健康',
         item.createdAt || importedAt,
@@ -3479,8 +3662,8 @@ app.post('/api/import', (req, res) => {
   (data.assets || []).forEach((item) => {
     run(
       `INSERT OR IGNORE INTO assets
-      (id, case_id, path, kind, stage, source, usage, review_status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, case_id, path, kind, stage, source, usage, origin_path, review_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         item.id,
         item.caseId || item.case_id,
@@ -3489,7 +3672,26 @@ app.post('/api/import', (req, res) => {
         item.stage || '未分组',
         item.source || '真实',
         item.usage || '备用',
+        item.originPath || item.origin_path || '',
         item.reviewStatus || item.review_status || '待处理',
+        item.createdAt || importedAt
+      ]
+    );
+  });
+
+  (data.sharedAssets || data.shared_assets || []).forEach((item) => {
+    run(
+      `INSERT OR IGNORE INTO shared_assets
+      (id, path, kind, category, source, usage, review_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        item.id,
+        item.path,
+        item.kind || '图片',
+        item.category || '备用素材',
+        item.source || '工作人员导入',
+        item.usage || '通用',
+        item.reviewStatus || item.review_status || '可用',
         item.createdAt || importedAt
       ]
     );
@@ -3723,7 +3925,9 @@ app.post('/api/open-path', (req, res) => {
 });
 
 app.use('/files', express.static(MATERIAL_ROOT));
+app.use('/shared-files', express.static(SHARED_MATERIAL_ROOT));
 app.use('/files', (_req, res) => res.status(404).json({ error: 'file not found' }));
+app.use('/shared-files', (_req, res) => res.status(404).json({ error: 'file not found' }));
 
 seedDefaultContentSeeds();
 

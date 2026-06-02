@@ -7,10 +7,15 @@ export const ROOT_DIR = process.env.SOUREN_ROOT_DIR
   : path.resolve(process.cwd(), '..');
 export const DATA_DIR = path.join(ROOT_DIR, 'data');
 export const MATERIAL_ROOT = path.join(ROOT_DIR, '素材库', '真实案例');
+export const SHARED_MATERIAL_ROOT = process.env.SOUREN_SHARED_MATERIAL_ROOT
+  ? path.resolve(process.env.SOUREN_SHARED_MATERIAL_ROOT)
+  : path.join(ROOT_DIR, '素材库', '通用素材');
 export const DB_PATH = path.join(DATA_DIR, 'souren.sqlite');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(MATERIAL_ROOT, { recursive: true });
+fs.mkdirSync(SHARED_MATERIAL_ROOT, { recursive: true });
+['医院素材', '套图素材', '备用素材'].forEach((name) => fs.mkdirSync(path.join(SHARED_MATERIAL_ROOT, name), { recursive: true }));
 
 export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL;');
@@ -27,6 +32,7 @@ CREATE TABLE IF NOT EXISTS cases (
   stage TEXT NOT NULL,
   persona TEXT NOT NULL,
   staff TEXT,
+  source_material_dir TEXT,
   local_case_dir TEXT NOT NULL,
   health_status TEXT NOT NULL DEFAULT '健康',
   created_at TEXT NOT NULL,
@@ -99,9 +105,21 @@ CREATE TABLE IF NOT EXISTS assets (
   stage TEXT NOT NULL,
   source TEXT NOT NULL,
   usage TEXT NOT NULL,
+  origin_path TEXT,
   review_status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   UNIQUE(case_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS shared_assets (
+  id TEXT PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  category TEXT NOT NULL,
+  source TEXT NOT NULL,
+  usage TEXT NOT NULL,
+  review_status TEXT NOT NULL,
+  created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS image_tasks (
@@ -227,6 +245,14 @@ CREATE TABLE IF NOT EXISTS viral_alerts (
   UNIQUE(video_id, status)
 );
 `);
+
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map((item) => item.name);
+  if (!columns.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
+}
+
+ensureColumn('cases', 'source_material_dir', 'TEXT');
+ensureColumn('assets', 'origin_path', 'TEXT');
 
 export function now() {
   return new Date().toISOString();

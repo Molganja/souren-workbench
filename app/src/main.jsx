@@ -307,7 +307,7 @@ function App() {
           />
         )}
         {!loading && canUseWorkbench && view === 'settings' && config && (
-          <SettingsView config={config} onCopy={copyText} />
+          <SettingsView config={config} onCopy={copyText} onAct={act} />
         )}
       </main>
       {caseFormOpen && (
@@ -1423,13 +1423,19 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
           <p>{caze.project} · {caze.staff ? `对接：${caze.staff}` : '未填对接人'} · {personaText(caze.persona)}</p>
           {healthReasons.length > 0 && <p className="healthLine">当前提示：{healthReasons.join(' / ')}</p>}
           {healthActions.length > 0 && <p className="healthLine">建议动作：{healthActions.join(' / ')}</p>}
+          <p className="path">共享原始素材：{caze.sourceMaterialDir || '未填写'}</p>
           <p className="path">素材目录：{caze.localCaseDir}</p>
         </div>
         <div className="headerActions">
           <button onClick={() => setEditOpen(true)}>编辑案例</button>
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 30 }) }), '已补齐 30 天排期槽位')}>生成30天排期</button>
           <button onClick={() => setSlotFormOpen(true)}>手动加槽位</button>
+          <button disabled={!caze.sourceMaterialDir} onClick={() => onAct(
+            () => request(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' }),
+            (result) => `已同步共享素材：复制 ${result.copied} 个，新增 ${result.inserted} 个`
+          )}>同步共享素材</button>
           <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>
+          {canOpenLocalPaths && caze.sourceMaterialDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.sourceMaterialDir }) }), '已打开共享素材目录')}>打开共享目录</button>}
           {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>}
           <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>
           {caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音主页</a>}
@@ -1477,6 +1483,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
                   <strong>{asset.kind}</strong>
                   <span>{asset.stage} · {asset.source} · {asset.reviewStatus}</span>
                   <small>{asset.path}</small>
+                  {asset.originPath && <small>来源：{asset.originPath}</small>}
                   <div className="inlineActions">
                     {['可用', '需处理', '不可用'].map((status) => (
                       <button key={status} onClick={() => onAct(() => request(`/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: status }) }), `素材已标记：${status}`)}>{status}</button>
@@ -1916,7 +1923,7 @@ function pendingViralTitle(item) {
   return item.sourceLink ? '待分析爆款链接' : (item.title || '待分析爆款链接');
 }
 
-function SettingsView({ config, onCopy }) {
+function SettingsView({ config, onCopy, onAct }) {
   return (
     <div className="stack">
       <section className="hero">
@@ -1973,6 +1980,28 @@ function SettingsView({ config, onCopy }) {
       <section className="panel">
         <div className="sectionHead"><h2>本地素材根目录</h2></div>
         <div className="path">{config.materialRoot}</div>
+      </section>
+      <section className="panel">
+        <div className="sectionHead">
+          <h2>通用素材库</h2>
+          <button onClick={() => onAct(
+            () => request('/shared-assets/scan', { method: 'POST' }),
+            (result) => `通用素材扫描完成：新增 ${result.inserted} 个`
+          )}>扫描通用素材</button>
+        </div>
+        <div className="path">{config.sharedMaterialRoot}</div>
+        <div className="templateList">
+          <div className="templateRow">
+            <strong>总数</strong>
+            <span>{config.sharedAssets?.total || 0} 个</span>
+          </div>
+          {(config.sharedAssets?.byCategory || []).map((item) => (
+            <div className="templateRow" key={item.category}>
+              <strong>{item.category}</strong>
+              <span>{item.count} 个</span>
+            </div>
+          ))}
+        </div>
       </section>
       <section className="panel">
         <div className="sectionHead"><h2>图片生成接口</h2></div>
@@ -2062,6 +2091,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
     douyinId: initial?.douyinId || '',
     douyinUrl: initial?.douyinUrl || '',
     project: initial?.project || '吸脂',
+    sourceMaterialDir: initial?.sourceMaterialDir || '',
     stage: initial?.stage || '起号期',
     staff: initial?.staff || '',
     persona: {
@@ -2084,7 +2114,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
   }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {isCreate && <div className="hintBox">新建时只填兼职微信昵称、抖音主页/作品链接和项目。人设默认随机生成，用来先建目录、排期和交付链路，后面需要再细改。</div>}
+      {isCreate && <div className="hintBox">新建时先填兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。人设默认随机生成，用来先建目录、排期和交付链路，后面需要再细改。</div>}
       {isCreate && (
         <div className="generatedPreview">
           <strong>{form.weixinNick}</strong>
@@ -2096,6 +2126,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
         <label className="wide">项目<input value={form.project} onChange={(e) => update('project', e.target.value)} placeholder="例如：吸脂 / 复诊 / 其他项目" /></label>
+        <label className="wide">共享原始素材路径<input value={form.sourceMaterialDir} onChange={(e) => update('sourceMaterialDir', e.target.value)} placeholder="工作人员在共享盘/服务器里放素材的目录路径" /></label>
         {(!isCreate || showAdvanced) && (
           <>
             <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
@@ -2123,14 +2154,14 @@ function CaseForm({ initial, onClose, onSubmit }) {
 }
 
 function BulkCaseForm({ onClose, onSubmit }) {
-  const [text, setText] = useState('小林,https://www.douyin.com/user/example1,吸脂,咨询A\n小陈,https://www.douyin.com/user/example2,复诊,咨询B');
+  const [text, setText] = useState('小林,https://www.douyin.com/user/example1,吸脂,咨询A,/Volumes/共享素材/小林\n小陈,https://www.douyin.com/user/example2,复诊,咨询B,/Volumes/共享素材/小陈');
   const [generateSlots, setGenerateSlots] = useState(true);
   const [days, setDays] = useState(7);
   return (
     <Modal title="批量导入兼职/账号" onClose={onClose}>
       <div className="hintBox">
         每行一个账号，支持逗号或 Tab 分隔。字段顺序：
-        微信昵称, 抖音主页链接, 项目, 对接咨询/负责人（可选）。旧格式仍可导入。
+        微信昵称, 抖音主页链接, 项目, 对接咨询/负责人（可选）, 共享原始素材路径（可选）。旧格式仍可导入。
       </div>
       <div className="formGrid">
         <label className="wide">导入内容<textarea rows="10" value={text} onChange={(e) => setText(e.target.value)} /></label>

@@ -265,19 +265,29 @@ async function main() {
     const batchGenerated = await api('/dashboard/generate-today', { method: 'POST' });
     assert(batchGenerated.slotCount >= 1 && batchGenerated.candidateCount >= 3, 'dashboard batch generate did not create candidates');
 
+    const sharedSourceDir = path.join(ROOT_DIR, '员工共享素材', '验收兼职');
+    fs.mkdirSync(sharedSourceDir, { recursive: true });
+    fs.writeFileSync(path.join(sharedSourceDir, '共享-D1.jpg'), 'fake shared case image');
     const caze = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({
         douyinId: 'smoke_dy',
         douyinUrl: 'https://www.douyin.com/',
         project: '吸脂',
+        sourceMaterialDir: sharedSourceDir,
         stage: '起号期',
         staff: '咨询C',
         persona: { city: '成都', occupation: '上班族' }
       })
     });
     assert(caze.weixinNick.includes('成都') && caze.persona.age && caze.persona.tone && caze.persona.motivation, 'case random defaults missing');
+    assert(caze.sourceMaterialDir === sharedSourceDir, 'case source material dir missing');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
+    const syncedMaterials = await api(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' });
+    assert(syncedMaterials.copied === 1 && syncedMaterials.inserted === 1, 'source material sync did not copy and insert shared asset');
+    const syncedAssetPath = path.join(caze.localCaseDir, '00-原始素材', '共享同步', '共享-D1.jpg');
+    assert(fs.existsSync(syncedAssetPath), 'synced source material missing in local case dir');
+    assert(syncedMaterials.assets.some((asset) => asset.path === syncedAssetPath && asset.originPath === path.join(sharedSourceDir, '共享-D1.jpg') && asset.source === '共享导入'), 'synced source material metadata missing');
     const minimalCase = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', staff: '咨询Z', generateSlots: true, days: 3 })
@@ -319,7 +329,7 @@ async function main() {
     assert(gapDashboard.counts.requiredMaterialGaps >= 1, 'dashboard missing required material gap count');
     assert(gapCase?.materialGaps?.some((gap) => gap.status === '必补'), 'dashboard missing material gap details');
     const intakeNote = await api(`/cases/${caze.id}/material-intake-note`);
-    assert(intakeNote.text.includes('素材补齐说明') && intakeNote.text.includes('00-原始素材'), 'material intake note missing target dir');
+    assert(intakeNote.text.includes('素材补齐说明') && intakeNote.text.includes('同步共享素材') && intakeNote.text.includes(sharedSourceDir), 'material intake note missing shared source workflow');
     assert(intakeNote.text.includes('必补素材') && intakeNote.text.includes(caze.caseCode), 'material intake note missing gap summary');
     const gapImage = await api('/image-tasks', {
       method: 'POST',
@@ -332,6 +342,14 @@ async function main() {
     const imageDashboard = await api('/dashboard');
     assert(imageDashboard.counts.imageTasks >= 1 && imageDashboard.counts.imageWaitingKey >= 1, 'dashboard image task counts missing');
     assert(imageDashboard.imageTasks.some((item) => item.id === gapImage.id && item.case?.id === caze.id), 'dashboard image task list missing case task');
+
+    const hospitalSharedDir = path.join(ROOT_DIR, '素材库', '通用素材', '医院素材');
+    fs.mkdirSync(hospitalSharedDir, { recursive: true });
+    fs.writeFileSync(path.join(hospitalSharedDir, '医院环境.jpg'), 'fake hospital shared material');
+    const sharedAssetScan = await api('/shared-assets/scan', { method: 'POST' });
+    assert(sharedAssetScan.inserted === 1 && sharedAssetScan.assets.some((asset) => asset.category === '医院素材'), 'shared material scan failed');
+    const sharedConfig = await api('/config');
+    assert(sharedConfig.sharedMaterialRoot.endsWith(path.join('素材库', '通用素材')) && sharedConfig.sharedAssets.total === 1, 'config missing shared material stats');
 
     const prepareSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
