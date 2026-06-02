@@ -89,13 +89,14 @@ else fail('缺少固定发布说明或兼职须知');
 if (mainSource.includes('当前只发给') && mainSource.includes('deliverySteps') && mainSource.includes('发完微信后标记已派发')) ok('交付弹窗按单账号固定步骤防呆');
 else fail('交付弹窗缺少单账号固定步骤');
 
-if (mainSource.includes("copyAllowed = view.slot.status === '可交付'") && mainSource.includes('交付内容只读，避免重复发给同一个兼职') && mainSource.includes('核对发给兼职文案')) ok('已派发交付内容只读，避免重复发送');
+const oldDeliveryConfirmLabel = '核' + '对发给兼职文案';
+if (mainSource.includes("copyAllowed = view.slot.status === '可交付'") && mainSource.includes('交付内容只读，避免重复发给同一个兼职') && mainSource.includes('确认发给兼职文案') && !mainSource.includes(oldDeliveryConfirmLabel)) ok('已派发交付内容只读，避免重复发送');
 else fail('已派发交付内容仍可能继续复制重发');
 
 if (mainSource.includes('已用微信发送') && !mainSource.includes('>标记派发</button>') && !mainSource.includes('>已微信发送</button>')) ok('派发确认只保留在交付弹窗内');
 else fail('列表页仍有绕过交付弹窗的派发按钮');
 
-if (!mainSource.includes('markCompleted') && mainSource.includes('打开交付内容，核对后标记完成') && mainSource.includes("view.slot.status === '已派发'")) ok('完成确认只保留在交付弹窗内');
+if (!mainSource.includes('markCompleted') && mainSource.includes('打开交付内容，确认完成后标记完成') && mainSource.includes("view.slot.status === '已派发'")) ok('完成确认只保留在交付弹窗内');
 else fail('列表页仍有绕过交付弹窗的完成按钮');
 
 if (serverSource.includes('canGenerateDeliveryForSlot') && serverSource.includes('CANDIDATE_SELECT_STATUSES') && serverSource.includes('不能再改候选') && mainSource.includes('canGenerateDelivery') && mainSource.includes('lockedNote')) ok('交付后禁止重生成交付或改候选');

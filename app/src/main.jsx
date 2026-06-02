@@ -825,7 +825,7 @@ function nextActionText(slot) {
   if (slot.status === '已锁定') return '生成交付内容';
   if (slot.status === '素材阻塞') return '补素材后重新生成交付内容';
   if (slot.status === '可交付') return '打开交付内容，按步骤发微信';
-  if (slot.status === '已派发') return '打开交付内容，核对后标记完成';
+  if (slot.status === '已派发') return '打开交付内容，确认完成后标记完成';
   if (slot.status === '已完成') return '任务已闭环';
   return '查看任务';
 }
@@ -1733,25 +1733,25 @@ function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
     },
     {
       order: '2',
-      label: readonlyDelivery ? '核对发给兼职文案' : '复制发给兼职文案',
-      detail: readonlyDelivery ? '这段已经发过，只用于确认，不再复制发送。' : '这段是微信里的任务说明，不发到抖音。'
+      label: readonlyDelivery ? '确认发给兼职文案' : '复制发给兼职文案',
+      detail: readonlyDelivery ? '这段已经发过，只用于确认本次记录，不再复制发送。' : '这段是微信里的任务说明，不发到抖音。'
     },
     {
       order: '3',
-      label: readonlyDelivery ? '核对抖音发布文案' : '复制抖音发布文案',
+      label: readonlyDelivery ? '确认抖音发布文案' : '复制抖音发布文案',
       detail: readonlyDelivery ? '这段已经发过，只用于确认兼职发布内容。' : '这段给兼职发布抖音，第一行默认做标题。'
     },
     {
       order: '4',
-      label: readonlyDelivery ? '核对素材顺序' : (view.isVideo ? '下载或发送视频素材' : '下载或发送图片素材'),
-      detail: readonlyDelivery ? `已派发素材只用于核对，本次记录 ${mediaCount} 个素材。` : (mediaCount ? `按页面顺序发送 ${mediaCount} 个素材。` : '没有素材时不要派发，先补素材。')
+      label: readonlyDelivery ? '确认素材顺序' : (view.isVideo ? '下载或发送视频素材' : '下载或发送图片素材'),
+      detail: readonlyDelivery ? `已派发素材只用于确认本次记录，本次记录 ${mediaCount} 个素材。` : (mediaCount ? `按页面顺序发送 ${mediaCount} 个素材。` : '没有素材时不要派发，先补素材。')
     }
   ];
   if (view.texts?.freelancerGuide) {
     steps.splice(1, 0, {
       order: '首次',
       label: readonlyDelivery ? '兼职须知已进入记录' : '第一次先发兼职须知',
-      detail: readonlyDelivery ? '只用于核对首次口径，不再重复发送。' : '同一个兼职以前发过就不用重复发。'
+      detail: readonlyDelivery ? '只用于确认首次口径，不再重复发送。' : '同一个兼职以前发过就不用重复发。'
     });
   }
   steps.push({
