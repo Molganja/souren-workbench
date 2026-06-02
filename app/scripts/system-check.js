@@ -47,6 +47,11 @@ const leakedLabels = duplicateDashboardLabels.filter((label) => mainSource.inclu
 if (leakedLabels.length) fail(`首页仍包含重复任务区块：${leakedLabels.join('、')}`);
 else ok('首页任务入口已收敛为单一操作队列');
 
+const nonDeliveryCopyLabels = ['复制补素材说明', '复制分析任务', '复制任务单', '复制图片提示词'];
+const leakedCopyLabels = nonDeliveryCopyLabels.filter((label) => mainSource.includes(label));
+if (leakedCopyLabels.length) fail(`非交付复制按钮仍存在：${leakedCopyLabels.join('、')}`);
+else ok('复制入口只保留在交付内容弹窗');
+
 if (mainSource.includes('今日操作队列') && mainSource.includes('今日账号概览')) ok('首页保留操作队列和账号概览');
 else fail('首页缺少操作队列或账号概览');
 

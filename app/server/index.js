@@ -1333,7 +1333,7 @@ async function generateImageFiles(task) {
   if (!settings.ready) {
     run('UPDATE image_tasks SET status = ?, updated_at = ? WHERE id = ?', ['waiting_key', now(), task.id]);
     const updated = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id]));
-    writeImageTaskBrief(updated, ['', `提示：${settings.missing}，当前只能复制提示词。`]);
+    writeImageTaskBrief(updated, ['', `提示：${settings.missing}，当前会保留提示词，等待图片接口接入后再生成。`]);
     const err = new Error(`${settings.missing}，请先在 app/.env 填 IMAGE_API_KEY 和 IMAGE_API_URL`);
     err.status = 409;
     throw err;
@@ -1397,7 +1397,7 @@ async function generateImageFiles(task) {
       `失败时间：${now()}`,
       `错误：${error.name === 'AbortError' ? '图片接口超时' : error.message}`,
       '',
-      '下一步：检查图片接口地址、密钥、模型名；也可以先复制提示词手动生成。'
+      '下一步：检查图片接口地址、密钥和模型名；必要时在任务详情查看提示词。'
     ].join('\n'));
     writeImageTaskBrief(updated, ['', `最近生成失败：${error.name === 'AbortError' ? '图片接口超时' : error.message}`]);
     const err = new Error(error.name === 'AbortError' ? '图片接口超时，请稍后重试' : error.message);
@@ -3477,14 +3477,14 @@ function createDeliveryForSlot(slot) {
     '',
     '发送顺序：',
     '1. 复制并发送 01-发给兼职文案.txt',
-	    '2. 复制并发送 02-抖音发布文案.txt',
-	    '3. 按 05-素材顺序清单.txt 的顺序，把图片或视频拖进微信发送',
-	    '4. 发完后在系统里标记「已派发」；确认发布完成后标记「已完成」',
-	    '',
-	    '完成口径：',
-	    '1. 兼职或剪辑人员确认已按要求发布/交付后，系统标记「已完成」',
-	    '2. 账号主页数据由系统按账号活跃度分层采集，不需要工作人员逐条填写'
-	  ].join('\n'));
+    '2. 复制并发送 02-抖音发布文案.txt',
+    '3. 按 05-素材顺序清单.txt 的顺序，把图片或视频拖进微信发送',
+    '4. 发完后在系统里标记「已派发」；确认发布完成后标记「已完成」',
+    '',
+    '完成口径：',
+    '1. 兼职或剪辑人员确认已按要求发布/交付后，系统标记「已完成」',
+    '2. 账号主页数据由系统按账号活跃度分层采集，不需要工作人员逐条填写'
+  ].join('\n'));
   fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);
   const videoDelivery = isVideoDelivery(candidate.format);
