@@ -1619,7 +1619,7 @@ function monitorActionQueue(monitor = {}) {
         kind: '账号采集',
         title: item.latestSnapshot ? '超过24小时未采集' : '首次采集账号数据',
         reason: item.latestSnapshot ? `上次采集：${item.lastCollectedAt}` : '这个账号还没有粉丝和作品数据',
-        action: '用已登录抖音的 Chrome 打开主页，在首页点「回填数据」写回粉丝和作品数据。',
+        action: '登记给我采集；我用已登录抖音的 Chrome 打开主页，再通过采集回填入口写回粉丝和作品数据。',
         case: caze,
         latestSnapshot: item.latestSnapshot,
         topVideo: item.topVideo
@@ -1661,6 +1661,52 @@ function monitorActionQueue(monitor = {}) {
     .slice(0, 40);
 }
 
+function createMonitorActionSlot(input = {}) {
+  const caze = caseById(input.caseId);
+  if (!caze) {
+    const error = new Error('case not found');
+    error.status = 404;
+    throw error;
+  }
+  const kind = input.kind;
+  const plans = {
+    偏冷补内容: {
+      contentKind: '爆款提权',
+      title: '播放偏低，补一条爆款提权/互动版内容',
+      goal: '账号数据动作：播放偏低，下一条补爆款提权或互动版内容，先把账号热度拉起来。'
+    },
+    增长承接: {
+      contentKind: '素人种草',
+      title: '粉丝增长明显，补一条答疑/复盘承接内容',
+      goal: '账号数据动作：粉丝增长明显，下一条补答疑或复盘内容，承接评论区咨询问题。'
+    }
+  };
+  const plan = plans[kind];
+  if (!plan) {
+    const error = new Error('unsupported monitor action kind');
+    error.status = 400;
+    throw error;
+  }
+  const date = input.date || addDays(new Date().toISOString().slice(0, 10), 1);
+  const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
+  const existing = rowSlot(get(
+    'SELECT * FROM plan_slots WHERE case_id = ? AND date = ? AND content_kind = ? AND goal = ? LIMIT 1',
+    [caze.id, date, plan.contentKind, plan.goal]
+  ));
+  if (existing) {
+    return { created: false, kind, title: plan.title, slot: existing };
+  }
+  const slot = createSlotForCase(caze, {
+    date,
+    timeWindow: input.timeWindow || '19:00-21:00',
+    contentKind: plan.contentKind,
+    goal: plan.goal,
+    stage,
+    status: '待生成'
+  });
+  return { created: true, kind, title: plan.title, slot };
+}
+
 function truthy(value) {
   return ['1', 'true', 'yes', 'y', 'on'].includes(String(value || '').trim().toLowerCase());
 }
@@ -1699,7 +1745,7 @@ function buildChromeCollectionText(queue) {
     `回填接口：POST ${endpoint}`,
     '',
     '采集方式：用已登录抖音的 Chrome 打开账号主页，读取账号粉丝/关注/获赞/作品数，并记录最近作品的播放、点赞、评论、转发、收藏。',
-    '回填要求：优先回到首页账号卡片点「回填数据」填写；JSON 模板只作为自动回填备用。系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
+    '回填要求：优先回到首页账号卡片点「采集回填入口」填写；JSON 模板只作为自动回填备用。系统会自动记录初始粉丝、最新粉丝、作品数据和爆款提醒。',
     ''
   ];
   if (!queue.targets.length) {
@@ -1951,7 +1997,7 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   }
   if (caze.douyinUrl && monitor.dueCollection) {
     reasons.push(monitor.latestSnapshot ? '账号数据超过24小时未更新' : '账号数据待采集');
-    actions.push('首页生成 Chrome 采集清单，我用已登录抖音的 Chrome 打开主页并回填数据');
+    actions.push('首页生成 Chrome 采集清单，我用已登录抖音的 Chrome 打开主页并通过采集回填入口写回数据');
   }
   if (futureSlots === 0) {
     reasons.push('缺少排期');
@@ -2366,7 +2412,7 @@ function systemReadiness() {
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
-    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；我控制已登录抖音的 Chrome 逐个查看并回填数据' },
+    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: DOUYIN_COLLECTOR_URL ? '已配置采集器，也可生成 Chrome 登录态采集清单' : '默认使用 Chrome 登录态采集清单；我控制已登录抖音的 Chrome 逐个查看并通过采集回填入口写回数据' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
     { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
@@ -2436,6 +2482,14 @@ app.post('/api/douyin-monitor/run', async (req, res) => {
 app.post('/api/douyin-monitor/ingest', (req, res) => {
   try {
     res.json(ingestDouyinData(req.body || {}));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+app.post('/api/douyin-monitor/actions/slot', (req, res) => {
+  try {
+    res.json(createMonitorActionSlot(req.body || {}));
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }

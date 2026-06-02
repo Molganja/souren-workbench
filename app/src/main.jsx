@@ -563,6 +563,12 @@ function monitorActionClass(kind) {
   return 'ready';
 }
 
+function monitorActionSlotLabel(kind) {
+  if (kind === '偏冷补内容') return '生成爆款槽位';
+  if (kind === '增长承接') return '生成承接槽位';
+  return '';
+}
+
 function MonitorActionSection({ items, onOpenCase, onAct }) {
   return (
     <section className="panel alertPanel">
@@ -596,6 +602,12 @@ function MonitorActionSection({ items, onOpenCase, onAct }) {
               <div className="rowActions">
                 {item.case?.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
                 {item.video?.url && <a className="button" href={item.video.url} target="_blank">打开作品</a>}
+                {monitorActionSlotLabel(item.kind) && item.case?.id && <button onClick={() => onAct(
+                  () => request('/douyin-monitor/actions/slot', { method: 'POST', body: JSON.stringify({ caseId: item.case.id, kind: item.kind }) }),
+                  (result) => result.created
+                    ? `已生成：${result.slot.date} ${result.slot.contentKind}`
+                    : `已有对应排期：${result.slot.date} ${result.slot.contentKind}`
+                )}>{monitorActionSlotLabel(item.kind)}</button>}
                 {item.alertId && <button onClick={() => onAct(
                   () => request(`/viral-alerts/${item.alertId}`, { method: 'PATCH', body: JSON.stringify({ status: 'handled', interactionNote: '已安排助理号/阑尾号评论区互动' }) }),
                   '爆款互动已标记'
@@ -626,7 +638,7 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
           <button onClick={() => onAct(
             () => copyChromeCollectionQueue(onCopy),
             (result) => `已复制Chrome采集清单：${result.count} 个账号`
-          )}>复制清单</button>
+          )}>复制给我采集清单</button>
         </div>
       </div>
       {accounts.length === 0 ? <div className="empty">新建案例时填写抖音主页后，会进入 24 小时账号数据监控</div> : (
@@ -638,7 +650,7 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
               <small>{item.topVideo ? `最高播放 ${formatNumber(item.topVideo.latestSnapshot?.plays)}｜${item.topVideo.title || '未命名作品'}` : `最近采集：${shortTime(item.lastCollectedAt)}`}</small>
               <div className="inlineActions compactActions">
                 {item.case.douyinUrl && <a className="button" href={item.case.douyinUrl} target="_blank">打开主页</a>}
-                <button onClick={() => setIngestAccount(item)}>回填数据</button>
+                <button onClick={() => setIngestAccount(item)}>采集回填入口</button>
               </div>
             </div>
           ))}
@@ -724,16 +736,16 @@ function DouyinIngestForm({ account, onClose, onSubmit }) {
     onSubmit({
       caseId: caze.id,
       collectedAt: form.collectedAt || new Date().toISOString(),
-      source: 'manual-web',
+      source: 'chrome-agent-web',
       account: accountPayload,
       videos,
       note: form.note
     });
   }
   return (
-    <Modal title="回填抖音数据" onClose={onClose}>
+    <Modal title="写回抖音采集结果" onClose={onClose}>
       <div className="hintBox">
-        账号：{caze.weixinNick || '未命名'}。用已登录抖音的 Chrome 打开主页，把看到的数据填进来；空着的字段不会写入。
+        账号：{caze.weixinNick || '未命名'}。这是给我用的采集回填入口：用已登录抖音的 Chrome 打开主页后，把看到的数据写回系统；工作人员日常不需要逐条填写。
       </div>
       <div className="formGrid">
         <label className="wide">抖音主页<input value={caze.douyinUrl || ''} readOnly /></label>

@@ -484,7 +484,7 @@ async function main() {
       body: JSON.stringify({
         caseId: minimalCase.id,
         collectedAt: '2026-06-01T13:00:00.000Z',
-        source: 'manual-web',
+        source: 'chrome-agent-web',
         account: { fans: 88, following: 18, totalLikes: 320, totalWorks: 1 },
         videos: [
           {
@@ -507,6 +507,34 @@ async function main() {
     assert(minimalAfterIngest.videos.some((item) => item.latestSnapshot?.plays === 1200), 'manual web ingest video metrics missing');
     const afterManualWebDashboard = await api('/dashboard');
     assert(afterManualWebDashboard.monitorActions.some((item) => item.kind === '偏冷补内容' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing cold content action');
+    const coldSlot = await api('/douyin-monitor/actions/slot', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: minimalCase.id, kind: '偏冷补内容', date: '2026-06-08' })
+    });
+    assert(coldSlot.created === true && coldSlot.slot.contentKind === '爆款提权', 'cold monitor action did not create viral slot');
+    const repeatedColdSlot = await api('/douyin-monitor/actions/slot', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: minimalCase.id, kind: '偏冷补内容', date: '2026-06-08' })
+    });
+    assert(repeatedColdSlot.created === false && repeatedColdSlot.slot.id === coldSlot.slot.id, 'cold monitor action duplicate guard failed');
+    await api('/douyin-monitor/ingest', {
+      method: 'POST',
+      body: JSON.stringify({
+        caseId: minimalCase.id,
+        collectedAt: '2026-06-01T14:00:00.000Z',
+        source: 'chrome-agent-web',
+        account: { fans: 150, following: 19, totalLikes: 360, totalWorks: 1 },
+        videos: [],
+        note: '增长承接验收'
+      })
+    });
+    const afterGrowthDashboard = await api('/dashboard');
+    assert(afterGrowthDashboard.monitorActions.some((item) => item.kind === '增长承接' && item.case?.id === minimalCase.id), 'dashboard monitor actions missing growth action');
+    const growthSlot = await api('/douyin-monitor/actions/slot', {
+      method: 'POST',
+      body: JSON.stringify({ caseId: minimalCase.id, kind: '增长承接', date: '2026-06-09' })
+    });
+    assert(growthSlot.created === true && growthSlot.slot.contentKind === '素人种草', 'growth monitor action did not create carry slot');
     await api(`/viral-alerts/${ingested.viralAlerts[0].id}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'handled', interactionNote: '烟测已安排互动' })
@@ -549,7 +577,7 @@ async function main() {
 
     const exported = await api('/export');
     assert(exported.cases.length === 3, 'export missing cases');
-    assert(exported.accountSnapshots.length === 2, 'export missing account snapshots');
+    assert(exported.accountSnapshots.length === 3, 'export missing account snapshots');
     assert(exported.douyinVideos.length === 2, 'export missing douyin videos');
     assert(exported.videoSnapshots.length === 2, 'export missing video snapshots');
     assert(exported.viralAlerts.length === 1, 'export missing viral alerts');
@@ -574,7 +602,7 @@ async function main() {
     assert(afterBadImportCases.length === 3, 'bad import changed existing cases');
     const review = await api('/review');
     assert(review.totals.cases === 3, 'review case total invalid');
-    assert(review.totals.accountSnapshots === 2, 'review account snapshot total invalid');
+    assert(review.totals.accountSnapshots === 3, 'review account snapshot total invalid');
     assert(review.totals.videoSnapshots === 2, 'review video snapshot total invalid');
     assert(review.contentKindStats.some((item) => item.kind === '爆款提权' && item.total >= 1), 'review content kind stats missing');
     assert(review.topAccounts.length >= 2, 'review top account missing');
