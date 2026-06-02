@@ -613,41 +613,56 @@ function buildPriorityActions(data = {}, strategyActions = []) {
 }
 
 function PriorityActionSection({ items, onOpenCase, onAct, onOpenViral, onDelivery, canOpenLocalPaths }) {
+  const activeItem = items[0];
+  const queuedItems = items.slice(1);
   return (
     <section className="panel priorityPanel">
       <div className="sectionHead">
         <h2>今日操作队列</h2>
-        <span>{items.length} 条</span>
+        <span>{items.length ? `当前 1 / ${items.length}` : '已清空'}</span>
       </div>
-      {items.length === 0 ? <div className="empty">今天没有必须处理的动作</div> : (
+      {items.length === 0 ? <div className="empty doneEmpty">今天发完了</div> : (
         <div className="priorityList">
-          {items.map((item) => (
-            <div className="priorityRow" key={item.id}>
-              <div className="priorityBadge">
-                <strong>{item.kind}</strong>
-                <span className={`status ${item.statusClass || statusClass(item.status)}`}>{item.status}</span>
-              </div>
-              <div className="taskMain">
-                <div className="rowTitle">
-                  {item.case?.id ? <button className="linkButton" onClick={() => onOpenCase(item.case.id)}>{item.title}</button> : <strong>{item.title}</strong>}
-                </div>
-                <p>{item.detail}</p>
-                <small>{item.note}</small>
-              </div>
-              <PriorityActionButtons
-                item={item}
-                onOpenCase={onOpenCase}
-                onAct={onAct}
-                onOpenViral={onOpenViral}
-                onDelivery={onDelivery}
-                canOpenLocalPaths={canOpenLocalPaths}
-              />
+          <div className="priorityRow activePriority" key={activeItem.id}>
+            <div className="priorityBadge">
+              <strong>{activeItem.kind}</strong>
+              <span className={`status ${activeItem.statusClass || statusClass(activeItem.status)}`}>{activeItem.status}</span>
+              <span className="queueFlag activeFlag">当前处理</span>
             </div>
-          ))}
+            <div className="taskMain">
+              <div className="rowTitle">
+                {activeItem.case?.id ? <button className="linkButton" onClick={() => onOpenCase(activeItem.case.id)}>{activeItem.title}</button> : <strong>{activeItem.title}</strong>}
+              </div>
+              <p>{activeItem.detail}</p>
+              <small>{activeItem.note}</small>
+            </div>
+            <PriorityActionButtons
+              item={activeItem}
+              onOpenCase={onOpenCase}
+              onAct={onAct}
+              onOpenViral={onOpenViral}
+              onDelivery={onDelivery}
+              canOpenLocalPaths={canOpenLocalPaths}
+            />
+          </div>
+          {queuedItems.length > 0 && (
+            <div className="queueSummary">
+              <span className="queuedLabel">后面还有 {queuedItems.length} 条排队中</span>
+              <small>{summarizeQueuedKinds(queuedItems)}</small>
+            </div>
+          )}
         </div>
       )}
     </section>
   );
+}
+
+function summarizeQueuedKinds(items = []) {
+  const counts = items.reduce((acc, item) => {
+    acc[item.kind] = (acc[item.kind] || 0) + 1;
+    return acc;
+  }, {});
+  return Object.entries(counts).map(([kind, count]) => `${kind} ${count}`).join(' / ');
 }
 
 function PriorityActionButtons({ item, onOpenCase, onAct, onOpenViral, onDelivery, canOpenLocalPaths }) {
@@ -1370,6 +1385,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths }) {
                 <div className="assetRow" key={task.id}>
                   <strong>{task.title}</strong>
                   <span>{displayStatus(task.status)}</span>
+                  {task.brief && <pre className="taskBrief">{task.brief.split('\n').slice(0, 14).join('\n')}</pre>}
                   <small>{task.outputDir}</small>
                   <div className="inlineActions">
                     {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>}

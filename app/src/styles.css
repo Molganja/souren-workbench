@@ -262,6 +262,16 @@ button.activeSmall {
   align-items: center;
 }
 
+.priorityRow.activePriority {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue-soft);
+}
+
+.priorityRow.queuedPriority {
+  background: #fafbfc;
+  opacity: 0.72;
+}
+
 .priorityBadge {
   display: grid;
   gap: 6px;
@@ -274,6 +284,47 @@ button.activeSmall {
 
 .priorityBadge .status {
   width: fit-content;
+}
+
+.queueFlag,
+.queuedLabel {
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--muted);
+  background: #f8fafb;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.queueFlag.activeFlag {
+  border-color: transparent;
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.queueSummary {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #fafbfc;
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.queueSummary small {
+  color: var(--muted);
+}
+
+.doneEmpty {
+  color: var(--green);
+  background: var(--green-soft);
+  border-color: transparent;
+  font-weight: 800;
 }
 
 .accountGrid {
@@ -634,6 +685,18 @@ button.activeSmall {
 
 .taskMain small {
   color: var(--muted);
+}
+
+.taskBrief {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fafbfc;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .rowActions, .inlineActions, .headerActions, .heroActions {

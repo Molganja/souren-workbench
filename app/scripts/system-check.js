@@ -55,6 +55,16 @@ else ok('复制入口只保留在交付内容弹窗');
 if (mainSource.includes('今日操作队列') && mainSource.includes('今日账号概览')) ok('首页保留操作队列和账号概览');
 else fail('首页缺少操作队列或账号概览');
 
+if (mainSource.includes('activePriority') && mainSource.includes('queueSummary') && mainSource.includes('后面还有')) ok('今日队列只开放队首任务操作');
+else fail('今日队列缺少队首防呆状态');
+
+if (mainSource.includes('今天发完了') && !mainSource.includes('今天没有必须处理的动作')) ok('今日队列清空后有明确完工状态');
+else fail('今日队列清空状态仍不明确');
+
+const serverSource = fs.readFileSync(path.join(APP_DIR, 'server', 'index.js'), 'utf8');
+if (serverSource.includes('固定剪辑配方') && serverSource.includes('不临时改结构')) ok('视频交付和剪辑任务内置固定剪辑配方');
+else fail('缺少固定剪辑配方');
+
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');
 fs.mkdirSync(dataDir, { recursive: true });

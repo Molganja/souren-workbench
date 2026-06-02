@@ -548,6 +548,9 @@ async function main() {
     assert(lockedRejected, 'locked slot allowed candidate regeneration');
     const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
     assert(fs.existsSync(path.join(clip.outputDir, '剪辑任务单.txt')), 'clip brief file missing');
+    const clipBrief = fs.readFileSync(path.join(clip.outputDir, '剪辑任务单.txt'), 'utf8');
+    assert(clip.brief.includes('固定剪辑配方'), 'clip task response missing fixed edit recipe');
+    assert(clipBrief.includes('固定剪辑配方') && clipBrief.includes('不临时改结构'), 'clip brief file missing fixed edit recipe');
     const clipDashboard = await api('/dashboard');
     assert(clipDashboard.counts.clipTasks >= 1, 'dashboard clip task count missing');
     assert(clipDashboard.clipTasks.some((item) => item.id === clip.id && item.case?.id === caze.id), 'dashboard clip task list missing case task');
@@ -637,6 +640,7 @@ async function main() {
     const videoDeliveryView = await api(`/slots/${videoSlot.id}/delivery-view`);
     assert(videoDeliveryView.isVideo === true && videoDeliveryView.editing.finalVideoPath.endsWith('final.mp4'), 'video delivery view missing editing output path');
     assert(videoDeliveryView.texts.editBrief.includes('剪辑要求'), 'video delivery view missing edit brief');
+    assert(videoDeliveryView.texts.editBrief.includes('固定剪辑配方') && videoDeliveryView.texts.editBrief.includes('只替换素材和标题'), 'video delivery edit brief missing fixed recipe');
 
     const batchDeliverySlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',

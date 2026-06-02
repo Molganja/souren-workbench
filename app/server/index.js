@@ -3437,6 +3437,45 @@ app.patch('/api/slots/:id/status', (req, res) => {
   res.json(slotById(slot.id));
 });
 
+function fixedEditRecipe(slot = {}, caze = {}, candidate = {}) {
+  const kind = slot.contentKind || '日常养号';
+  const recipes = {
+    '素人种草': [
+      '1. 0-3秒：放阶段标题或核心问题，画面用人物/过程/当前状态素材。',
+      '2. 3-10秒：按“开始状态 -> 过程细节”顺序切画面，不打乱时间线。',
+      '3. 10-25秒：按口播字幕解释当下感受、恢复阶段或项目细节。',
+      '4. 25-35秒：回到当前状态或一个细节画面，保留评论引导。',
+      '5. 封面：人物或过程图 + 标题，标题不超过两行。'
+    ],
+    '日常养号': [
+      '1. 0-2秒：生活画面先出现，标题只点出当天状态。',
+      '2. 2-12秒：连续 3-5 个生活/城市/工作/穿搭素材，每个画面 2-3 秒。',
+      '3. 12-25秒：字幕用碎碎念式记录，不额外加入医疗判断。',
+      '4. 25-30秒：自然收尾，可以留一句轻互动。',
+      '5. 封面：使用第一张清晰生活图 + 短标题。'
+    ],
+    '爆款提权': [
+      '1. 0-2秒：先放爆款结构里的反差、清单或情绪钩子。',
+      '2. 2-8秒：给第一层理由或场景，字幕和画面同步。',
+      '3. 8-22秒：按“三段式/清单式/反差式”固定结构推进，不临时加新段落。',
+      '4. 22-30秒：结尾留互动问题或承接句。',
+      '5. 封面：标题优先，画面保持账号日常质感。'
+    ]
+  };
+  const lines = recipes[kind] || recipes['日常养号'];
+  return [
+    '固定剪辑配方：',
+    ...lines,
+    '',
+    '统一规则：',
+    '1. 画面比例固定 9:16，建议时长 20-35 秒。',
+    '2. 字幕固定白字深描边，底部安全区，不遮挡主体。',
+    '3. 只替换素材和标题，不临时改结构、不临时加复杂特效。',
+    '4. 口播/字幕优先使用本次锁定文案。',
+    `5. 收件账号：${caze.weixinNick || '未命名兼职'}；标题：${candidate.title || '按任务标题'}。`
+  ].join('\n');
+}
+
 function createDeliveryForSlot(slot) {
   if (!slot) return null;
   const caze = caseById(slot.caseId);
@@ -3488,6 +3527,7 @@ function createDeliveryForSlot(slot) {
   fs.writeFileSync(path.join(deliveryDir, '01-发给兼职文案.txt'), candidate.operatorInstruction);
   fs.writeFileSync(path.join(deliveryDir, '02-抖音发布文案.txt'), `${candidate.title}\n\n${candidate.publishText}`);
   const videoDelivery = isVideoDelivery(candidate.format);
+  const editRecipe = fixedEditRecipe(slot, caze, candidate);
   if (videoDelivery) {
     fs.writeFileSync(path.join(deliveryDir, '03-口播字幕文案.txt'), [
       `标题：${candidate.title}`,
@@ -3504,10 +3544,12 @@ function createDeliveryForSlot(slot) {
       `建议时长：20-35秒`,
       '',
       '剪辑要求：',
+      editRecipe,
+      '',
+      '素材使用：',
       '1. 优先使用本次交付内容内视频素材，其次使用图片做轻动态。',
-      '2. 首屏保留标题信息，字幕不要遮挡主体。',
-      '3. 封面图如需单独制作，输出 cover.jpg 放回本目录。',
-      '4. 成片输出 final.mp4 放回本目录。'
+      '2. 封面图如需单独制作，输出 cover.jpg 放回本目录。',
+      '3. 成片输出 final.mp4 放回本目录。'
     ].join('\n'));
   }
   const assets = deliveryAssetsForSlot(slot, caze, 9);
@@ -3748,23 +3790,28 @@ app.post('/api/clip-tasks', (req, res) => {
   const outputDir = path.join(caze.localCaseDir, '02-生成补充', '剪辑任务', safeSegment(title));
   fs.mkdirSync(outputDir, { recursive: true });
   const assets = all('SELECT * FROM assets WHERE case_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 8', [caze.id, '视频']).map(rowAsset);
-  const brief = body.brief || [
+  const clipContentKind = slot?.contentKind || body.contentKind || '日常养号';
+  const editRecipe = fixedEditRecipe(slot || { contentKind: clipContentKind }, caze, selected || { title });
+  const generatedBrief = [
     `剪辑任务：${title}`,
     `案例：${caze.caseCode} / ${caze.weixinNick}`,
     `账号：${caze.douyinId || '未填'}`,
     `阶段：${slot?.stage || caze.stage}`,
-    `内容类型：${slot?.contentKind || '视频'}`,
+    `内容类型：${clipContentKind}`,
     `建议比例：9:16`,
     `建议时长：20-35秒`,
     '',
     '发布文案/口播参考：',
     selected ? `${selected.title}\n${selected.publishText}` : '暂无锁定候选，可先按素材做生活化短视频。',
     '',
+    editRecipe,
+    '',
     '可用视频素材：',
     assets.length ? assets.map((asset, index) => `${index + 1}. ${asset.path}`).join('\n') : '暂无已扫描视频素材，请先放入 00-原始素材 后扫描。',
     '',
     '交付要求：输出 final.mp4 放回本目录；如需要封面图，放 cover.jpg。'
   ].join('\n');
+  const brief = body.brief ? `${String(body.brief).trim()}\n\n${editRecipe}` : generatedBrief;
   fs.writeFileSync(path.join(outputDir, '剪辑任务单.txt'), brief);
   const id = uid('clip');
   run(
