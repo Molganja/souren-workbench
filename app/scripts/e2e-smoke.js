@@ -194,16 +194,16 @@ async function main() {
     const filteredViral = await api('/viral-templates', {
       method: 'POST',
       body: JSON.stringify({
-        title: '成都上班族专用爆款',
-        rawText: '只给成都上班族生成。',
+        title: '吸脂账号专用爆款',
+        rawText: '只给吸脂项目生成，并排除指定微信昵称。',
         category: '职场',
-        hotStructure: '城市 + 职业 + 三点清单',
-        suitablePersonas: ['成都', '上班族'],
-        forbiddenPersonas: ['杭州'],
+        hotStructure: '项目 + 账号筛选 + 三点清单',
+        suitablePersonas: ['吸脂'],
+        forbiddenPersonas: ['批量小林'],
         rewritePolicy: '结构模仿'
       })
     });
-    assert(filteredViral.suitablePersonas.length === 2 && filteredViral.forbiddenPersonas.length === 1, 'viral persona filters not saved');
+    assert(filteredViral.suitablePersonas.length === 1 && filteredViral.forbiddenPersonas.length === 1, 'viral persona filters not saved');
     const linkOnlyViral = await api('/viral-templates', {
       method: 'POST',
       body: JSON.stringify({ sourceLink: 'https://www.douyin.com/video/link-only-smoke' })
@@ -246,13 +246,14 @@ async function main() {
     const bulk = await api('/cases/bulk', {
       method: 'POST',
       body: JSON.stringify({
-        text: '批量小林,bulk_dy_1,,吸脂,起号期,成都,25,上班族,自然,批量导入验证,咨询A\n批量小陈,bulk_dy_2,,吸脂,起号期,杭州,27,自由职业,轻松,批量导入验证,咨询B',
+        text: '批量小林,https://www.douyin.com/user/bulk-lin,吸脂,咨询A\n批量小陈,https://www.douyin.com/user/bulk-chen,复诊,咨询B',
         generateSlots: true,
         days: 2
       })
     });
     assert(bulk.createdCount === 2, 'bulk import did not create two cases');
     assert(bulk.cases[0].staff === '咨询A' && bulk.cases[1].staff === '咨询B', 'bulk import staff missing');
+    assert(bulk.cases[0].douyinUrl.includes('bulk-lin') && bulk.cases[1].project === '复诊', 'bulk simplified fields missing');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
     const deletedCaseDir = bulk.cases[1].localCaseDir;
     assert(fs.existsSync(deletedCaseDir), 'case directory missing before delete');
@@ -501,7 +502,7 @@ async function main() {
         rawText: '原视频内容：真实生活开头，三段转折，评论提问。',
         category: '情绪',
         hotStructure: '生活场景开头 + 三段状态变化 + 评论区提问',
-        suitablePersonas: ['成都'],
+        suitablePersonas: ['吸脂'],
         rewritePolicy: '结构模仿'
       })
     });

@@ -79,9 +79,9 @@ const STATUS_LABELS = {
   unavailable: '未接入',
   error: '异常',
   timeout: '超时',
-  pending: '待核对',
-  checking: '核对中',
-  verified: '已核对',
+  pending: '历史待处理',
+  checking: '历史处理中',
+  verified: '历史已处理',
   active: '待互动',
   handled: '已处理',
   waiting_collector: '等待采集器',
@@ -682,7 +682,7 @@ function titleFor(kind, stage, persona, viral) {
   return `${stage}：我为什么开始认真考虑这个项目`;
 }
 
-function fillVars(template, caze) {
+function fillVars(template, caze, slot = null) {
   const p = caze.persona || {};
   const vars = {
     昵称: p.nickname || caze.weixinNick || '我',
@@ -695,7 +695,7 @@ function fillVars(template, caze) {
     motivation: p.motivation || '想把状态调整得更稳定一点',
     动机: p.motivation || '想把状态调整得更稳定一点',
     项目: caze.project || '项目',
-    阶段: caze.stage || '当前阶段'
+    阶段: slot?.stage || '当前阶段'
   };
   return String(template || '').replace(/\{([^}]+)\}/g, (_, key) => vars[key] ?? '');
 }
@@ -728,7 +728,7 @@ function latestReadyViral() {
 }
 
 function draftText(kind, variant, caze, slot, viral, seed) {
-  if (seed) return seedVariantText(fillVars(seed.contentTemplate, caze), variant);
+  if (seed) return seedVariantText(fillVars(seed.contentTemplate, caze, slot), variant);
   const p = caze.persona || {};
   const line = personaLine(p);
   const motivation = p.motivation || '想把状态调整得更稳定一点';
@@ -768,13 +768,13 @@ function operatorInstructionFor(slot, caze) {
     `账号：${caze.weixinNick} / ${caze.douyinId || '未填抖音号'}`,
     `对接人：${caze.staff || '未填'}`,
     `时间窗：${slot.date} ${slot.timeWindow || ''}`,
-    '发布前确认图片/视频顺序，发完让兼职回传作品链接或截图。'
+    '发布前确认图片/视频顺序，发完并确认发布/交付完成后，在系统标记“已完成”。'
   ].join('\n');
 }
 
 function createCandidate(slot, caze, variant, viral = null, seed = null, override = {}) {
   const id = uid('draft');
-  const title = override.title || (seed ? fillVars(seed.titleTemplate, caze) : titleFor(slot.contentKind, slot.stage, caze.persona, viral));
+  const title = override.title || (seed ? fillVars(seed.titleTemplate, caze, slot) : titleFor(slot.contentKind, slot.stage, caze.persona, viral));
   const publishText = override.publishText || draftText(slot.contentKind, variant, caze, slot, viral, seed);
   const operatorInstruction = override.operatorInstruction || operatorInstructionFor(slot, caze);
   const format = override.format || formatForKind(slot.contentKind, seed);
@@ -1129,7 +1129,7 @@ async function generateImageFiles(task) {
 
 function personaMatchTokens(caze) {
   const p = caze.persona || {};
-  return [caze.weixinNick, caze.project, caze.stage, p.city, p.age ? `${p.age}岁` : '', p.occupation, p.tone, p.motivation]
+  return [caze.weixinNick, caze.project, p.city, p.age ? `${p.age}岁` : '', p.occupation, p.tone, p.motivation]
     .filter(Boolean)
     .map((item) => String(item).toLowerCase());
 }
@@ -1163,7 +1163,7 @@ function viralAnalysisTaskText(viral) {
     '2. 完整口播/字幕正文',
     '3. 内容结构：开头钩子、转折点、主体段落、评论引导',
     '4. 爆点判断：为什么值得改写成账号内容',
-    '5. 适合人设关键词：城市、职业、阶段、语气等',
+    '5. 适合人设关键词：城市、职业、项目、语气等',
     '6. 禁用人设关键词：不适合套用的账号类型',
     '',
     '回填到系统：',
@@ -1185,7 +1185,6 @@ function materialIntakeText(caze, gaps = []) {
     '素材补齐说明',
     `案例：${caze.caseCode} / ${caze.weixinNick}`,
     `项目：${caze.project}`,
-    `阶段：${caze.stage}`,
     `对接人：${caze.staff || '未填'}`,
     '',
     '请把原始素材复制到：',
@@ -1256,6 +1255,18 @@ function parseBulkCaseText(text) {
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => {
       const parts = line.split(/,|\t/).map((item) => item.trim());
+      if (parts.length <= 4 && /^https?:\/\//i.test(parts[1] || '')) {
+        const [weixinNick, douyinUrl, project, staff] = parts;
+        return {
+          weixinNick,
+          douyinId: '',
+          douyinUrl,
+          staff: staff || '',
+          project: project || '吸脂',
+          stage: '起号期',
+          persona: randomPersona()
+        };
+      }
       const [weixinNick, douyinId, douyinUrl, project, stage, city, age, occupation, tone, motivation, staff] = parts;
       return {
         weixinNick,
@@ -1995,7 +2006,6 @@ function reviewSummary() {
     })),
     stageStats: STAGES.map((stage) => ({
       stage,
-      cases: cases.filter((item) => item.stage === stage).length,
       slots: slots.filter((item) => item.stage === stage).length
     })),
     healthStats: groupCount(caseRows, (item) => item.healthStatus),
@@ -3041,7 +3051,7 @@ app.patch('/api/verify-tasks/:id', (req, res) => {
           snapshot.plays === '' ? null : Number(snapshot.plays),
           snapshot.likes === '' ? null : Number(snapshot.likes),
           snapshot.comments === '' ? null : Number(snapshot.comments),
-          body.resultNote || '核对回填',
+          body.resultNote || '账号数据记录',
           now()
         ]
       );
