@@ -126,6 +126,7 @@ function App() {
   const [viralFormOpen, setViralFormOpen] = useState(false);
   const [deliverySlotOpen, setDeliverySlotOpen] = useState(null);
   const [clipTaskOpen, setClipTaskOpen] = useState(null);
+  const [caseEditRequest, setCaseEditRequest] = useState(null);
 
   async function refresh() {
     const [dash, reviewData, scheduleData, caseRows, viralRows, configData] = await Promise.all([
@@ -212,9 +213,10 @@ function App() {
     showToast(message);
   }
 
-  async function openCase(id) {
+  async function openCase(id, options = {}) {
     setSelectedCaseId(id);
     setView('case');
+    setCaseEditRequest(options.edit ? { caseId: id, token: `${id}-${Date.now()}`, returnToDashboard: Boolean(options.returnToDashboard) } : null);
     const detail = await request(`/cases/${id}`);
     setCaseDetail(detail);
   }
@@ -261,7 +263,26 @@ function App() {
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} />
         )}
         {!loading && canUseWorkbench && view === 'case' && caseDetail && (
-          <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} onDelivery={setDeliverySlotOpen} onClipTask={setClipTaskOpen} activeQueueItem={activeQueueItem} />
+          <CaseDetail
+            detail={caseDetail}
+            onAct={act}
+            onBack={() => {
+              setCaseEditRequest(null);
+              setView('cases');
+            }}
+            onDelivery={setDeliverySlotOpen}
+            onClipTask={setClipTaskOpen}
+            activeQueueItem={activeQueueItem}
+            editRequest={caseEditRequest?.caseId === caseDetail.case.id ? caseEditRequest : null}
+            onEditRequestDone={() => setCaseEditRequest(null)}
+            onAfterEditSaved={(result = {}) => {
+              if (!result.returnToDashboard) return;
+              setCaseEditRequest(null);
+              setSelectedCaseId(null);
+              setCaseDetail(null);
+              setView('dashboard');
+            }}
+          />
         )}
         {!loading && canUseWorkbench && view === 'viral' && (
           <ViralView
@@ -618,7 +639,7 @@ function PriorityActionButtons({ item, onOpenCase, onAct, onDelivery, onClipTask
   if (item.intakeIssue) {
     return (
       <div className="rowActions">
-        <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>补资料</button>
+        <button onClick={() => item.case?.id && onOpenCase(item.case.id, { edit: true, returnToDashboard: true })}>补资料</button>
       </div>
     );
   }
@@ -1229,10 +1250,13 @@ function caseCanResume(caze = {}) {
   return ['失联暂停', '已放弃', '停用'].includes(caze.healthStatus);
 }
 
-function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueueItem }) {
+function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueueItem, editRequest = null, onEditRequestDone, onAfterEditSaved }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], monitor = {}, videos = [], viralAlerts = [], metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const canRunMaterialActions = activeQueueMatchesCaseMaterial(activeQueueItem, caze);
+  useEffect(() => {
+    if (editRequest?.token) setEditOpen(true);
+  }, [editRequest?.token]);
   const candidatesBySlot = useMemo(() => {
     const map = {};
     candidates.forEach((item) => {
@@ -1277,10 +1301,16 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueue
       {editOpen && (
         <CaseForm
           initial={caze}
-          onClose={() => setEditOpen(false)}
+          onClose={() => {
+            setEditOpen(false);
+            onEditRequestDone?.();
+          }}
           onSubmit={(payload) => onAct(async () => {
             await request(`/cases/${caze.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
             setEditOpen(false);
+            const returnToDashboard = Boolean(editRequest?.returnToDashboard);
+            onEditRequestDone?.();
+            onAfterEditSaved?.({ returnToDashboard });
           }, '案例信息已更新')}
         />
       )}

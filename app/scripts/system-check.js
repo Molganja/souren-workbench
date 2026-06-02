@@ -234,6 +234,15 @@ if (
 ) ok('补登记是账号级前置门禁，资料缺失账号不会同时交付、生成或剪辑');
 else fail('资料缺失账号仍可能带着交付、生成或剪辑动作进入首页队列');
 
+if (
+  mainSource.includes('caseEditRequest')
+  && mainSource.includes("onOpenCase(item.case.id, { edit: true, returnToDashboard: true })")
+  && mainSource.includes('editRequest?.token')
+  && mainSource.includes('onAfterEditSaved?.({ returnToDashboard })')
+  && mainSource.includes("setView('dashboard')")
+) ok('队首补资料直接打开编辑弹窗，保存后回到首页队列');
+else fail('补登记仍需要先打开案例再手动找编辑入口，或保存后不能回到首页队列');
+
 if (serverSource.includes('dashboardQueueHead') && serverSource.includes('当前队首不是准备类任务') && !serverSource.includes('for (const slot of dueSlots)')) ok('后台准备接口也只处理当前队首');
 else fail('后台准备接口仍可能批量推进今日队列');
 
