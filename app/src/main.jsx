@@ -1766,7 +1766,10 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
         <button onClick={onClose}>关闭</button>
         {isActiveQueueSlot && view.slot.status === '可交付' && (
           <button className="primary" disabled={!handoffReady} onClick={() => onAct(async () => {
-            await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
+            await request(`/slots/${view.slot.id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: '已派发', handoffDone: Array.from(handoffDone) })
+            });
             onClose();
           }, '已标记派发')}>已用微信发送</button>
         )}

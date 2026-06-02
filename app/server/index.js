@@ -3778,6 +3778,12 @@ app.patch('/api/slots/:id/status', (req, res) => {
   if (!canPatchSlotStatus(slot, status)) {
     return res.status(409).json({ error: '这个排期已经进入交付链路，不能直接改成这个状态' });
   }
+  if (status === '已派发') {
+    const guard = deliveryHandoffGuard(slot, req.body?.handoffDone || req.body?.deliveryChecklist);
+    if (!guard.ok) {
+      return res.status(409).json({ error: `交付动作还没完成：${guard.missing.map((item) => item.label).join('、')}` });
+    }
+  }
   run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', [status, now(), slot.id]);
   res.json(slotById(slot.id));
 });
@@ -3967,6 +3973,35 @@ function deliveryFileKind(fileName) {
   if (VIDEO_EXT.has(ext)) return '视频';
   if (TEXT_EXT.has(ext)) return '文案';
   return '文件';
+}
+
+function deliveryMediaStepKey(file) {
+  return `media:${file.path || file.url || file.name}`;
+}
+
+function deliveryRequiredHandoffSteps(view) {
+  if (!view) return [];
+  const texts = view.texts || {};
+  const steps = [];
+  if (view.shouldSendFreelancerGuide && texts.freelancerGuide) steps.push({ key: 'guide', label: '兼职须知' });
+  if (texts.operatorInstruction) steps.push({ key: 'operator', label: '发给兼职文案' });
+  if (texts.publishText) steps.push({ key: 'publish', label: '抖音发布文案' });
+  if (texts.publishRules) steps.push({ key: 'rules', label: '发布要求' });
+  if (view.isVideo && texts.voiceover) steps.push({ key: 'voiceover', label: '口播/字幕文案' });
+  if (view.isVideo && texts.editBrief) steps.push({ key: 'editBrief', label: '剪辑要求' });
+  (view.mediaFiles || []).forEach((file, index) => {
+    steps.push({ key: deliveryMediaStepKey(file), label: `${file.kind || '素材'}${index + 1}` });
+  });
+  return steps;
+}
+
+function deliveryHandoffGuard(slot, completed = []) {
+  const view = deliveryViewForSlot(slot);
+  if (!view || slot.status !== '可交付') return { ok: false, missing: [{ key: 'delivery', label: '交付内容' }] };
+  const completedSet = new Set(Array.isArray(completed) ? completed.map(String) : []);
+  const required = deliveryRequiredHandoffSteps(view);
+  const missing = required.filter((item) => !completedSet.has(item.key));
+  return { ok: missing.length === 0, required, missing };
 }
 
 function caseGuideAlreadySent(slot) {

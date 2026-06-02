@@ -154,6 +154,9 @@ else fail('交付弹窗缺少单账号固定步骤');
 if (mainSource.includes('deliveryRequiredSteps') && mainSource.includes('handoffReady') && mainSource.includes('missingHandoffSteps') && mainSource.includes('disabled={!handoffReady}') && mainSource.includes('handoffGuard')) ok('交付弹窗未完成复制下载步骤前不能标记派发');
 else fail('交付弹窗仍可跳过复制下载步骤直接标记派发');
 
+if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes("status === '已派发'") && serverSource.includes('交付动作还没完成') && mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端状态接口也要求交付步骤完成清单');
+else fail('后端状态接口仍可能绕过交付步骤门禁');
+
 const oldDeliveryConfirmLabel = '核' + '对发给兼职文案';
 if (mainSource.includes("copyAllowed = view.slot.status === '可交付'") && mainSource.includes('交付内容只读，避免重复发给同一个兼职') && mainSource.includes('确认发给兼职文案') && !mainSource.includes(oldDeliveryConfirmLabel)) ok('已派发交付内容只读，避免重复发送');
 else fail('已派发交付内容仍可能继续复制重发');

@@ -32,6 +32,23 @@ async function api(pathname, options = {}, base = BASE) {
   return data;
 }
 
+function deliveryMediaStepKey(file) {
+  return `media:${file.path || file.url || file.name}`;
+}
+
+function handoffDoneForDeliveryView(view) {
+  const texts = view.texts || {};
+  const keys = [];
+  if (view.shouldSendFreelancerGuide && texts.freelancerGuide) keys.push('guide');
+  if (texts.operatorInstruction) keys.push('operator');
+  if (texts.publishText) keys.push('publish');
+  if (texts.publishRules) keys.push('rules');
+  if (view.isVideo && texts.voiceover) keys.push('voiceover');
+  if (view.isVideo && texts.editBrief) keys.push('editBrief');
+  (view.mediaFiles || []).forEach((file) => keys.push(deliveryMediaStepKey(file)));
+  return keys;
+}
+
 async function waitForServer(child, base = BASE) {
   for (let i = 0; i < 40; i += 1) {
     if (child.exitCode !== null) throw new Error('server exited early');
@@ -832,7 +849,14 @@ async function main() {
     assert(queueDelivered.processedId === null || queueDelivered.deliveries.every((item) => item.slot.id === queueDelivered.processedId), 'dashboard delivery processed a non-head slot');
     if (queueDelivered.reason) assert(queueDelivered.reason.includes('不能越过队首') || queueDelivered.reason.includes('今日队列已清空'), 'dashboard delivery missing queue-head refusal reason');
 
-    await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
+    let dispatchWithoutChecklistRejected = false;
+    try {
+      await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
+    } catch (error) {
+      dispatchWithoutChecklistRejected = /交付动作还没完成/.test(error.message);
+    }
+    assert(dispatchWithoutChecklistRejected, 'ready delivery allowed dispatch without completed handoff checklist');
+    await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView) }) });
     const sentDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(sentDeliveryView.freelancerGuideAlreadySent === true, 'sent delivery should mark freelancer guide covered');
     assert(sentDeliveryView.shouldSendFreelancerGuide === false && !sentDeliveryView.texts.freelancerGuide, 'sent delivery should not keep freelancer guide copyable');
