@@ -347,12 +347,6 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
           <p className="eyebrow">今日 {data.today}</p>
           <h1>运营中控台</h1>
           <p>先处理下面这一条队列：生成、选择、交付、补素材、剪辑和爆款互动都在这里完成，账号清单只做概览。</p>
-          <div className="heroActions">
-            <button className="primary" onClick={() => onAct(
-              () => request('/dashboard/prepare-today', { method: 'POST' }),
-              (result) => `已准备：生成 ${result.generatedCount}，锁定 ${result.selectedCount}，交付 ${result.deliveryCount}`
-            )}>一键准备今日交付</button>
-          </div>
         </div>
         <div className="stats dashboardStats">
           {dashboardStats.map((item) => <Metric key={item.label} label={item.label} value={item.value} />)}

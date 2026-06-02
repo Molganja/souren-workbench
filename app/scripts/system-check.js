@@ -47,6 +47,9 @@ const leakedLabels = duplicateDashboardLabels.filter((label) => mainSource.inclu
 if (leakedLabels.length) fail(`首页仍包含重复任务区块：${leakedLabels.join('、')}`);
 else ok('首页任务入口已收敛为单一操作队列');
 
+if (!mainSource.includes('一键准备今日交付') && !mainSource.includes('/dashboard/prepare-today')) ok('首页不暴露批量准备入口');
+else fail('首页仍有绕过队首的一键批量准备入口');
+
 const nonDeliveryCopyLabels = ['复制补素材说明', '复制分析任务', '复制任务单', '复制图片提示词'];
 const leakedCopyLabels = nonDeliveryCopyLabels.filter((label) => mainSource.includes(label));
 if (leakedCopyLabels.length) fail(`非交付复制按钮仍存在：${leakedCopyLabels.join('、')}`);
@@ -58,13 +61,16 @@ else fail('首页缺少操作队列或账号概览');
 if (mainSource.includes('activePriority') && mainSource.includes('queueSummary') && mainSource.includes('后面还有')) ok('今日队列只开放队首任务操作');
 else fail('今日队列缺少队首防呆状态');
 
+const serverSource = fs.readFileSync(path.join(APP_DIR, 'server', 'index.js'), 'utf8');
+if (serverSource.includes('dashboardQueueHead') && serverSource.includes('当前队首不是准备类任务') && !serverSource.includes('for (const slot of dueSlots)')) ok('后台准备接口也只处理当前队首');
+else fail('后台准备接口仍可能批量推进今日队列');
+
 if (mainSource.includes('activeQueueMatchesSlot') && mainSource.includes('activeQueueMatchesClip') && mainSource.includes('activeQueueMatchesAlert') && mainSource.includes('排到今日队列队首后处理') && mainSource.includes('这条不是今日操作队列的当前任务') && mainSource.includes("copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot")) ok('二级页面不能绕过今日队首执行交付、剪辑和爆款互动动作');
 else fail('排期规划或案例详情仍可能绕过今日队首处理任务');
 
 if (mainSource.includes('今天发完了') && !mainSource.includes('今天没有必须处理的动作')) ok('今日队列清空后有明确完工状态');
 else fail('今日队列清空状态仍不明确');
 
-const serverSource = fs.readFileSync(path.join(APP_DIR, 'server', 'index.js'), 'utf8');
 if (serverSource.includes('固定剪辑配方') && serverSource.includes('不临时改结构')) ok('视频交付和剪辑任务内置固定剪辑配方');
 else fail('缺少固定剪辑配方');
 

@@ -575,13 +575,18 @@ async function main() {
 
     const prepareSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
-      body: JSON.stringify({ date: '2026-06-01', contentKind: '日常养号', stage: '起号期', goal: '一键准备验收' })
+      body: JSON.stringify({ date: '2026-06-01', contentKind: '日常养号', stage: '起号期', goal: '队首准备验收' })
     });
     const prepared = await api('/dashboard/prepare-today', { method: 'POST' });
-    assert(prepared.generatedCount >= 1 && prepared.selectedCount >= 1 && prepared.deliveryCount >= 1, 'dashboard prepare today did not complete the chain');
+    assert(prepared.deliveryCount <= 1 && prepared.deliveries.length <= 1, 'dashboard prepare today processed more than one queue item');
+    assert(prepared.processedId === null || prepared.processedId === prepared.queueHead?.slot?.id, 'dashboard prepare today did not stay on queue head');
     const preparedDetail = await api(`/cases/${caze.id}`);
     const preparedSlot = preparedDetail.slots.find((item) => item.id === prepareSlot.id);
-    assert(preparedSlot.status === '可交付' && preparedSlot.deliveryDir, 'prepared slot not ready for delivery');
+    if (prepared.processedId === prepareSlot.id) {
+      assert(['可交付', '素材阻塞'].includes(preparedSlot.status), 'queue-head prepare did not advance the current slot');
+    } else {
+      assert(preparedSlot.status === '待生成' && !preparedSlot.deliveryDir, 'dashboard prepare today jumped past the queue head');
+    }
 
     const manualSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',

@@ -3163,6 +3163,48 @@ function dashboard() {
   };
 }
 
+function dashboardQueueHead(data = {}) {
+  const items = [];
+  (data.viralAlerts || []).forEach((alert) => {
+    items.push({
+      id: `alert-${alert.id}`,
+      priority: alert.level === 'high' ? 120 : 110,
+      kind: '爆款互动',
+      alert
+    });
+  });
+  (data.readyDelivery || []).forEach((slot) => {
+    items.push({ id: `delivery-${slot.id}`, priority: 100, kind: '微信交付', slot });
+  });
+  (data.todaySlots || []).filter((slot) => slot.status === '已锁定').forEach((slot) => {
+    items.push({ id: `locked-${slot.id}`, priority: 88, kind: '生成交付', slot });
+  });
+  (data.pendingChoose || []).forEach((slot) => {
+    items.push({ id: `choose-${slot.id}`, priority: 82, kind: '选候选', slot });
+  });
+  (data.todaySlots || []).filter((slot) => ['素材阻塞', '异常'].includes(slot.status)).forEach((slot) => {
+    items.push({ id: `blocked-${slot.id}`, priority: slot.status === '异常' ? 79 : 78, kind: slot.status === '异常' ? '异常处理' : '补素材', slot });
+  });
+  (data.materialSync || []).forEach((row) => {
+    items.push({ id: `sync-${row.caseId}`, priority: row.status === '目录不可用' ? 78 : 76, kind: '素材同步', materialSync: row });
+  });
+  (data.pendingGenerate || []).forEach((slot) => {
+    items.push({ id: `generate-${slot.id}`, priority: 65, kind: '生成候选', slot });
+  });
+  (data.monitorActions || [])
+    .filter((item) => item.kind !== '账号采集' && item.kind !== '爆款互动')
+    .forEach((item) => {
+      items.push({ id: `strategy-${item.id}`, priority: item.priority || 55, kind: item.kind, monitorAction: item });
+    });
+  (data.clipTasks || []).forEach((task) => {
+    items.push({ id: `clip-${task.id}`, priority: 42, kind: '剪辑任务', clipTask: task });
+  });
+  (data.todaySlots || []).filter((slot) => slot.status === '已派发').forEach((slot) => {
+    items.push({ id: `sent-${slot.id}`, priority: 35, kind: '等确认', slot });
+  });
+  return items.sort((a, b) => b.priority - a.priority)[0] || null;
+}
+
 const OPERATOR_FLOW = [
   ['待生成', '系统生成 3 条候选稿'],
   ['候选待选', '运营选择一条锁定'],
@@ -3327,36 +3369,48 @@ app.post('/api/dashboard/deliver-today', (req, res) => {
 });
 
 app.post('/api/dashboard/prepare-today', async (_req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const dueSlots = all(
-    'SELECT * FROM plan_slots WHERE date <= ? AND status IN (?, ?, ?) ORDER BY date ASC, created_at ASC',
-    [today, '待生成', '候选待选', '已锁定']
-  ).map(rowSlot);
+  const queueHead = dashboardQueueHead(dashboard());
   let generatedCount = 0;
   let selectedCount = 0;
   let deliveryCount = 0;
   const deliveries = [];
-  for (const slot of dueSlots) {
-    let current = slotById(slot.id);
-    if (current.status === '待生成') {
-      const drafts = await generateCandidatesForSlot(current);
-      if (drafts.length) generatedCount += 1;
-      current = slotById(slot.id);
-    }
-    if (current.status === '候选待选') {
-      const selected = selectRecommendedCandidate(current.id);
-      if (selected) selectedCount += 1;
-      current = slotById(slot.id);
-    }
-    if (current.status === '已锁定') {
-      const result = createDeliveryForSlot(current);
-      if (result && !result.blocked) {
-        deliveries.push(result);
-        deliveryCount += 1;
-      }
+  if (!queueHead?.slot || !['待生成', '候选待选', '已锁定'].includes(queueHead.slot.status)) {
+    return res.json({
+      generatedCount,
+      selectedCount,
+      deliveryCount,
+      deliveries,
+      processedId: null,
+      queueHead,
+      reason: queueHead ? '当前队首不是准备类任务，不能越过队首批量推进。' : '今日队列已清空。'
+    });
+  }
+  let current = slotById(queueHead.slot.id);
+  if (current.status === '待生成') {
+    const drafts = await generateCandidatesForSlot(current);
+    if (drafts.length) generatedCount += 1;
+    current = slotById(current.id);
+  }
+  if (current.status === '候选待选') {
+    const selected = selectRecommendedCandidate(current.id);
+    if (selected) selectedCount += 1;
+    current = slotById(current.id);
+  }
+  if (current.status === '已锁定') {
+    const result = createDeliveryForSlot(current);
+    if (result && !result.blocked) {
+      deliveries.push(result);
+      deliveryCount += 1;
     }
   }
-  res.json({ generatedCount, selectedCount, deliveryCount, deliveries });
+  res.json({
+    generatedCount,
+    selectedCount,
+    deliveryCount,
+    deliveries,
+    processedId: current.id,
+    queueHead
+  });
 });
 
 app.get('/api/review', (_req, res) => {
