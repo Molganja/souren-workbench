@@ -447,6 +447,13 @@ function activeQueueMatchesAlert(activeQueueItem, alert) {
   return Boolean(activeQueueItem?.alert?.id && alert?.id && activeQueueItem.alert.id === alert.id);
 }
 
+function activeQueueMatchesCaseMaterial(activeQueueItem, caze) {
+  if (!activeQueueItem || !caze?.id) return false;
+  if (activeQueueItem.materialSync?.caseId === caze.id || activeQueueItem.materialSync?.case?.id === caze.id) return true;
+  if (activeQueueItem.slot?.caseId === caze.id && ['素材阻塞', '异常'].includes(activeQueueItem.slot.status)) return true;
+  return false;
+}
+
 function buildPriorityActions(data = {}, strategyActions = []) {
   const items = [];
   (data.viralAlerts || []).forEach((alert) => {
@@ -1229,6 +1236,7 @@ function caseCanResume(caze = {}) {
 function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, activeQueueItem }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], monitor = {}, videos = [], viralAlerts = [], metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
+  const canRunMaterialActions = activeQueueMatchesCaseMaterial(activeQueueItem, caze);
   const candidatesBySlot = useMemo(() => {
     const map = {};
     candidates.forEach((item) => {
@@ -1259,11 +1267,12 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
         </div>
         <div className="headerActions">
           <button onClick={() => setEditOpen(true)}>编辑案例</button>
-          <button disabled={!caze.sourceMaterialDir} onClick={() => onAct(
+          {canRunMaterialActions && <button disabled={!caze.sourceMaterialDir} onClick={() => onAct(
             () => request(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' }),
             (result) => `已同步共享素材：复制 ${result.copied} 个，新增 ${result.inserted} 个`
-          )}>同步共享素材</button>
-          <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>
+          )}>同步共享素材</button>}
+          {canRunMaterialActions && <button onClick={() => onAct(() => request(`/cases/${caze.id}/scan-assets`, { method: 'POST' }), '素材扫描完成')}>扫描素材</button>}
+          {!canRunMaterialActions && <span className="lockedNote">素材动作排到今日队列队首后处理</span>}
           {canOpenLocalPaths && caze.sourceMaterialDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.sourceMaterialDir }) }), '已打开共享素材目录')}>打开共享目录</button>}
           {canOpenLocalPaths && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开案例目录')}>打开素材目录</button>}
           {caze.douyinUrl && <a className="button" href={caze.douyinUrl} target="_blank">打开抖音主页</a>}
