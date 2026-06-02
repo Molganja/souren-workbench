@@ -2678,6 +2678,9 @@ function dashboard() {
   const monitorActions = monitorActionQueue(monitor);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
+  const operatorStatuses = new Set(OPERATOR_FLOW.map(([status]) => status));
+  const dueSlots = slots.filter((s) => s.date <= today && operatorStatuses.has(s.status));
+  const dueCaseIds = new Set(dueSlots.map((slot) => slot.caseId));
   const materialSyncRows = cases
     .map((caze) => {
       const caseAssets = assets.filter((asset) => asset.caseId === caze.id);
@@ -2725,12 +2728,12 @@ function dashboard() {
     viralAlerts: monitor.viralAlerts,
     counts: {
       cases: cases.length,
-      pendingGenerate: slots.filter((s) => s.status === '待生成').length,
-      pendingChoose: slots.filter((s) => s.status === '候选待选').length,
-      locked: slots.filter((s) => s.status === '已锁定').length,
-      readyDelivery: slots.filter((s) => s.status === '可交付').length,
-      sentWaitReport: slots.filter((s) => s.status === '已派发').length,
-      completed: slots.filter((s) => s.status === '已完成').length,
+      pendingGenerate: dueSlots.filter((s) => s.status === '待生成').length,
+      pendingChoose: dueSlots.filter((s) => s.status === '候选待选').length,
+      locked: dueSlots.filter((s) => s.status === '已锁定').length,
+      readyDelivery: dueSlots.filter((s) => s.status === '可交付').length,
+      sentWaitReport: dueSlots.filter((s) => s.status === '已派发').length,
+      completed: dueSlots.filter((s) => s.status === '已完成').length,
       viralAlerts: monitor.totals.viralAlerts,
       monitorActions: monitorActions.length,
       monitoredAccounts: monitor.totals.monitoredAccounts,
@@ -2739,16 +2742,16 @@ function dashboard() {
       imageTasks: imageTasks.filter((item) => OPEN_IMAGE_STATUSES.includes(item.status)).length,
       imageWaitingKey: imageTasks.filter((item) => item.status === 'waiting_key').length,
       clipTasks: clipTasks.filter((item) => OPEN_CLIP_STATUSES.includes(item.status)).length,
-      materialGaps: caseHealthRows.reduce((sum, item) => sum + item.materialGaps.length, 0),
-      requiredMaterialGaps: caseHealthRows.reduce((sum, item) => sum + item.requiredGapCount, 0),
+      materialGaps: caseHealthRows.filter((item) => dueCaseIds.has(item.id)).reduce((sum, item) => sum + item.materialGaps.length, 0),
+      requiredMaterialGaps: caseHealthRows.filter((item) => dueCaseIds.has(item.id)).reduce((sum, item) => sum + item.requiredGapCount, 0),
       materialSync: materialSyncRows.length,
       materialSyncFiles: materialSyncRows.reduce((sum, item) => sum + item.unsyncedCount, 0),
-      blocked: slots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
+      blocked: dueSlots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
     },
-    todaySlots: slots.filter((s) => s.date <= today && OPERATOR_FLOW.some(([status]) => status === s.status)).map(withCase),
-    pendingGenerate: slots.filter((s) => s.status === '待生成').slice(0, 30).map(withCase),
-    pendingChoose: slots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
-    readyDelivery: slots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
+    todaySlots: dueSlots.map(withCase),
+    pendingGenerate: dueSlots.filter((s) => s.status === '待生成').slice(0, 30).map(withCase),
+    pendingChoose: dueSlots.filter((s) => s.status === '候选待选').slice(0, 30).map(withCase),
+    readyDelivery: dueSlots.filter((s) => s.status === '可交付').slice(0, 30).map(withCase),
     imageTasks: imageTasks
       .filter((item) => OPEN_IMAGE_STATUSES.includes(item.status))
       .slice(0, 20)

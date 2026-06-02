@@ -342,6 +342,8 @@ async function main() {
     assert(minimalCase.slotsCreated === 3, 'minimal case did not auto generate slots');
     const minimalDetail = await api(`/cases/${minimalCase.id}`);
     assert(minimalDetail.slots.length === 3 && minimalDetail.slots.every((item) => item.status === '待生成'), 'minimal case slots missing');
+    const dueOnlyDashboard = await api('/dashboard');
+    assert(dueOnlyDashboard.pendingGenerate.every((item) => item.date <= dueOnlyDashboard.today), 'dashboard leaked future pending generation slots');
     const noAssetSlot = minimalDetail.slots[0];
     const noAssetDrafts = await api(`/slots/${noAssetSlot.id}/generate-candidates`, { method: 'POST' });
     await api(`/candidates/${noAssetDrafts[0].id}/select`, { method: 'POST' });

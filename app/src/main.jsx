@@ -396,10 +396,10 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
         </div>
         <div className="stats">
           <Metric label="今日任务" value={data.todaySlots.length} />
-          <Metric label="待生成" value={data.counts.pendingGenerate} />
-          <Metric label="待选择" value={data.counts.pendingChoose} />
-          <Metric label="待交付" value={data.counts.readyDelivery} />
-          <Metric label="等回传" value={data.counts.sentWaitReport} />
+          <Metric label="今日待生成" value={data.counts.pendingGenerate} />
+          <Metric label="今日待选" value={data.counts.pendingChoose} />
+          <Metric label="今日待交付" value={data.counts.readyDelivery} />
+          <Metric label="今日等回传" value={data.counts.sentWaitReport} />
           <Metric label="爆款提醒" value={data.counts.viralAlerts || 0} />
           <Metric label="策略动作" value={strategyActions.length} />
           <Metric label="阻塞" value={data.counts.blocked || 0} />
