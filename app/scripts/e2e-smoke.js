@@ -1165,6 +1165,20 @@ async function main() {
     const clipColumns = clipSchemaDb.prepare('PRAGMA table_info(clip_tasks)').all().map((item) => item.name);
     clipSchemaDb.close();
     assert(!clipColumns.includes('output_dir') && !clipColumns.includes('final_video_path'), 'clip task table still keeps local output columns');
+    let clipReviewStatusRejected = false;
+    try {
+      await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'review' }) });
+    } catch (error) {
+      clipReviewStatusRejected = /只需要标记已完成/.test(error.message);
+    }
+    assert(clipReviewStatusRejected, 'clip task allowed a waiting-confirm status');
+    let clipRejectedStatusRejected = false;
+    try {
+      await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'rejected' }) });
+    } catch (error) {
+      clipRejectedStatusRejected = /只需要标记已完成/.test(error.message);
+    }
+    assert(clipRejectedStatusRejected, 'clip task allowed a rework status instead of staying pending');
     let clipCompletedWithoutRecipeRejected = false;
     try {
       await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) });

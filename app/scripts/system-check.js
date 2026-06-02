@@ -274,12 +274,13 @@ if (
   !serverSource.includes('已通过') &&
   !serverSource.includes('已驳回') &&
   !mainSource.includes('待确认</button>') &&
+  !mainSource.includes('等确认</button>') &&
   !mainSource.includes('退回处理') &&
+  !mainSource.includes('需要重剪') &&
   !mainSource.includes('已按配方完成') &&
   mainSource.includes('重新生成候选') &&
   mainSource.includes('暂缓这条') &&
   mainSource.includes('待检查') &&
-  mainSource.includes('需要重剪') &&
   mainSource.includes('剪辑已完成')
 ) ok('候选、图片和剪辑使用日常话术，不暴露技术口径');
 else fail('候选、图片或剪辑仍有重 roll、审核、驳回等技术口径');
@@ -608,7 +609,21 @@ else fail('编辑案例后端仍可能接受空微信、空项目、旧人设或
 if (serverSource.includes('alreadyExisting') && serverSource.includes('SELECT * FROM clip_tasks WHERE plan_slot_id = ?') && mainSource.includes('existingClipTask') && mainSource.includes('剪辑任务已建')) ok('同一排期不会重复创建剪辑任务');
 else fail('同一排期仍可能重复创建剪辑任务');
 
-if (mainSource.includes('ClipTaskModal') && mainSource.includes('我已看完固定配方') && mainSource.includes('recipeConfirmed: true') && !mainSource.includes('CLIP_ACTIONS') && serverSource.includes('完成剪辑前必须先确认已看完固定剪辑配方') && smokeSource.includes('clipCompletedWithoutRecipeRejected')) ok('剪辑任务必须先查看完整固定配方才能标记完成');
+if (
+  mainSource.includes('ClipTaskModal') &&
+  mainSource.includes('我已看完固定配方') &&
+  mainSource.includes('recipeConfirmed: true') &&
+  !mainSource.includes('CLIP_ACTIONS') &&
+  !mainSource.includes("patchClipStatus('review')") &&
+  !mainSource.includes("patchClipStatus('rejected')") &&
+  serverSource.includes('完成剪辑前必须先确认已看完固定剪辑配方') &&
+  serverSource.includes("OPEN_CLIP_STATUSES = ['waiting_edit', 'draft']") &&
+  serverSource.includes('剪辑任务只需要标记已完成') &&
+  dbSource.includes("WHERE status IN ('review', 'rejected')") &&
+  smokeSource.includes('clipCompletedWithoutRecipeRejected') &&
+  smokeSource.includes('clip task allowed a waiting-confirm status') &&
+  smokeSource.includes('clip task allowed a rework status instead of staying pending')
+) ok('剪辑任务必须先查看完整固定配方才能标记完成，且不再制造中间确认状态');
 else fail('剪辑任务仍可能不看配方直接标记完成');
 
 if ((mainSource.includes('先打开完整剪辑要求并确认看完配方') || serverSource.includes('先打开完整剪辑要求并确认看完配方')) && readmeSource.includes('打开完整要求并确认看完配方') && !readmeSource.includes('可在首页查看并标记状态')) ok('剪辑任务前台和文档不再保留直接标记旧口径');

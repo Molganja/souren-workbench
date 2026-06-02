@@ -1558,8 +1558,6 @@ function ClipTaskModal({ task, onClose, onAct, activeQueueItem }) {
       )}
       <div className="modalActions">
         <button onClick={onClose}>关闭</button>
-        {isActiveQueueClip && <button onClick={() => patchClipStatus('review')}>等确认</button>}
-        {isActiveQueueClip && <button onClick={() => patchClipStatus('rejected')}>需要重剪</button>}
         {isActiveQueueClip && <button className="primary" disabled={!completeReady} onClick={() => patchClipStatus('completed', { recipeConfirmed: true })}>剪辑已完成</button>}
       </div>
     </Modal>

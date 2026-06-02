@@ -117,7 +117,8 @@ const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
-const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
+const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft'];
+const ALLOWED_CLIP_STATUSES = ['waiting_edit', 'draft', 'completed'];
 const OPEN_COLLECTION_STATUSES = ['waiting_chrome'];
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
@@ -5148,6 +5149,9 @@ app.patch('/api/clip-tasks/:id', (req, res) => {
   if (!task) return res.status(404).json({ error: 'clip task not found' });
   const body = req.body || {};
   const nextStatus = body.status ?? task.status;
+  if (!ALLOWED_CLIP_STATUSES.includes(nextStatus)) {
+    return res.status(400).json({ error: '剪辑任务只需要标记已完成；未完成时保持待剪辑，不再设置中间确认状态。' });
+  }
   try {
     if (nextStatus !== task.status) requireQueueHeadForClipTask(req, task, '改状态');
   } catch (error) {

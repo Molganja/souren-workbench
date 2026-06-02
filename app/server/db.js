@@ -246,6 +246,7 @@ ensureColumn('cases', 'source_material_dir', 'TEXT');
 ensureColumn('assets', 'origin_path', 'TEXT');
 dropColumn('clip_tasks', 'output_dir');
 dropColumn('clip_tasks', 'final_video_path');
+db.prepare("UPDATE clip_tasks SET status = 'waiting_edit', updated_at = ? WHERE status IN ('review', 'rejected')").run(new Date().toISOString());
 
 export function now() {
   return new Date().toISOString();
