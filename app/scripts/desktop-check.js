@@ -38,6 +38,9 @@ else fail('客户端打包未显式排除真实 .env');
 if (files.includes('dist/**/*') && files.includes('server/**/*') && files.includes('electron/**/*')) ok('客户端打包包含前端、后端和桌面壳');
 else fail('客户端打包文件范围不完整');
 
+if (files.includes('scripts/douyin-chrome-collector.js') && !files.includes('!scripts/**/*')) ok('客户端打包包含主机侧抖音采集执行器');
+else fail('客户端打包仍会排除主机侧抖音采集执行器');
+
 const electronMainText = fs.readFileSync(electronMain, 'utf8');
 if (electronMainText.includes('import(serverUrl)') && electronMainText.includes('pathToFileURL')) ok('桌面端使用 Electron 内置 Node 启动后端');
 else fail('桌面端未使用 Electron 内置 Node 启动后端');

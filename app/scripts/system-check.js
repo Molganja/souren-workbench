@@ -47,6 +47,7 @@ const styleSource = fs.readFileSync(path.join(APP_DIR, 'src', 'styles.css'), 'ut
 const dbSource = fs.readFileSync(path.join(APP_DIR, 'server', 'db.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(APP_DIR, 'server', 'index.js'), 'utf8');
 const packageSource = fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8');
+const envExampleSource = fs.readFileSync(path.join(APP_DIR, '.env.example'), 'utf8');
 const smokeSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'e2e-smoke.js'), 'utf8');
 const collectorSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'douyin-chrome-collector.js'), 'utf8');
 const readmeSource = [
@@ -197,6 +198,8 @@ else fail('定时/手动采集登记仍可能绕过队列去重复创建 Chrome 
 if (
   packageSource.includes('collect:douyin')
   && packageSource.includes('collect:douyin:self-test')
+  && packageSource.includes('scripts/douyin-chrome-collector.js')
+  && !packageSource.includes('!scripts/**/*')
   && collectorSource.includes('readChromePage')
   && collectorSource.includes('Google Chrome')
   && collectorSource.includes('/douyin-monitor/chrome-queue')
@@ -205,6 +208,14 @@ if (
   && collectorSource.includes('OK Douyin Chrome collector self-test')
 ) ok('主机侧 Chrome 抖音采集执行器已接入，并带自测和不伪造数据保护');
 else fail('缺少可运行的主机侧 Chrome 抖音采集执行器，或执行器可能伪造采集数据');
+
+if (
+  envExampleSource.includes('SOUREN_CASE_LIBRARY_ROOT=')
+  && envExampleSource.includes('SOUREN_SHARED_MATERIAL_ROOT=')
+  && envExampleSource.includes('DOUYIN_COLLECTION_CHECK_INTERVAL_MS=')
+  && envExampleSource.includes('IMAGE_API_KEY=')
+) ok('.env.example 覆盖共享目录、采集间隔和图片接口关键配置');
+else fail('.env.example 缺少共享目录、采集间隔或图片接口关键配置');
 
 if (
   mainSource.includes('<h3>采集状态</h3>')

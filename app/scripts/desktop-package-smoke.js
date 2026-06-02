@@ -7,6 +7,8 @@ const pkg = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8
 const productName = pkg.build?.productName || '素人种草运营工作台';
 const packageDir = process.arch === 'arm64' ? 'mac-arm64' : 'mac';
 const appExe = path.join(APP_DIR, 'release', packageDir, `${productName}.app`, 'Contents', 'MacOS', productName);
+const appResources = path.join(APP_DIR, 'release', packageDir, `${productName}.app`, 'Contents', 'Resources', 'app');
+const packagedCollector = path.join(appResources, 'scripts', 'douyin-chrome-collector.js');
 const port = Number(process.env.PACKAGE_SMOKE_PORT || (5196 + (process.pid % 300)));
 const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -64,6 +66,7 @@ async function main() {
     return;
   }
   assert(fs.existsSync(appExe), `缺少打包后的客户端，请先运行 npm run client:mac\n${appExe}`);
+  assert(fs.existsSync(packagedCollector), `客户端包缺少主机侧抖音采集执行器\n${packagedCollector}`);
   assert(!(await portIsBusy()), `端口 ${port} 已被占用，请设置 PACKAGE_SMOKE_PORT 换一个端口`);
 
   const logLines = [];
