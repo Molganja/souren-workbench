@@ -400,6 +400,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
           <Metric label="待采集" value={data.counts.dueCollection || 0} />
           <Metric label="数据动作" value={data.counts.monitorActions || 0} />
           <Metric label="阻塞" value={data.counts.blocked || 0} />
+          <Metric label="待同步" value={data.counts.materialSync || 0} />
           <Metric label="必补素材" value={data.counts.requiredMaterialGaps || 0} />
           <Metric label="图片任务" value={data.counts.imageTasks || 0} />
           <Metric label="剪辑任务" value={data.counts.clipTasks || 0} />
@@ -409,6 +410,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
 
       <MonitorActionSection items={data.monitorActions || []} onOpenCase={onOpenCase} onAct={onAct} />
       <MonitorSection monitor={data.monitor} onOpenCase={onOpenCase} onAct={onAct} onCopy={onCopy} />
+      <MaterialSyncSection items={data.materialSync || []} onOpenCase={onOpenCase} onAct={onAct} canOpenLocalPaths={canOpenLocalPaths} />
 
       <section className="panel beginnerPanel">
         <div className="sectionHead">
@@ -665,6 +667,46 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
             setIngestAccount(null);
           }, '账号数据已回填')}
         />
+      )}
+    </section>
+  );
+}
+
+function MaterialSyncSection({ items, onOpenCase, onAct, canOpenLocalPaths }) {
+  return (
+    <section className="panel alertPanel">
+      <div className="sectionHead">
+        <h2>待同步共享素材</h2>
+        <span>{items.length} 个案例</span>
+      </div>
+      {items.length === 0 ? <div className="empty">共享目录没有待同步素材</div> : (
+        <div className="taskList">
+          {items.map((item) => (
+            <div className="taskRow" key={item.caseId}>
+              <div className="dateBox">
+                <strong>{item.status}</strong>
+                <span>{item.unsyncedCount || '—'}</span>
+              </div>
+              <div className="taskMain">
+                <div className="rowTitle">
+                  <button className="linkButton" onClick={() => item.case?.id && onOpenCase(item.case.id)}>{item.case?.weixinNick || '未知账号'}</button>
+                  <span className={`status ${item.status === '目录不可用' ? 'bad' : 'wait'}`}>{item.status === '目录不可用' ? '检查共享路径' : '共享目录有新素材'}</span>
+                </div>
+                <p>{item.sourceDir || '未填写共享目录'}</p>
+                <small>共享目录 {item.sourceFileCount || 0} 个素材，已同步 {item.syncedCount || 0} 个，待同步 {item.unsyncedCount || 0} 个。</small>
+                {item.sampleFiles?.length > 0 && <small>{item.sampleFiles.slice(0, 3).join(' / ')}</small>}
+              </div>
+              <div className="rowActions">
+                {item.status === '待同步' && item.case?.id && <button onClick={() => onAct(
+                  () => request(`/cases/${item.case.id}/sync-source-materials`, { method: 'POST' }),
+                  (result) => `已同步共享素材：复制 ${result.copied} 个，新增 ${result.inserted} 个`
+                )}>同步共享素材</button>}
+                <button onClick={() => item.case?.id && onOpenCase(item.case.id)}>打开案例</button>
+                {canOpenLocalPaths && item.sourceDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: item.sourceDir }) }), '已打开共享目录')}>打开共享目录</button>}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -989,8 +1031,8 @@ function buildBeginnerSteps(data) {
     },
     {
       title: '处理素材缺口',
-      count: (counts.blocked || 0) + (counts.requiredMaterialGaps || 0),
-      note: '缺素材时复制补素材说明，或创建图片/剪辑任务。'
+      count: (counts.materialSync || 0) + (counts.blocked || 0) + (counts.requiredMaterialGaps || 0),
+      note: '先同步共享素材，再处理缺口或创建图片/剪辑任务。'
     },
     {
       title: '微信交付',

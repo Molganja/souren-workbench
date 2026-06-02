@@ -288,6 +288,14 @@ async function main() {
     const syncedAssetPath = path.join(caze.localCaseDir, '00-原始素材', '共享同步', '共享-D1.jpg');
     assert(fs.existsSync(syncedAssetPath), 'synced source material missing in local case dir');
     assert(syncedMaterials.assets.some((asset) => asset.path === syncedAssetPath && asset.originPath === path.join(sharedSourceDir, '共享-D1.jpg') && asset.source === '共享导入' && asset.usage === '案例过程'), 'synced source material metadata missing');
+    fs.writeFileSync(path.join(sharedSourceDir, '共享-对比.jpg'), 'fake unsynced shared case image');
+    const beforeSyncDashboard = await api('/dashboard');
+    const pendingSync = beforeSyncDashboard.materialSync.find((item) => item.case?.id === caze.id);
+    assert(beforeSyncDashboard.counts.materialSync >= 1 && pendingSync?.unsyncedCount === 1, 'dashboard missing pending shared material sync');
+    const syncedAgain = await api(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' });
+    assert(syncedAgain.copied === 1 && syncedAgain.inserted === 1, 'second source material sync did not copy new file');
+    const afterSyncDashboard = await api('/dashboard');
+    assert(!afterSyncDashboard.materialSync.some((item) => item.case?.id === caze.id), 'dashboard still shows synced case as pending material sync');
     const minimalCase = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', staff: '咨询Z', generateSlots: true, days: 3 })

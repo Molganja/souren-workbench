@@ -1494,6 +1494,52 @@ function syncCaseSourceMaterials(caze) {
   return { sourceDir: resolvedSource, targetRoot, copied, inserted };
 }
 
+function caseSourceMaterialStatus(caze, caseAssets = []) {
+  const sourceDir = String(caze.sourceMaterialDir || '').trim();
+  if (!sourceDir) {
+    return {
+      caseId: caze.id,
+      sourceDir: '',
+      status: '未填写',
+      sourceFileCount: 0,
+      syncedCount: 0,
+      unsyncedCount: 0,
+      sampleFiles: []
+    };
+  }
+  const resolvedSource = path.resolve(sourceDir);
+  if (!fs.existsSync(resolvedSource) || !fs.statSync(resolvedSource).isDirectory()) {
+    return {
+      caseId: caze.id,
+      sourceDir: resolvedSource,
+      status: '目录不可用',
+      sourceFileCount: 0,
+      syncedCount: 0,
+      unsyncedCount: 0,
+      sampleFiles: []
+    };
+  }
+  const sourceFiles = walkFiles(resolvedSource).filter(isSupportedAssetFile).map((file) => path.resolve(file));
+  const sourceSet = new Set(sourceFiles);
+  const syncedSet = new Set(
+    caseAssets
+      .map((asset) => asset.originPath)
+      .filter(Boolean)
+      .map((file) => path.resolve(file))
+      .filter((file) => sourceSet.has(file))
+  );
+  const unsyncedFiles = sourceFiles.filter((file) => !syncedSet.has(file));
+  return {
+    caseId: caze.id,
+    sourceDir: resolvedSource,
+    status: unsyncedFiles.length > 0 ? '待同步' : '已同步',
+    sourceFileCount: sourceFiles.length,
+    syncedCount: syncedSet.size,
+    unsyncedCount: unsyncedFiles.length,
+    sampleFiles: unsyncedFiles.slice(0, 5)
+  };
+}
+
 function sharedAssetCategory(file) {
   const rel = path.relative(SHARED_MATERIAL_ROOT, file);
   const first = rel.split(path.sep)[0];
@@ -2265,6 +2311,7 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   const recentViral = caseSlots.filter((s) => s.contentKind === '爆款提权' && s.date >= addDays(today, -7)).length;
   const gaps = materialGaps(caze.project, caseAssets);
   const requiredMissing = gaps.filter((gap) => gap.required && gap.count === 0).length;
+  const sourceStatus = caseSourceMaterialStatus(caze, caseAssets);
   const latest = metrics[0];
   const prev = metrics[1];
 
@@ -2283,6 +2330,14 @@ function caseHealth(caze, caseSlots, caseAssets, metrics, today, monitor = {}) {
   if (caseAssets.length === 0) {
     reasons.push('素材未扫描');
     actions.push(caze.sourceMaterialDir ? '先同步共享素材，再扫描并标记可用素材' : '填写共享原始素材路径，或把原始素材放入 00-原始素材 后扫描素材');
+  }
+  if (sourceStatus.status === '待同步') {
+    reasons.push(`共享素材待同步 ${sourceStatus.unsyncedCount} 个`);
+    actions.push('首页处理“待同步共享素材”，同步后检查素材分类并标记可用');
+  }
+  if (sourceStatus.status === '目录不可用') {
+    reasons.push('共享原始素材目录不可用');
+    actions.push('检查共享盘/服务器挂载路径，或编辑案例更新共享原始素材路径');
   }
   if (requiredMissing > 0) {
     reasons.push(`必补素材 ${requiredMissing} 项`);
@@ -2588,6 +2643,17 @@ function dashboard() {
   const monitorActions = monitorActionQueue(monitor);
   const today = new Date().toISOString().slice(0, 10);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
+  const materialSyncRows = cases
+    .map((caze) => {
+      const caseAssets = assets.filter((asset) => asset.caseId === caze.id);
+      return {
+        ...caseSourceMaterialStatus(caze, caseAssets),
+        case: caze
+      };
+    })
+    .filter((item) => ['待同步', '目录不可用'].includes(item.status))
+    .sort((a, b) => b.unsyncedCount - a.unsyncedCount)
+    .slice(0, 30);
   const caseHealthRows = cases.map((caze) => {
     const caseSlots = slots.filter((s) => s.caseId === caze.id);
     const caseAssets = assets.filter((a) => a.caseId === caze.id);
@@ -2640,6 +2706,8 @@ function dashboard() {
       clipTasks: clipTasks.filter((item) => OPEN_CLIP_STATUSES.includes(item.status)).length,
       materialGaps: caseHealthRows.reduce((sum, item) => sum + item.materialGaps.length, 0),
       requiredMaterialGaps: caseHealthRows.reduce((sum, item) => sum + item.requiredGapCount, 0),
+      materialSync: materialSyncRows.length,
+      materialSyncFiles: materialSyncRows.reduce((sum, item) => sum + item.unsyncedCount, 0),
       blocked: slots.filter((s) => s.status === '素材阻塞' || s.status === '异常').length
     },
     todaySlots: slots.filter((s) => s.date <= today && OPERATOR_FLOW.some(([status]) => status === s.status)).map(withCase),
@@ -2655,6 +2723,7 @@ function dashboard() {
       .slice(0, 20)
       .map((item) => ({ ...item, case: byCase[item.caseId] || null })),
     pendingViralTemplates: viralTemplates.filter(isPendingViralTemplate).slice(0, 20),
+    materialSync: materialSyncRows,
     abnormalCases: caseHealthRows
       .filter((caze) => caze.reasons.length > 0 || caze.materialGaps.length > 0 || caze.activeViralAlerts.length > 0 || caze.dueCollection)
       .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.requiredGapCount + b.materialGaps.length + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.requiredGapCount + a.materialGaps.length + a.reasons.length))
