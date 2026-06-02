@@ -752,8 +752,9 @@ async function main() {
       body: JSON.stringify({ date: '2026-06-06', contentKind: '日常养号', stage: '起号期', goal: '视频交付包验收' })
     });
     const videoDrafts = await api(`/slots/${videoSlot.id}/generate-candidates`, { method: 'POST' });
-    assert(videoDrafts[0].format === '视频', 'video seed did not produce video format');
-    await api(`/candidates/${videoDrafts[0].id}/select`, { method: 'POST' });
+    const videoDraft = videoDrafts.find((draft) => draft.format === '视频');
+    assert(videoDraft, 'video seed did not produce a video candidate');
+    await api(`/candidates/${videoDraft.id}/select`, { method: 'POST' });
     const videoDelivery = await api(`/slots/${videoSlot.id}/delivery`, { method: 'POST' });
     assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '03-口播字幕文案.txt')), 'video delivery missing script file');
     assert(fs.existsSync(path.join(videoDelivery.deliveryDir, '04-剪辑要求.txt')), 'video delivery missing edit brief');

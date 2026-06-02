@@ -766,7 +766,13 @@ function pickContentSeed(slot, caze) {
     [slot.contentKind, caze.project, slot.stage]
   ).map(rowContentSeed);
   if (!rows.length) return null;
-  const weighted = rows.flatMap((item) => Array(Math.max(1, Math.round(Number(item.baseWeight || 1)))).fill(item));
+  const projectPool = rows.some((item) => item.project === caze.project)
+    ? rows.filter((item) => item.project === caze.project)
+    : rows;
+  const stagePool = projectPool.some((item) => item.stage === slot.stage)
+    ? projectPool.filter((item) => item.stage === slot.stage)
+    : projectPool;
+  const weighted = stagePool.flatMap((item) => Array(Math.max(1, Math.round(Number(item.baseWeight || 1)))).fill(item));
   return weighted[Math.floor(Math.random() * weighted.length)];
 }
 
