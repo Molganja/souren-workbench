@@ -19,12 +19,6 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function addDays(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
 async function api(pathname, options = {}, base = BASE) {
   const res = await fetch(`${base}${pathname}`, {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
@@ -256,9 +250,7 @@ async function main() {
           '批量小林,https://www.douyin.com/user/bulk-lin,吸脂',
           '批量小陈,https://www.douyin.com/user/bulk-chen,复诊',
           '无效账号,不是抖音链接,吸脂,/Volumes/共享素材/无效账号'
-        ].join('\n'),
-        generateSlots: true,
-        days: 2
+        ].join('\n')
       })
     });
     assert(bulk.createdCount === 2, 'bulk import should only accept rows with a Douyin link in the second field');
@@ -321,14 +313,12 @@ async function main() {
       body: JSON.stringify({
         sourceMaterialDir: libraryCaseDir,
         weixinNick: '库登记小李',
-        douyinUrl: 'https://www.douyin.com/user/library-li',
-        generateSlots: true,
-        days: 2
+        douyinUrl: 'https://www.douyin.com/user/library-li'
       })
     });
     assert(registeredLibraryCase.case.sourceMaterialDir === libraryCaseDir, 'case library register did not bind source dir');
     assert(registeredLibraryCase.sync.copied === 2 && registeredLibraryCase.sync.inserted === 2, 'case library register did not sync source materials');
-    assert(registeredLibraryCase.slotsCreated === 2, 'case library register did not generate slots');
+    assert(registeredLibraryCase.slotsCreated >= 14, 'case library register did not generate default slots');
     const afterLibraryScan = await api('/case-library');
     const registeredCandidate = afterLibraryScan.candidates.find((item) => item.sourceMaterialDir === libraryCaseDir);
     assert(registeredCandidate?.alreadyRegistered === true && registeredCandidate.caseId === registeredLibraryCase.case.id, 'case library did not mark registered candidate');
@@ -346,14 +336,14 @@ async function main() {
     assert(duplicateLibraryRejected, 'case library allowed duplicate source directory');
     const minimalCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', generateSlots: true, days: 3 })
+      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke' })
     });
     assert(minimalCase.weixinNick && minimalCase.weixinNick !== '未命名兼职', 'minimal case did not generate nick');
     assert(minimalCase.persona.city && minimalCase.persona.motivation, 'minimal case defaults missing');
     assert(!minimalCase.localCaseDir.includes('未命名'), 'minimal case directory used unnamed segment');
-    assert(minimalCase.slotsCreated === 3, 'minimal case did not auto generate slots');
+    assert(minimalCase.slotsCreated >= 14, 'minimal case did not auto generate default slots');
     const minimalDetail = await api(`/cases/${minimalCase.id}`);
-    assert(minimalDetail.slots.length === 3 && minimalDetail.slots.every((item) => item.status === '待生成'), 'minimal case slots missing');
+    assert(minimalDetail.slots.length >= 14 && minimalDetail.slots.every((item) => item.status === '待生成'), 'minimal case default slots missing');
     const dueOnlyDashboard = await api('/dashboard');
     assert(dueOnlyDashboard.pendingGenerate.every((item) => item.date <= dueOnlyDashboard.today), 'dashboard leaked future pending generation slots');
     const minimalAfterRolling = await api(`/cases/${minimalCase.id}`);
@@ -447,10 +437,6 @@ async function main() {
     const seededDrafts = await api(`/slots/${manualSlot.id}/generate-candidates`, { method: 'POST' });
     assert(seededDrafts.some((draft) => draft.sourceTemplateId === seed.id), 'seed was not used for daily content');
 
-    const nearSlots = await api(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 2 }) });
-    assert(nearSlots.created.length === 0, 'near-term slot generation should be idempotent after rolling schedule');
-    const slots = await api(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 2, startDate: addDays(60) }) });
-    assert(slots.created.length >= 1, 'future generated slots missing');
     const schedule = await api('/schedule');
     assert(schedule.counts.total >= 1, 'schedule total missing');
     assert(schedule.days.some((day) => day.items.some((item) => item.case?.id === caze.id)), 'schedule case slot missing');

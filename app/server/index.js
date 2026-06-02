@@ -1109,9 +1109,7 @@ function createCaseFromLibrary(input = {}) {
     healthStatus: input.healthStatus || '健康'
   });
   const sync = syncCaseSourceMaterials(created);
-  const slots = input.generateSlots === false
-    ? []
-    : generateSlotsForCase(created, { days: input.days || 14, startDate: input.startDate });
+  const slots = generateSlotsForCase(created, { days: 14 });
   return {
     case: { ...created, slotsCreated: slots.length },
     source: candidate,
@@ -2960,7 +2958,7 @@ app.get('/api/cases', (_req, res) => {
 app.post('/api/cases', (req, res) => {
   const body = req.body || {};
   const created = createCaseFromBody(body);
-  const slots = body.generateSlots === false ? [] : generateSlotsForCase(created, { days: body.days || 14, startDate: body.startDate });
+  const slots = generateSlotsForCase(created, { days: 14 });
   res.json({ ...created, slotsCreated: slots.length });
 });
 
@@ -2969,11 +2967,9 @@ app.post('/api/cases/bulk', (req, res) => {
   const rows = Array.isArray(body.cases) ? body.cases : parseBulkCaseText(body.text);
   if (!rows.length) return res.status(400).json({ error: 'no valid case rows' });
   const created = rows.map((row) => createCaseFromBody(row));
-  if (body.generateSlots !== false) {
-    created.forEach((caze) => {
-      generateSlotsForCase(caze, { days: body.days || 7 });
-    });
-  }
+  created.forEach((caze) => {
+    generateSlotsForCase(caze, { days: 14 });
+  });
   res.json({ createdCount: created.length, cases: created });
 });
 
@@ -3145,12 +3141,6 @@ app.post('/api/cases/:id/sync-source-materials', (req, res) => {
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }
-});
-
-app.post('/api/cases/:id/generate-slots', (req, res) => {
-  const caze = caseById(req.params.id);
-  if (!caze) return res.status(404).json({ error: 'case not found' });
-  res.json({ created: generateSlotsForCase(caze, req.body || {}) });
 });
 
 app.post('/api/cases/:id/slots', (req, res) => {

@@ -308,7 +308,7 @@ function App() {
         <CaseForm
           onClose={() => setCaseFormOpen(false)}
           onSubmit={(payload) => act(async () => {
-            const created = await request('/cases', { method: 'POST', body: JSON.stringify({ ...payload, generateSlots: true, days: 14 }) });
+            const created = await request('/cases', { method: 'POST', body: JSON.stringify(payload) });
             setCaseFormOpen(false);
             setSelectedCaseId(created.id);
             setView('case');
@@ -377,14 +377,6 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
               () => request('/dashboard/prepare-today', { method: 'POST' }),
               (result) => `已准备：生成 ${result.generatedCount}，锁定 ${result.selectedCount}，交付 ${result.deliveryCount}`
             )}>一键准备今日交付</button>
-            <button onClick={() => onAct(
-              () => request('/dashboard/generate-today', { method: 'POST' }),
-              (result) => `已生成：槽位 ${result.slotCount}，候选 ${result.candidateCount}`
-            )}>批量生成今日候选</button>
-            <button onClick={() => onAct(
-              () => request('/dashboard/deliver-today', { method: 'POST' }),
-              (result) => `已生成交付内容：${result.deliveryCount}`
-            )}>批量生成今日交付内容</button>
           </div>
         </div>
         <div className="stats">
@@ -1643,8 +1635,6 @@ function registerLibraryCase(item, onAct, onDone) {
         weixinNick: weixinNick.trim(),
         douyinUrl: douyinUrl.trim(),
         project: item.project,
-        generateSlots: true,
-        days: 14
       })
     });
     await onDone();
@@ -1684,7 +1674,6 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
         </div>
         <div className="headerActions">
           <button onClick={() => setEditOpen(true)}>编辑案例</button>
-          <button onClick={() => onAct(() => request(`/cases/${caze.id}/generate-slots`, { method: 'POST', body: JSON.stringify({ days: 30 }) }), '已补齐 30 天排期槽位')}>生成30天排期</button>
           <button onClick={() => setSlotFormOpen(true)}>手动加槽位</button>
           <button disabled={!caze.sourceMaterialDir} onClick={() => onAct(
             () => request(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' }),
@@ -2505,22 +2494,18 @@ function CaseForm({ initial, onClose, onSubmit }) {
 
 function BulkCaseForm({ onClose, onSubmit }) {
   const [text, setText] = useState('小林,https://www.douyin.com/user/example1,吸脂,/Volumes/共享素材/小林\n小陈,https://www.douyin.com/user/example2,复诊,/Volumes/共享素材/小陈');
-  const [generateSlots, setGenerateSlots] = useState(true);
-  const [days, setDays] = useState(7);
   return (
     <Modal title="批量导入兼职/账号" onClose={onClose}>
       <div className="hintBox">
         每行一个账号，支持逗号或 Tab 分隔。字段顺序：
-        微信昵称, 抖音主页链接, 项目, 共享原始素材路径（可选）。
+        微信昵称, 抖音主页链接, 项目, 共享原始素材路径（可选）。导入后系统会自动建立近期排期。
       </div>
       <div className="formGrid">
         <label className="wide">导入内容<textarea rows="10" value={text} onChange={(e) => setText(e.target.value)} /></label>
-        <label className="checkLine"><input type="checkbox" checked={generateSlots} onChange={(e) => setGenerateSlots(e.target.checked)} />导入后自动生成排期</label>
-        <label>生成天数<input value={days} onChange={(e) => setDays(e.target.value)} /></label>
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={() => onSubmit({ text, generateSlots, days: Number(days) || 7 })}>导入</button>
+        <button className="primary" onClick={() => onSubmit({ text })}>导入</button>
       </div>
     </Modal>
   );
