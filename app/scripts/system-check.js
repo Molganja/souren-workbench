@@ -60,6 +60,11 @@ const leakedCopyLabels = nonDeliveryCopyLabels.filter((label) => mainSource.incl
 if (leakedCopyLabels.length) fail(`非交付复制按钮仍存在：${leakedCopyLabels.join('、')}`);
 else ok('复制入口只保留在交付内容弹窗');
 
+const viralAnalysisFields = ['补分析结果', '编辑分析', '原视频内容', '适合人设关键词', '禁用人设关键词', '保存分析'];
+const leakedViralAnalysisFields = viralAnalysisFields.filter((label) => mainSource.includes(label));
+if (!mainSource.includes('onEdit={(item)') && !mainSource.includes('editingViral') && !leakedViralAnalysisFields.length && mainSource.includes('等待系统分析')) ok('爆款链接前台只收链接，不要求工作人员填写分析字段');
+else fail(`爆款链接前台仍暴露分析字段：${leakedViralAnalysisFields.join('、') || '编辑入口'}`);
+
 if (mainSource.includes('今日操作队列') && mainSource.includes('今日账号概览')) ok('首页保留操作队列和账号概览');
 else fail('首页缺少操作队列或账号概览');
 

@@ -121,7 +121,6 @@ function App() {
   const [caseFormOpen, setCaseFormOpen] = useState(false);
   const [bulkCaseOpen, setBulkCaseOpen] = useState(false);
   const [viralFormOpen, setViralFormOpen] = useState(false);
-  const [editingViral, setEditingViral] = useState(null);
   const [deliverySlotOpen, setDeliverySlotOpen] = useState(null);
 
   async function refresh() {
@@ -264,14 +263,7 @@ function App() {
         {!loading && canUseWorkbench && view === 'viral' && (
           <ViralView
             templates={viralTemplates}
-            onNew={() => {
-              setEditingViral(null);
-              setViralFormOpen(true);
-            }}
-            onEdit={(item) => {
-              setEditingViral(item);
-              setViralFormOpen(true);
-            }}
+            onNew={() => setViralFormOpen(true)}
             onAct={act}
           />
         )}
@@ -303,20 +295,11 @@ function App() {
       )}
       {viralFormOpen && (
         <ViralForm
-          initial={editingViral}
-          onClose={() => {
-            setEditingViral(null);
-            setViralFormOpen(false);
-          }}
+          onClose={() => setViralFormOpen(false)}
           onSubmit={(payload) => act(async () => {
-            if (editingViral) {
-              await request(`/viral-templates/${editingViral.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
-            } else {
-              await request('/viral-templates', { method: 'POST', body: JSON.stringify(payload) });
-            }
-            setEditingViral(null);
+            await request('/viral-templates', { method: 'POST', body: JSON.stringify(payload) });
             setViralFormOpen(false);
-          }, editingViral ? '爆款分析已更新' : '爆款链接已记录')}
+          }, '爆款链接已记录')}
         />
       )}
       {deliverySlotOpen && (
@@ -1891,7 +1874,7 @@ function GeneratedImageStrip({ files }) {
   );
 }
 
-function ViralView({ templates, onNew, onEdit, onAct }) {
+function ViralView({ templates, onNew, onAct }) {
   const sortedTemplates = [...templates].sort((a, b) => Number(isPendingViral(b)) - Number(isPendingViral(a)));
   const pending = sortedTemplates.filter((item) => isPendingViral(item)).length;
   return (
@@ -1914,11 +1897,11 @@ function ViralView({ templates, onNew, onEdit, onAct }) {
               </div>
               <span>{item.category} · {item.rewritePolicy}</span>
               {item.sourceLink && <small>来源：{item.sourceLink}</small>}
-              <p>{isPendingViral(item) ? '等待分析：提取原视频内容、结构和适合账号后再批量生成。' : item.hotStructure}</p>
+              <p>{isPendingViral(item) ? '等待系统分析内容结构和适合账号后再批量生成。' : item.hotStructure}</p>
               {!isPendingViral(item) && <small>{item.rawText}</small>}
               <div className="inlineActions">
                 {item.sourceLink && <a className="button" href={item.sourceLink} target="_blank">打开原链接</a>}
-                <button onClick={() => onEdit(item)}>{isPendingViral(item) ? '补分析结果' : '编辑分析'}</button>
+                {isPendingViral(item) && <span className="lockedNote">等待系统分析</span>}
                 <button disabled={isPendingViral(item)} onClick={() => bulkGenerateViral(item, onAct)}>给可投放账号生成爆款候选</button>
               </div>
             </div>
@@ -2223,56 +2206,25 @@ function BulkCaseForm({ onClose, onSubmit }) {
   );
 }
 
-function ViralForm({ initial, onClose, onSubmit }) {
-  const isEditing = Boolean(initial);
+function ViralForm({ onClose, onSubmit }) {
   const [form, setForm] = useState(() => ({
-    title: initial?.title || '',
-    rawText: initial?.rawText || '',
-    sourceLink: initial?.sourceLink || '',
-    category: initial?.category || '待分析',
-    hotStructure: initial?.hotStructure || '',
-    suitableText: initial?.suitablePersonas?.join(',') || '',
-    forbiddenText: initial?.forbiddenPersonas?.join(',') || '',
-    rewritePolicy: initial?.rewritePolicy || '仅参考'
+    sourceLink: ''
   }));
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
   function submit() {
-    if (!isEditing) {
-      onSubmit({ sourceLink: form.sourceLink });
-      return;
-    }
-    onSubmit({
-      ...form,
-      suitablePersonas: form.suitableText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean),
-      forbiddenPersonas: form.forbiddenText.split(/,|，|\n/).map((item) => item.trim()).filter(Boolean)
-    });
+    onSubmit({ sourceLink: form.sourceLink });
   }
   return (
-    <Modal title={isEditing ? '补爆款分析' : '粘贴爆款链接'} onClose={onClose}>
-      <div className="hintBox">{isEditing ? '这里用于把原视频内容、结构分析和适合账号补回系统。补完后，这条爆款链接就可以批量生成人设化候选。' : '工作人员只需要贴抖音作品链接，系统会先记录为待分析任务。'}</div>
+    <Modal title="粘贴爆款链接" onClose={onClose}>
+      <div className="hintBox">工作人员只需要贴抖音作品链接，系统会先记录为待分析任务。</div>
       <div className="formGrid">
         <label className="wide">爆款视频链接<input placeholder="先贴抖音作品链接即可" value={form.sourceLink} onChange={(e) => update('sourceLink', e.target.value)} /></label>
-        {isEditing && (
-          <>
-            <label className="wide">备注标题<input placeholder="分析后填写，用来区分这个爆款" value={form.title} onChange={(e) => update('title', e.target.value)} /></label>
-            <label className="wide">原视频内容<textarea rows="5" placeholder="提取后的标题、口播或字幕正文" value={form.rawText} onChange={(e) => update('rawText', e.target.value)} /></label>
-            <label>类别<select value={form.category} onChange={(e) => update('category', e.target.value)}>
-              {['待分析', '情绪', '职场', '穿搭', '美食', '本地生活', '清单', '反差故事'].map((item) => <option key={item}>{item}</option>)}
-            </select></label>
-            <label>改写策略<select value={form.rewritePolicy} onChange={(e) => update('rewritePolicy', e.target.value)}>
-              {['结构模仿', '话题模仿', '仅参考'].map((item) => <option key={item}>{item}</option>)}
-            </select></label>
-            <label className="wide">适合人设关键词<input placeholder="例如：成都,上班族,起号期。留空表示全部适合" value={form.suitableText} onChange={(e) => update('suitableText', e.target.value)} /></label>
-            <label className="wide">禁用人设关键词<input placeholder="例如：自由职业,收尾期。命中则不批量生成" value={form.forbiddenText} onChange={(e) => update('forbiddenText', e.target.value)} /></label>
-            <label className="wide">分析结论<textarea placeholder="补结构、适合账号和下一步建议" value={form.hotStructure} onChange={(e) => update('hotStructure', e.target.value)} /></label>
-          </>
-        )}
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" onClick={submit}>{isEditing ? '保存分析' : '记录链接'}</button>
+        <button className="primary" onClick={submit}>记录链接</button>
       </div>
     </Modal>
   );
