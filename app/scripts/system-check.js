@@ -165,6 +165,12 @@ else fail('交付弹窗缺少单账号固定步骤');
 if (mainSource.includes('deliveryRequiredSteps') && mainSource.includes('handoffReady') && mainSource.includes('missingHandoffSteps') && mainSource.includes('disabled={!handoffReady}') && mainSource.includes('handoffGuard')) ok('交付弹窗未完成复制下载步骤前不能标记派发');
 else fail('交付弹窗仍可跳过复制下载步骤直接标记派发');
 
+if (mainSource.includes('nextHandoffStep') && mainSource.includes('handoffStepEnabled') && mainSource.includes('先完成前一步') && serverSource.includes('outOfOrderIndex') && serverSource.includes('按发送顺序操作')) ok('交付动作必须按顺序完成');
+else fail('交付动作仍可能不按顺序完成');
+
+if (!mainSource.includes('completeKey="rules"') && !serverSource.includes("steps.push({ key: 'rules'")) ok('发布要求不再作为额外复制步骤');
+else fail('发布要求仍被当成必须复制步骤');
+
 if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes('slotIsDashboardQueueHead') && serverSource.includes('这条不是今日操作队列队首') && serverSource.includes("status === '已派发' && !slotIsDashboardQueueHead(slot)") && serverSource.includes('交付动作还没完成') && mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端派发状态接口也要求队首和交付步骤完成清单');
 else fail('后端状态接口仍可能绕过交付步骤门禁');
 
@@ -200,11 +206,11 @@ const oldDeletedDirMarker = '_' + 'deleted';
 if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也不会保留')) ok('删除案例会同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
-if (mainSource.includes('新建时只填四项') && !mainSource.includes('RANDOM_CASE_PROFILES') && !mainSource.includes('randomCaseDefaults') && !mainSource.includes('随机换一组') && mainSource.includes("!form.weixinNick.trim() || !form.douyinUrl.trim()")) ok('新建案例前端只保留四项录入，并要求微信和抖音');
+if (mainSource.includes('新建时只填四项') && !mainSource.includes('RANDOM_CASE_PROFILES') && !mainSource.includes('randomCaseDefaults') && !mainSource.includes('随机换一组') && mainSource.includes("!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.sourceMaterialDir.trim()")) ok('新建案例前端只保留四项录入，并要求微信、抖音和共享素材路径');
 else fail('新建案例仍暴露随机人设选择或允许缺少微信名');
 
-if (serverSource.includes('必须填写兼职微信昵称') && serverSource.includes('必须填写有效的抖音主页或作品链接') && serverSource.includes('normalizeDouyinUrl') && !serverSource.includes('body.weixinNick || `${persona.city}') && !serverSource.includes('input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick')) ok('后端不再随机生成兼职微信名，也不允许缺少抖音链接');
-else fail('后端仍可能随机生成兼职微信名或允许缺少抖音链接');
+if (serverSource.includes('必须填写兼职微信昵称') && serverSource.includes('必须填写有效的抖音主页或作品链接') && serverSource.includes('必须填写共享原始素材路径') && serverSource.includes('normalizeDouyinUrl') && !serverSource.includes('body.weixinNick || `${persona.city}') && !serverSource.includes('input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick')) ok('后端不再随机生成兼职微信名，也不允许缺少抖音链接或共享素材路径');
+else fail('后端仍可能随机生成兼职微信名或允许缺少抖音链接/共享素材路径');
 
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');

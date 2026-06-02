@@ -1640,12 +1640,18 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const steps = deliverySteps(view, mediaFiles.length, isActiveQueueSlot);
   const copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot;
   const showFreelancerGuide = Boolean(view.shouldSendFreelancerGuide && texts.freelancerGuide);
-  const markHandoffDone = (key) => {
-    if (!key) return;
-    setHandoffDone((prev) => new Set([...prev, key]));
-  };
   const requiredHandoffSteps = deliveryRequiredSteps(view, mediaFiles, showFreelancerGuide);
   const missingHandoffSteps = requiredHandoffSteps.filter((item) => !handoffDone.has(item.key));
+  const nextHandoffStep = missingHandoffSteps[0] || null;
+  const handoffStepEnabled = (key) => !key || handoffDone.has(key) || nextHandoffStep?.key === key;
+  const handoffBlockText = (key) => {
+    if (handoffStepEnabled(key)) return '';
+    return nextHandoffStep ? `先完成：${nextHandoffStep.label}` : '';
+  };
+  const markHandoffDone = (key) => {
+    if (!key || !handoffStepEnabled(key)) return;
+    setHandoffDone((prev) => new Set([...prev, key]));
+  };
   const handoffReady = copyAllowed && missingHandoffSteps.length === 0;
   return (
     <Modal title="交付内容" onClose={onClose}>
@@ -1689,40 +1695,18 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       )}
 
       <div className="deliveryTextGrid">
-        {showFreelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} copyable={copyAllowed} completeKey="guide" completed={handoffDone.has('guide')} onComplete={markHandoffDone} />}
-        <TextPanel title="发给兼职文案" text={texts.operatorInstruction} onCopy={onCopy} copyable={copyAllowed} completeKey="operator" completed={handoffDone.has('operator')} onComplete={markHandoffDone} />
-        <TextPanel title="抖音发布文案" text={texts.publishText} onCopy={onCopy} copyable={copyAllowed} completeKey="publish" completed={handoffDone.has('publish')} onComplete={markHandoffDone} />
+        {showFreelancerGuide && <TextPanel title="兼职须知（首次发送）" text={texts.freelancerGuide} onCopy={onCopy} copyable={copyAllowed} completeKey="guide" completed={handoffDone.has('guide')} enabled={handoffStepEnabled('guide')} blockedNote={handoffBlockText('guide')} onComplete={markHandoffDone} />}
+        <TextPanel title="发给兼职文案" text={texts.operatorInstruction} onCopy={onCopy} copyable={copyAllowed} completeKey="operator" completed={handoffDone.has('operator')} enabled={handoffStepEnabled('operator')} blockedNote={handoffBlockText('operator')} onComplete={markHandoffDone} />
+        <TextPanel title="抖音发布文案" text={texts.publishText} onCopy={onCopy} copyable={copyAllowed} completeKey="publish" completed={handoffDone.has('publish')} enabled={handoffStepEnabled('publish')} blockedNote={handoffBlockText('publish')} onComplete={markHandoffDone} />
       </div>
       {!showFreelancerGuide && texts.freelancerGuideNote && <div className="guideNotice">{texts.freelancerGuideNote}</div>}
-
-      <section className="deliverySection">
-        <div className="sectionHead">
-          <h2>{view.isVideo ? '本次视频素材' : '本次图文素材'}</h2>
-          <span>{mediaFiles.length} 个</span>
-        </div>
-        {mediaFiles.length === 0 ? <div className="empty">还没有可发送素材，请先补素材或生成图片</div> : (
-          <div className="deliveryMediaGrid">
-            {imageFiles.map((file) => {
-              const key = deliveryMediaStepKey(file);
-              return <MediaCard key={file.path} file={file} label="图片" allowDownload={copyAllowed} completeKey={key} completed={handoffDone.has(key)} onComplete={markHandoffDone} />;
-            })}
-            {videoFiles.map((file) => {
-              const key = deliveryMediaStepKey(file);
-              return <MediaCard key={file.path} file={file} label="视频" allowDownload={copyAllowed} completeKey={key} completed={handoffDone.has(key)} onComplete={markHandoffDone} />;
-            })}
-          </div>
-        )}
-      </section>
-
-      {texts.assetOrder && <TextPanel title="素材发送顺序" text={texts.assetOrder} onCopy={onCopy} copyable={false} />}
-      {texts.publishRules && <TextPanel title="发布要求" text={texts.publishRules} onCopy={onCopy} copyable={copyAllowed} completeKey="rules" completed={handoffDone.has('rules')} onComplete={markHandoffDone} />}
 
       {view.isVideo && (
         <section className="deliverySection">
           <div className="sectionHead"><h2>视频剪辑</h2><span>剪辑人员使用</span></div>
           <div className="deliveryTextGrid">
-            <TextPanel title="口播/字幕文案" text={texts.voiceover} onCopy={onCopy} copyable={copyAllowed} completeKey="voiceover" completed={handoffDone.has('voiceover')} onComplete={markHandoffDone} />
-            <TextPanel title="剪辑要求" text={texts.editBrief} onCopy={onCopy} copyable={copyAllowed} completeKey="editBrief" completed={handoffDone.has('editBrief')} onComplete={markHandoffDone} />
+            <TextPanel title="口播/字幕文案" text={texts.voiceover} onCopy={onCopy} copyable={copyAllowed} completeKey="voiceover" completed={handoffDone.has('voiceover')} enabled={handoffStepEnabled('voiceover')} blockedNote={handoffBlockText('voiceover')} onComplete={markHandoffDone} />
+            <TextPanel title="剪辑要求" text={texts.editBrief} onCopy={onCopy} copyable={copyAllowed} completeKey="editBrief" completed={handoffDone.has('editBrief')} enabled={handoffStepEnabled('editBrief')} blockedNote={handoffBlockText('editBrief')} onComplete={markHandoffDone} />
           </div>
           <div className="hintBox">{view.editing?.completionNote || '剪辑或发布完成后，在系统里标记「已完成」。'}</div>
           {view.sourceAssets?.length > 0 && (
@@ -1739,6 +1723,28 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
           )}
         </section>
       )}
+
+      <section className="deliverySection">
+        <div className="sectionHead">
+          <h2>{view.isVideo ? '本次视频素材' : '本次图文素材'}</h2>
+          <span>{mediaFiles.length} 个</span>
+        </div>
+        {mediaFiles.length === 0 ? <div className="empty">还没有可发送素材，请先补素材或生成图片</div> : (
+          <div className="deliveryMediaGrid">
+            {imageFiles.map((file) => {
+              const key = deliveryMediaStepKey(file);
+              return <MediaCard key={file.path} file={file} label="图片" allowDownload={copyAllowed} completeKey={key} completed={handoffDone.has(key)} enabled={handoffStepEnabled(key)} blockedNote={handoffBlockText(key)} onComplete={markHandoffDone} />;
+            })}
+            {videoFiles.map((file) => {
+              const key = deliveryMediaStepKey(file);
+              return <MediaCard key={file.path} file={file} label="视频" allowDownload={copyAllowed} completeKey={key} completed={handoffDone.has(key)} enabled={handoffStepEnabled(key)} blockedNote={handoffBlockText(key)} onComplete={markHandoffDone} />;
+            })}
+          </div>
+        )}
+      </section>
+
+      {texts.assetOrder && <TextPanel title="素材发送顺序" text={texts.assetOrder} onCopy={onCopy} copyable={false} />}
+      {texts.publishRules && <TextPanel title="发布要求（已写入发给兼职文案）" text={texts.publishRules} onCopy={onCopy} copyable={false} />}
 
       <div className="modalActions">
         {copyAllowed && (
@@ -1777,7 +1783,6 @@ function deliveryRequiredSteps(view, mediaFiles = [], showFreelancerGuide = fals
   if (showFreelancerGuide && texts.freelancerGuide) steps.push({ key: 'guide', label: '兼职须知' });
   if (texts.operatorInstruction) steps.push({ key: 'operator', label: '发给兼职文案' });
   if (texts.publishText) steps.push({ key: 'publish', label: '抖音发布文案' });
-  if (texts.publishRules) steps.push({ key: 'rules', label: '发布要求' });
   if (view.isVideo && texts.voiceover) steps.push({ key: 'voiceover', label: '口播/字幕文案' });
   if (view.isVideo && texts.editBrief) steps.push({ key: 'editBrief', label: '剪辑要求' });
   mediaFiles.forEach((file, index) => {
@@ -1829,8 +1834,9 @@ function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
   }));
 }
 
-function TextPanel({ title, text, onCopy, copyable = true, completeKey = '', completed = false, onComplete }) {
+function TextPanel({ title, text, onCopy, copyable = true, completeKey = '', completed = false, enabled = true, blockedNote = '', onComplete }) {
   async function handleCopy() {
+    if (!enabled) return;
     await onCopy(text, `${title}已复制`);
     onComplete?.(completeKey);
   }
@@ -1838,21 +1844,24 @@ function TextPanel({ title, text, onCopy, copyable = true, completeKey = '', com
     <div className="textPanel">
       <div className="rowTitle">
         <strong>{title}</strong>
-        {copyable && text && <button className={completed ? 'activeSmall' : ''} onClick={handleCopy}>{completed ? '已复制' : '复制'}</button>}
+        {copyable && text && <button className={completed ? 'activeSmall' : ''} disabled={!enabled} onClick={handleCopy}>{completed ? '已复制' : (enabled ? '复制' : '先完成前一步')}</button>}
       </div>
+      {copyable && blockedNote && <small className="lockedNote">{blockedNote}</small>}
       <pre>{text || '暂无内容'}</pre>
     </div>
   );
 }
 
-function MediaCard({ file, label, allowDownload = true, completeKey = '', completed = false, onComplete }) {
+function MediaCard({ file, label, allowDownload = true, completeKey = '', completed = false, enabled = true, blockedNote = '', onComplete }) {
   return (
     <div className="mediaCard">
       {file.kind === '图片' ? <img src={file.url} alt={file.name} /> : <video src={file.url} controls />}
       <strong>{file.name}</strong>
       <span>{label}</span>
-      {allowDownload ? (
+      {allowDownload && enabled ? (
         <a className={`button ${completed ? 'activeSmall' : ''}`} href={file.url} download onClick={() => onComplete?.(completeKey)}>{completed ? '已下载' : (file.kind === '图片' ? '下载图片' : '下载视频')}</a>
+      ) : allowDownload ? (
+        <span className="lockedNote">{blockedNote || '先完成前一步'}</span>
       ) : (
         <span className="lockedNote">只读预览</span>
       )}
@@ -2163,7 +2172,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
   }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {isCreate && <div className="hintBox">新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。微信和抖音必须填，系统会自动建立目录、近期排期和采集链路。</div>}
+      {isCreate && <div className="hintBox">新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。微信、抖音和共享原始素材路径都必须填，系统会自动建立目录、近期排期和采集链路。</div>}
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
@@ -2181,7 +2190,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" disabled={isCreate && (!form.weixinNick.trim() || !form.douyinUrl.trim())} onClick={submit}>{initial ? '保存' : '创建'}</button>
+        <button className="primary" disabled={isCreate && (!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.sourceMaterialDir.trim())} onClick={submit}>{initial ? '保存' : '创建'}</button>
       </div>
     </Modal>
   );
@@ -2193,7 +2202,7 @@ function BulkCaseForm({ onClose, onSubmit }) {
     <Modal title="批量导入兼职/账号" onClose={onClose}>
       <div className="hintBox">
         每行一个账号，支持逗号或 Tab 分隔。字段顺序：
-        微信昵称, 抖音主页链接, 项目, 共享原始素材路径（可选）。导入后系统会自动建立近期排期。
+        微信昵称, 抖音主页链接, 项目, 共享原始素材路径。四项都要填，导入后系统会自动建立近期排期。
       </div>
       <div className="formGrid">
         <label className="wide">导入内容<textarea rows="10" value={text} onChange={(e) => setText(e.target.value)} /></label>

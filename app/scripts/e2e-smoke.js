@@ -42,7 +42,6 @@ function handoffDoneForDeliveryView(view) {
   if (view.shouldSendFreelancerGuide && texts.freelancerGuide) keys.push('guide');
   if (texts.operatorInstruction) keys.push('operator');
   if (texts.publishText) keys.push('publish');
-  if (texts.publishRules) keys.push('rules');
   if (view.isVideo && texts.voiceover) keys.push('voiceover');
   if (view.isVideo && texts.editBrief) keys.push('editBrief');
   (view.mediaFiles || []).forEach((file) => keys.push(deliveryMediaStepKey(file)));
@@ -102,7 +101,12 @@ async function imageGenerationSmoke() {
     assert(config.image.ready === true && config.image.model === 'fake-image-model', 'image config did not show ready');
     const caze = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '图片生成兼职', douyinUrl: 'https://www.douyin.com/user/image-smoke', persona: { city: '成都', occupation: '上班族' } })
+      body: JSON.stringify({
+        weixinNick: '图片生成兼职',
+        douyinUrl: 'https://www.douyin.com/user/image-smoke',
+        sourceMaterialDir: makeSharedSourceDir(IMAGE_ROOT_DIR, '图片生成兼职'),
+        persona: { city: '成都', occupation: '上班族' }
+      })
     }, imageBase);
     const task = await api('/image-tasks', {
       method: 'POST',
@@ -210,6 +214,12 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function makeSharedSourceDir(rootDir, name) {
+  const dir = path.join(rootDir, '员工共享素材', name);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 async function main() {
   fs.rmSync(path.join(ROOT_DIR, 'data'), { recursive: true, force: true });
   fs.rmSync(path.join(ROOT_DIR, '素材库'), { recursive: true, force: true });
@@ -300,13 +310,13 @@ async function main() {
       method: 'POST',
       body: JSON.stringify({
         text: [
-          '批量小林,https://www.douyin.com/user/bulk-lin,吸脂',
-          '批量小陈,https://www.douyin.com/user/bulk-chen,复诊',
+          `批量小林,https://www.douyin.com/user/bulk-lin,吸脂,${makeSharedSourceDir(ROOT_DIR, '批量小林')}`,
+          `批量小陈,https://www.douyin.com/user/bulk-chen,复诊,${makeSharedSourceDir(ROOT_DIR, '批量小陈')}`,
           '无效账号,不是抖音链接,吸脂,/Volumes/共享素材/无效账号'
         ].join('\n')
       })
     });
-    assert(bulk.createdCount === 2, 'bulk import should only accept rows with a Douyin link in the second field');
+    assert(bulk.createdCount === 2, 'bulk import should only accept rows with WeChat, Douyin link and shared source path');
     assert(bulk.cases[0].douyinUrl.includes('bulk-lin') && bulk.cases[1].project === '复诊', 'bulk simplified fields missing');
     assert(bulk.cases.every((item) => item.stage === '起号期'), 'bulk import accepted external case stage');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
@@ -442,9 +452,23 @@ async function main() {
       invalidDouyinRejected = /抖音/.test(error.message);
     }
     assert(invalidDouyinRejected, 'case create allowed non-Douyin URL');
+    let missingSourceRejected = false;
+    try {
+      await api('/cases', {
+        method: 'POST',
+        body: JSON.stringify({ weixinNick: '缺共享路径验收兼职', douyinUrl: 'https://www.douyin.com/user/missing-source-smoke' })
+      });
+    } catch (error) {
+      missingSourceRejected = /共享原始素材路径/.test(error.message);
+    }
+    assert(missingSourceRejected, 'case create allowed missing shared source path');
     const minimalCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '最小验收兼职', douyinUrl: 'https://www.douyin.com/video/minimal-smoke' })
+      body: JSON.stringify({
+        weixinNick: '最小验收兼职',
+        douyinUrl: 'https://www.douyin.com/video/minimal-smoke',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '最小验收兼职')
+      })
     });
     const retiredReturnDir = path.join(minimalCase.localCaseDir, ['04', '发布回收'].join('-'));
     assert(minimalCase.weixinNick === '最小验收兼职', 'minimal case did not preserve required WeChat nickname');
@@ -460,7 +484,12 @@ async function main() {
     assert(minimalAfterRolling.slots.length >= 14, 'dashboard did not roll schedule forward for active case');
     const throttleCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '降频验收兼职', douyinUrl: 'https://www.douyin.com/user/throttle-smoke', project: '吸脂' })
+      body: JSON.stringify({
+        weixinNick: '降频验收兼职',
+        douyinUrl: 'https://www.douyin.com/user/throttle-smoke',
+        project: '吸脂',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '降频验收兼职')
+      })
     });
     const throttleIngest = await api('/douyin-monitor/ingest', {
       method: 'POST',
@@ -497,7 +526,12 @@ async function main() {
 
     const sleepCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '休眠验收兼职', douyinUrl: 'https://www.douyin.com/user/sleep-smoke', project: '吸脂' })
+      body: JSON.stringify({
+        weixinNick: '休眠验收兼职',
+        douyinUrl: 'https://www.douyin.com/user/sleep-smoke',
+        project: '吸脂',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '休眠验收兼职')
+      })
     });
     const sleepIngest = await api('/douyin-monitor/ingest', {
       method: 'POST',
@@ -530,7 +564,12 @@ async function main() {
     assert(sleepActionSlot.created === false && !sleepActionSlot.slot && sleepActionSlot.reason.includes('暂停'), 'sleeping account strategy action should not create a slot');
     const hotQueueCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '起量采集验收兼职', douyinUrl: 'https://www.douyin.com/user/hot-queue-smoke', project: '吸脂' })
+      body: JSON.stringify({
+        weixinNick: '起量采集验收兼职',
+        douyinUrl: 'https://www.douyin.com/user/hot-queue-smoke',
+        project: '吸脂',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '起量采集验收兼职')
+      })
     });
     await api('/douyin-monitor/ingest', {
       method: 'POST',
@@ -552,7 +591,12 @@ async function main() {
 
     const lostCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '失联验收兼职', douyinUrl: 'https://www.douyin.com/user/lost-smoke', project: '吸脂' })
+      body: JSON.stringify({
+        weixinNick: '失联验收兼职',
+        douyinUrl: 'https://www.douyin.com/user/lost-smoke',
+        project: '吸脂',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '失联验收兼职')
+      })
     });
     await api(`/cases/${lostCase.id}/slots`, {
       method: 'POST',
@@ -805,7 +849,8 @@ async function main() {
       body: JSON.stringify({
         weixinNick: '合规验收兼职',
         douyinUrl: 'https://www.douyin.com/user/compliance-smoke',
-        project: '合规验收项目'
+        project: '合规验收项目',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '合规验收兼职')
       })
     });
     const complianceSlot = await api(`/cases/${complianceCase.id}/slots`, {
@@ -832,7 +877,8 @@ async function main() {
       body: JSON.stringify({
         weixinNick: '视频验收兼职',
         douyinUrl: 'https://www.douyin.com/user/video-smoke',
-        project: '视频验收项目'
+        project: '视频验收项目',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '视频验收兼职')
       })
     });
     fs.writeFileSync(path.join(videoCase.localCaseDir, '00-原始素材', '视频素材.mp4'), 'fake video asset');
@@ -878,6 +924,16 @@ async function main() {
       dispatchWithoutChecklistRejected = /交付动作还没完成/.test(error.message);
     }
     assert(dispatchWithoutChecklistRejected, 'ready delivery allowed dispatch without completed handoff checklist');
+    let dispatchOutOfOrderRejected = false;
+    try {
+      await api(`/slots/${slot.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView).reverse() })
+      });
+    } catch (error) {
+      dispatchOutOfOrderRejected = /按发送顺序/.test(error.message);
+    }
+    assert(dispatchOutOfOrderRejected, 'ready delivery allowed out-of-order handoff checklist');
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(deliveryView) }) });
     const sentDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(sentDeliveryView.freelancerGuideAlreadySent === true, 'sent delivery should mark freelancer guide covered');
@@ -899,7 +955,12 @@ async function main() {
     assert(!completedDashboard.readyDelivery.some((item) => item.id === slot.id), 'completed slot should disappear from delivery queue');
     const pauseCleanupCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '暂停清理验收兼职', douyinUrl: 'https://www.douyin.com/user/pause-cleanup-smoke', project: '吸脂' })
+      body: JSON.stringify({
+        weixinNick: '暂停清理验收兼职',
+        douyinUrl: 'https://www.douyin.com/user/pause-cleanup-smoke',
+        project: '吸脂',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '暂停清理验收兼职')
+      })
     });
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
     assert(monitorQueued.createdCount >= 2, 'monitor run did not register Chrome collection tasks');
@@ -1052,7 +1113,13 @@ async function main() {
 
     const pausedViralCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '暂停爆款验收兼职', douyinUrl: 'https://www.douyin.com/user/paused-viral-smoke', project: '吸脂', healthStatus: '失联暂停' })
+      body: JSON.stringify({
+        weixinNick: '暂停爆款验收兼职',
+        douyinUrl: 'https://www.douyin.com/user/paused-viral-smoke',
+        project: '吸脂',
+        healthStatus: '失联暂停',
+        sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '暂停爆款验收兼职')
+      })
     });
     const viralBulk = await api(`/viral-templates/${viral.id}/bulk-generate`, { method: 'POST', body: JSON.stringify({ date: '2026-06-02' }) });
     assert(viralBulk.createdCount === 4, 'viral bulk generation failed');

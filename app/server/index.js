@@ -1048,6 +1048,12 @@ function createCaseFromBody(body = {}) {
     err.status = 400;
     throw err;
   }
+  const sourceMaterialDir = String(body.sourceMaterialDir || body.source_material_dir || '').trim();
+  if (!sourceMaterialDir) {
+    const err = new Error('必须填写共享原始素材路径');
+    err.status = 400;
+    throw err;
+  }
   const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(weixinNick)}`;
   const caseDir = path.join(MATERIAL_ROOT, dirName);
   ensureCaseDirs(caseDir);
@@ -1064,7 +1070,7 @@ function createCaseFromBody(body = {}) {
       project,
       stage,
       JSON.stringify(persona),
-      body.sourceMaterialDir || body.source_material_dir || '',
+      sourceMaterialDir,
       caseDir,
       body.healthStatus || '健康',
       created,
@@ -1646,7 +1652,7 @@ function parseBulkCaseText(text) {
         persona: randomPersona()
       };
     })
-    .filter((item) => item.weixinNick && item.douyinUrl);
+    .filter((item) => item.weixinNick && item.douyinUrl && item.sourceMaterialDir);
 }
 
 function inferAssetKind(file) {
@@ -3609,7 +3615,7 @@ app.post('/api/cases/bulk', (req, res) => {
   try {
     const body = req.body || {};
     const rows = Array.isArray(body.cases) ? body.cases : parseBulkCaseText(body.text);
-    if (!rows.length) return res.status(400).json({ error: '没有有效账号行：每行必须包含微信昵称和抖音链接' });
+    if (!rows.length) return res.status(400).json({ error: '没有有效账号行：每行必须包含微信昵称、抖音链接和共享原始素材路径' });
     const created = rows.map((row) => createCaseFromBody(row));
     created.forEach((caze) => {
       generateSlotsForCase(caze, { days: 14 });
@@ -4051,7 +4057,6 @@ function deliveryRequiredHandoffSteps(view) {
   if (view.shouldSendFreelancerGuide && texts.freelancerGuide) steps.push({ key: 'guide', label: '兼职须知' });
   if (texts.operatorInstruction) steps.push({ key: 'operator', label: '发给兼职文案' });
   if (texts.publishText) steps.push({ key: 'publish', label: '抖音发布文案' });
-  if (texts.publishRules) steps.push({ key: 'rules', label: '发布要求' });
   if (view.isVideo && texts.voiceover) steps.push({ key: 'voiceover', label: '口播/字幕文案' });
   if (view.isVideo && texts.editBrief) steps.push({ key: 'editBrief', label: '剪辑要求' });
   (view.mediaFiles || []).forEach((file, index) => {
@@ -4063,8 +4068,22 @@ function deliveryRequiredHandoffSteps(view) {
 function deliveryHandoffGuard(slot, completed = []) {
   const view = deliveryViewForSlot(slot);
   if (!view || slot.status !== '可交付') return { ok: false, missing: [{ key: 'delivery', label: '交付内容' }] };
-  const completedSet = new Set(Array.isArray(completed) ? completed.map(String) : []);
   const required = deliveryRequiredHandoffSteps(view);
+  const requiredKeys = required.map((item) => item.key);
+  const completedKeys = [];
+  (Array.isArray(completed) ? completed : []).map(String).forEach((key) => {
+    if (requiredKeys.includes(key) && !completedKeys.includes(key)) completedKeys.push(key);
+  });
+  const outOfOrderIndex = completedKeys.findIndex((key, index) => key !== requiredKeys[index]);
+  if (outOfOrderIndex !== -1) {
+    const expected = required[outOfOrderIndex] || required[0];
+    return {
+      ok: false,
+      required,
+      missing: [{ key: expected?.key || 'sequence', label: `按发送顺序操作，先完成「${expected?.label || '第一步'}」` }]
+    };
+  }
+  const completedSet = new Set(completedKeys);
   const missing = required.filter((item) => !completedSet.has(item.key));
   return { ok: missing.length === 0, required, missing };
 }
