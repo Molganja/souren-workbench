@@ -1225,9 +1225,9 @@ function registerLibraryCase(item, onAct, onDone) {
 }
 
 function deleteCase(item, onAct) {
-  if (!window.confirm(`删除案例「${item.weixinNick}」？系统会移除数据库记录，并把本地素材目录移入 _deleted。`)) return;
-  if (!window.confirm('再次确认删除？删除后首页不会再显示这个案例，需要主机端从 _deleted 手动恢复目录。')) return;
-  onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), (result) => result.removedDir ? '案例已删除，本地素材已移入回收目录' : '案例已删除，本地目录原本不存在');
+  if (!window.confirm(`删除案例「${item.weixinNick}」？系统会移除数据库记录，并同步删除本地案例素材目录。`)) return;
+  if (!window.confirm('再次确认删除？删除后首页不会再显示这个案例，本地案例素材目录也不会保留。')) return;
+  onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), (result) => result.removedDir ? '案例已删除，本地素材目录已同步删除' : '案例已删除，本地目录原本不存在');
 }
 
 function caseCanResume(caze = {}) {

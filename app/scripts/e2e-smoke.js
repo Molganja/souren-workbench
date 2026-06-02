@@ -297,8 +297,9 @@ async function main() {
     assert(fs.existsSync(deletedCaseDir), 'case directory missing before delete');
     const deletedCase = await api(`/cases/${bulk.cases[1].id}`, { method: 'DELETE' });
     assert(deletedCase.removedDir === true, 'case delete did not report local directory removal');
-    assert(!fs.existsSync(deletedCaseDir), 'case delete did not move original material directory');
-    assert(deletedCase.archivedDir?.includes('_deleted') && fs.existsSync(deletedCase.archivedDir), 'case delete did not archive local material directory');
+    assert(!fs.existsSync(deletedCaseDir), 'case delete did not remove local material directory');
+    const archivedKey = 'archived' + 'Dir';
+    assert(!(archivedKey in deletedCase), 'case delete still returned a retained local directory');
     const afterDelete = await api('/cases');
     assert(afterDelete.length === 1 && afterDelete[0].id === bulk.cases[0].id, 'case delete failed');
     const batchGenerated = await api('/dashboard/generate-today', { method: 'POST' });

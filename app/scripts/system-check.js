@@ -98,6 +98,10 @@ else fail('同一排期仍可能重复创建剪辑任务');
 if (serverSource.includes('剪辑任务必须绑定具体排期') && mainSource.includes('来自具体排期') && !mainSource.includes('新建剪辑任务') && !mainSource.includes('临时剪辑任务')) ok('剪辑任务只能从具体排期创建');
 else fail('剪辑任务仍存在临时建单入口');
 
+const oldDeletedDirMarker = '_' + 'deleted';
+if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也不会保留')) ok('删除案例会同步删除本地案例目录');
+else fail('删除案例仍会保留本地目录');
+
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');
 fs.mkdirSync(dataDir, { recursive: true });

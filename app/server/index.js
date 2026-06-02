@@ -33,7 +33,6 @@ const DEFAULT_IMAGE_MODEL = 'image-v2';
 const DOUYIN_COLLECTION_CHECK_INTERVAL_MS = Number(process.env.DOUYIN_COLLECTION_CHECK_INTERVAL_MS || 6 * 60 * 60 * 1000);
 const ROLLING_SCHEDULE_DAYS = Math.max(0, Number(process.env.SOUREN_ROLLING_SCHEDULE_DAYS || 14));
 const LOOPBACK_LISTEN_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
-const DELETED_CASE_ROOT = path.join(MATERIAL_ROOT, '_deleted');
 
 if (!LOOPBACK_LISTEN_HOSTS.has(LISTEN_HOST) && !ACCESS_CODE) {
   console.error('安全限制：开放局域网访问时必须设置 SOUREN_ACCESS_CODE。请改回 SOUREN_HOST=127.0.0.1，或填写访问码后再启动。');
@@ -1252,25 +1251,16 @@ function writeCaseManifest(caze) {
 }
 
 function removeCaseDirectory(caze) {
-  if (!caze?.localCaseDir) return { removedDir: false, archivedDir: '' };
+  if (!caze?.localCaseDir) return { removedDir: false };
   const target = assertInsideMaterialRoot(caze.localCaseDir);
   if (target === MATERIAL_ROOT) {
     const err = new Error('refuse to delete material root');
     err.status = 400;
     throw err;
   }
-  if (!fs.existsSync(target)) return { removedDir: false, archivedDir: '' };
-  fs.mkdirSync(DELETED_CASE_ROOT, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const baseName = safeSegment(`${stamp}_${caze.caseCode || caze.id}_${path.basename(target)}`);
-  let archivedDir = path.join(DELETED_CASE_ROOT, baseName);
-  let suffix = 1;
-  while (fs.existsSync(archivedDir)) {
-    archivedDir = path.join(DELETED_CASE_ROOT, `${baseName}_${suffix}`);
-    suffix += 1;
-  }
-  fs.renameSync(target, archivedDir);
-  return { removedDir: true, archivedDir };
+  if (!fs.existsSync(target)) return { removedDir: false };
+  fs.rmSync(target, { recursive: true, force: true });
+  return { removedDir: true };
 }
 
 function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
@@ -3420,9 +3410,9 @@ app.delete('/api/cases/:id', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });
   try {
-    const { removedDir, archivedDir } = removeCaseDirectory(caze);
+    const { removedDir } = removeCaseDirectory(caze);
     run('DELETE FROM cases WHERE id = ?', [caze.id]);
-    res.json({ deleted: true, id: caze.id, removedDir, archivedDir, localCaseDir: caze.localCaseDir });
+    res.json({ deleted: true, id: caze.id, removedDir, localCaseDir: caze.localCaseDir });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }
