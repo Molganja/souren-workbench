@@ -302,8 +302,10 @@ async function main() {
     assert(!(archivedKey in deletedCase), 'case delete still returned a retained local directory');
     const afterDelete = await api('/cases');
     assert(afterDelete.length === 1 && afterDelete[0].id === bulk.cases[0].id, 'case delete failed');
-    const batchGenerated = await api('/dashboard/generate-today', { method: 'POST' });
-    assert(batchGenerated.slotCount >= 1 && batchGenerated.candidateCount >= 3, 'dashboard batch generate did not create candidates');
+    const queueGenerated = await api('/dashboard/generate-today', { method: 'POST' });
+    assert(queueGenerated.slotCount <= 1 && queueGenerated.candidateCount <= 3, 'dashboard generate should only process the queue head');
+    assert(queueGenerated.processedId === null || queueGenerated.slots.every((item) => item.id === queueGenerated.processedId), 'dashboard generate processed a non-head slot');
+    if (queueGenerated.reason) assert(queueGenerated.reason.includes('不能越过队首') || queueGenerated.reason.includes('今日队列已清空'), 'dashboard generate missing queue-head refusal reason');
 
     const sharedSourceDir = path.join(ROOT_DIR, '员工共享素材', '验收兼职');
     fs.mkdirSync(sharedSourceDir, { recursive: true });
@@ -752,8 +754,10 @@ async function main() {
     });
     const batchDeliveryDrafts = await api(`/slots/${batchDeliverySlot.id}/generate-candidates`, { method: 'POST' });
     await api(`/candidates/${batchDeliveryDrafts[0].id}/select`, { method: 'POST' });
-    const batchDelivered = await api('/dashboard/deliver-today', { method: 'POST' });
-    assert(batchDelivered.deliveryCount >= 1, 'dashboard batch delivery did not create delivery packages');
+    const queueDelivered = await api('/dashboard/deliver-today', { method: 'POST' });
+    assert(queueDelivered.deliveryCount <= 1, 'dashboard delivery should only process the queue head');
+    assert(queueDelivered.processedId === null || queueDelivered.deliveries.every((item) => item.slot.id === queueDelivered.processedId), 'dashboard delivery processed a non-head slot');
+    if (queueDelivered.reason) assert(queueDelivered.reason.includes('不能越过队首') || queueDelivered.reason.includes('今日队列已清空'), 'dashboard delivery missing queue-head refusal reason');
 
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });

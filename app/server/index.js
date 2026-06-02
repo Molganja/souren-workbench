@@ -3337,35 +3337,41 @@ app.patch('/api/viral-alerts/:id', (req, res) => {
 });
 
 app.post('/api/dashboard/generate-today', async (_req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const slots = all(
-    'SELECT * FROM plan_slots WHERE date <= ? AND status = ? ORDER BY date ASC, created_at ASC',
-    [today, '待生成']
-  ).map(rowSlot);
+  const queueHead = dashboardQueueHead(dashboard());
   let candidateCount = 0;
-  const generated = [];
-  for (const slot of slots) {
-    const drafts = await generateCandidatesForSlot(slot);
-    if (drafts.length) {
-      generated.push(slotById(slot.id));
-      candidateCount += drafts.length;
-    }
+  if (!queueHead?.slot || queueHead.slot.status !== '待生成') {
+    return res.json({
+      slotCount: 0,
+      candidateCount,
+      slots: [],
+      processedId: null,
+      queueHead,
+      reason: queueHead ? '当前队首不是待生成任务，不能越过队首批量生成。' : '今日队列已清空。'
+    });
   }
-  res.json({ slotCount: generated.length, candidateCount, slots: generated });
+  const current = slotById(queueHead.slot.id);
+  const drafts = await generateCandidatesForSlot(current);
+  if (drafts.length) candidateCount = drafts.length;
+  const generated = candidateCount ? [slotById(current.id)] : [];
+  res.json({ slotCount: generated.length, candidateCount, slots: generated, processedId: current.id, queueHead });
 });
 
-app.post('/api/dashboard/deliver-today', (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const slots = all(
-    'SELECT * FROM plan_slots WHERE date <= ? AND status = ? AND selected_candidate_id IS NOT NULL ORDER BY date ASC, created_at ASC',
-    [today, '已锁定']
-  ).map(rowSlot);
+app.post('/api/dashboard/deliver-today', (_req, res) => {
+  const queueHead = dashboardQueueHead(dashboard());
   const delivered = [];
-  slots.forEach((slot) => {
-    const result = createDeliveryForSlot(slot);
-    if (result && !result.blocked) delivered.push(result);
-  });
-  res.json({ deliveryCount: delivered.length, deliveries: delivered });
+  if (!queueHead?.slot || queueHead.slot.status !== '已锁定') {
+    return res.json({
+      deliveryCount: 0,
+      deliveries: delivered,
+      processedId: null,
+      queueHead,
+      reason: queueHead ? '当前队首不是已锁定任务，不能越过队首批量生成交付。' : '今日队列已清空。'
+    });
+  }
+  const current = slotById(queueHead.slot.id);
+  const result = createDeliveryForSlot(current);
+  if (result && !result.blocked) delivered.push(result);
+  res.json({ deliveryCount: delivered.length, deliveries: delivered, processedId: current.id, queueHead });
 });
 
 app.post('/api/dashboard/prepare-today', async (_req, res) => {
