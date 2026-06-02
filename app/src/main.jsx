@@ -1101,6 +1101,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
   const [library, setLibrary] = useState(null);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [registerCandidate, setRegisterCandidate] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const filtered = cases.filter((item) => {
     const q = query.trim().toLowerCase();
     const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.douyinUrl} ${item.project} ${personaText(item.persona)}`.toLowerCase();
@@ -1156,7 +1157,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
                   <span>{item.caseCode} · {item.project}</span>
                   <em>{douyinDisplay(item)} · {item.healthStatus}</em>
                 </button>
-                <button className="dangerButton" onClick={() => deleteCase(item, onAct)}>删除</button>
+                <button className="dangerButton" onClick={() => setDeleteTarget(item)}>删除</button>
               </div>
             ))}
           </div>
@@ -1169,6 +1170,13 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
               setRegisterCandidate(null);
               await loadCaseLibrary();
             })}
+          />
+        )}
+        {deleteTarget && (
+          <DeleteCaseModal
+            item={deleteTarget}
+            onClose={() => setDeleteTarget(null)}
+            onDelete={() => deleteCase(deleteTarget, onAct, () => setDeleteTarget(null))}
           />
         )}
       </section>
@@ -1275,10 +1283,43 @@ function registerLibraryCase(payload, onAct, onDone) {
   }, (result) => `已登记「${result.case.weixinNick}」：同步素材 ${result.sync.inserted} 个，排期 ${result.slotsCreated} 条`);
 }
 
-function deleteCase(item, onAct) {
-  if (!window.confirm(`删除案例「${item.weixinNick}」？系统会移除数据库记录，并同步删除本地案例素材目录。`)) return;
-  if (!window.confirm('再次确认删除？删除后首页不会再显示这个案例，本地案例素材目录也不会保留。')) return;
-  onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), (result) => result.removedDir ? '案例已删除，本地素材目录已同步删除' : '案例已删除，本地目录原本不存在');
+function DeleteCaseModal({ item, onClose, onDelete }) {
+  const [confirmText, setConfirmText] = useState('');
+  const ready = confirmText.trim() === '删除';
+  return (
+    <Modal title="删除案例" onClose={onClose}>
+      <div className="hintBox dangerHint">删除后，这个账号不会再进入首页队列；本地案例素材目录也会同步删除。</div>
+      <div className="templateList">
+        <div className="templateRow">
+          <strong>微信昵称</strong>
+          <span>{item.weixinNick}</span>
+        </div>
+        <div className="templateRow">
+          <strong>抖音</strong>
+          <span>{douyinDisplay(item)}</span>
+        </div>
+        <div className="templateRow">
+          <strong>本地案例素材目录</strong>
+          <span>{item.localCaseDir || '未记录'}</span>
+        </div>
+      </div>
+      <div className="formGrid">
+        <label className="wide">确认删除<input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder="输入：删除" /></label>
+      </div>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="dangerButton" disabled={!ready} onClick={onDelete}>确认删除</button>
+      </div>
+    </Modal>
+  );
+}
+
+function deleteCase(item, onAct, onDone) {
+  onAct(async () => {
+    const result = await request(`/cases/${item.id}`, { method: 'DELETE' });
+    onDone?.();
+    return result;
+  }, (result) => result.removedDir ? '案例已删除，本地素材目录已同步删除' : '案例已删除，本地目录原本不存在');
 }
 
 function caseCanResume(caze = {}) {

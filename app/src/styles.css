@@ -1312,6 +1312,13 @@ textarea {
   line-height: 1.6;
 }
 
+.hintBox.dangerHint {
+  border-color: #f5c2b8;
+  background: var(--red-soft);
+  color: var(--red);
+  font-weight: 700;
+}
+
 .inlineSectionHead {
   margin: 14px 0 10px;
 }

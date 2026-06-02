@@ -68,6 +68,9 @@ else fail(`爆款链接前台仍暴露分析字段：${leakedViralAnalysisFields
 if (!mainSource.includes('window.prompt') && mainSource.includes('LibraryCaseForm') && mainSource.includes('ViralBulkForm')) ok('案例登记和爆款生成不再使用浏览器临时输入框');
 else fail('前台仍存在浏览器临时输入框，或缺少正式登记/生成弹窗');
 
+if (!mainSource.includes('window.confirm') && mainSource.includes('DeleteCaseModal') && mainSource.includes('输入：删除')) ok('删除案例使用工作台内确认弹窗');
+else fail('删除案例仍使用浏览器原生确认框，或缺少明确删除确认');
+
 if (mainSource.includes('今日操作队列') && mainSource.includes('今日账号概览')) ok('首页保留操作队列和账号概览');
 else fail('首页缺少操作队列或账号概览');
 
@@ -206,7 +209,7 @@ if (serverSource.includes('图片任务必须有明确用途') && mainSource.inc
 else fail('图片任务仍存在泛化入口或默认用途');
 
 const oldDeletedDirMarker = '_' + 'deleted';
-if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也不会保留')) ok('删除案例会同步删除本地案例目录');
+if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也会同步删除')) ok('删除案例会同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
 if (mainSource.includes('新建时只填四项') && !mainSource.includes('RANDOM_CASE_PROFILES') && !mainSource.includes('randomCaseDefaults') && !mainSource.includes('随机换一组') && mainSource.includes("!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.sourceMaterialDir.trim()")) ok('新建案例前端只保留四项录入，并要求微信、抖音和共享素材路径');
