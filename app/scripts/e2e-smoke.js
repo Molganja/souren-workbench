@@ -525,6 +525,16 @@ async function main() {
     const intakeNote = await api(`/cases/${caze.id}/material-intake-note`);
     assert(intakeNote.text.includes('素材补齐说明') && intakeNote.text.includes('同步共享素材') && intakeNote.text.includes(sharedSourceDir), 'material intake note missing shared source workflow');
     assert(intakeNote.text.includes('必补素材') && intakeNote.text.includes(caze.caseCode), 'material intake note missing gap summary');
+    let missingImagePurposeRejected = false;
+    try {
+      await api('/image-tasks', {
+        method: 'POST',
+        body: JSON.stringify({ caseId: caze.id })
+      });
+    } catch (error) {
+      missingImagePurposeRejected = /明确用途/.test(error.message);
+    }
+    assert(missingImagePurposeRejected, 'image task without explicit purpose was allowed');
     const gapImage = await api('/image-tasks', {
       method: 'POST',
       body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label, prompt: `补${withGaps.materialGaps[0].label}` })
@@ -875,6 +885,13 @@ async function main() {
     assert(afterInvalidStatus.slots.find((item) => item.id === manualSlot.id)?.status === '已完成', 'completed slot status changed after rejected abnormal update');
     assert(afterInvalidStatus.slots.find((item) => item.id === abnormalTestSlot.id)?.status === '异常', 'invalid slot status changed persisted status');
 
+    let detachedImageRejected = false;
+    try {
+      await api('/image-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id }) });
+    } catch (error) {
+      detachedImageRejected = /明确用途/.test(error.message);
+    }
+    assert(detachedImageRejected, 'detached image task without purpose was allowed');
     const imageTask = await api('/image-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, purpose: '封面图' }) });
     assert(imageTask.status === 'waiting_key' || imageTask.status === 'draft', 'image task status invalid');
     await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });

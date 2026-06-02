@@ -1395,7 +1395,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths }) {
         <div className="panel">
           <div className="sectionHead">
             <h2>图片任务</h2>
-            <button onClick={() => onAct(() => request('/image-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, purpose: '日常养号' }) }), '图片任务已创建')}>新建图片任务</button>
+            <span>来自素材缺口</span>
           </div>
           {imageTasks.length === 0 ? <div className="empty">暂无图片任务</div> : (
             <div className="assetList">

@@ -3900,7 +3900,10 @@ app.post('/api/image-tasks', (req, res) => {
   const caze = caseById(body.caseId);
   if (!caze) return res.status(404).json({ error: 'case not found' });
   const slot = body.planSlotId ? slotById(body.planSlotId) : null;
-  const purpose = body.purpose || slot?.contentKind || '日常养号';
+  if (body.planSlotId && !slot) return res.status(404).json({ error: 'slot not found' });
+  if (slot && slot.caseId !== caze.id) return res.status(400).json({ error: 'slot does not belong to this case' });
+  const purpose = String(body.purpose || slot?.contentKind || '').trim();
+  if (!purpose) return res.status(400).json({ error: '图片任务必须有明确用途' });
   const outputDir = path.join(caze.localCaseDir, '02-生成补充', safeSegment(purpose));
   fs.mkdirSync(outputDir, { recursive: true });
   const sourceMaterials = Array.isArray(body.sourceMaterials) ? body.sourceMaterials : imageSourceMaterialsFor(caze, slot, purpose);

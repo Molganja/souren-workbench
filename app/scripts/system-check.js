@@ -101,6 +101,9 @@ else fail('同一排期仍可能重复创建剪辑任务');
 if (serverSource.includes('剪辑任务必须绑定具体排期') && mainSource.includes('来自具体排期') && !mainSource.includes('新建剪辑任务') && !mainSource.includes('临时剪辑任务')) ok('剪辑任务只能从具体排期创建');
 else fail('剪辑任务仍存在临时建单入口');
 
+if (serverSource.includes('图片任务必须有明确用途') && mainSource.includes('来自素材缺口') && !mainSource.includes('新建图片任务') && !serverSource.includes("slot?.contentKind || '日常养号'")) ok('图片任务只能从素材缺口或明确用途创建');
+else fail('图片任务仍存在泛化入口或默认用途');
+
 const oldDeletedDirMarker = '_' + 'deleted';
 if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也不会保留')) ok('删除案例会同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
