@@ -3600,10 +3600,6 @@ app.get('/api/config', (_req, res) => {
   const image = imageSettings();
   const caseLibrary = caseLibraryCandidates();
   res.json({
-    stages: STAGES,
-    contentKinds: CONTENT_KINDS,
-    stageRatios: STAGE_RATIOS,
-    materialTemplates: MATERIAL_TEMPLATES,
     imageKeyReady: Boolean(image.apiKey),
     image: { ready: image.ready, apiUrlConfigured: Boolean(image.apiUrl), model: image.model, size: image.size, missing: image.missing },
     network: networkSettings(),

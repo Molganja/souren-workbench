@@ -963,10 +963,8 @@ async function main() {
     assert(review.contentKindStats.some((item) => item.kind === '爆款提权' && item.total >= 1), 'review content kind stats missing');
     assert(review.topAccounts.length >= 2, 'review top account missing');
     const config = await api('/config');
-    assert(config.materialTemplates.吸脂.length > 0, 'config material template missing');
-    assert(config.stageRatios.起号期, 'config ratios missing');
     assert(config.caseLibraryRoot.endsWith(path.join('素材库', '服务器案例库')) && config.caseLibrary.total >= 1, 'config missing case library status');
-    const hiddenConfigKeys = ['back' + 'ups', 'local' + 'Ai', 'll' + 'm', 'll' + 'mKeyReady', 'operator' + 'PacketDir', 'ai' + 'ConsultDir'];
+    const hiddenConfigKeys = ['back' + 'ups', 'local' + 'Ai', 'll' + 'm', 'll' + 'mKeyReady', 'operator' + 'PacketDir', 'ai' + 'ConsultDir', 'stageRatios', 'materialTemplates', 'stages', 'contentKinds'];
     assert(!hiddenConfigKeys.some((key) => key in config), 'config exposed removed operational keys');
     assert(config.readiness?.summary?.total >= 8, 'config readiness summary missing');
     assert(config.readiness.checks.some((item) => item.key === 'delivery-package' && item.status === 'ready'), 'readiness delivery package missing');

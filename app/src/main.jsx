@@ -1895,13 +1895,12 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
         <div>
           <p className="eyebrow">系统配置</p>
           <h1>运行状态</h1>
-          <p>这里只保留工作人员会用到的状态：局域网访问、素材目录、图片生成占位、内容阶段比例和素材模板。</p>
+          <p>这里只保留工作人员会用到的状态：局域网访问、素材目录、图片生成占位和通用素材管理。</p>
         </div>
         <div className="stats">
           <Metric label="图片接口" value={config.image?.ready ? '已接入' : '待接入'} />
           <Metric label="局域网" value={config.network?.lanEnabled ? '已开放' : '本机'} />
-          <Metric label="内容阶段" value={config.stages.length} />
-          <Metric label="内容类" value={config.contentKinds.length} />
+          <Metric label="通用素材" value={config.sharedAssets?.total || 0} />
         </div>
       </section>
       <section className="panel">
@@ -1982,30 +1981,6 @@ function SettingsView({ config, onAct, canOpenLocalPaths }) {
           <div className="templateRow">
             <strong>状态</strong>
             <span>{config.image?.ready ? `${config.image.model}｜${config.image.size}` : `${config.image?.missing || '未接入'}，图片任务仍会保留提示词`}</span>
-          </div>
-        </div>
-      </section>
-      <section className="twoCol">
-        <div className="panel">
-          <div className="sectionHead"><h2>内容阶段比例</h2></div>
-          <div className="templateList">
-            {Object.entries(config.stageRatios).map(([stage, ratios]) => (
-              <div className="templateRow" key={stage}>
-                <strong>{stage}</strong>
-                <span>{Object.entries(ratios).map(([kind, value]) => `${kind} ${Math.round(value * 100)}%`).join(' / ')}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="panel">
-          <div className="sectionHead"><h2>素材模板</h2></div>
-          <div className="templateList">
-            {Object.entries(config.materialTemplates).map(([project, items]) => (
-              <div className="templateRow" key={project}>
-                <strong>{project}</strong>
-                <span>{items.map((item) => `${item.label}${item.required ? '*' : ''}`).join(' / ')}</span>
-              </div>
-            ))}
           </div>
         </div>
       </section>

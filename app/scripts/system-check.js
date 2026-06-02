@@ -80,6 +80,9 @@ else fail('案例详情仍可能绕过今日队首执行素材同步或扫描');
 if (mainSource.includes('素材标记排到今日队列队首后处理') && mainSource.includes('素材缺口排到今日队列队首后处理') && mainSource.includes('图片任务排到今日队列队首后处理') && mainSource.includes('canRunMaterialActions && REVIEW_ACTIONS')) ok('素材标记、缺口建图和图片审核也受队首限制');
 else fail('案例详情仍可能绕过今日队首执行素材标记、缺口建图或图片审核');
 
+if (!mainSource.includes('内容阶段比例') && !mainSource.includes('<h2>素材模板</h2>') && !serverSource.includes('stageRatios: STAGE_RATIOS') && !serverSource.includes('materialTemplates: MATERIAL_TEMPLATES')) ok('系统配置不暴露后台阶段比例和素材模板');
+else fail('系统配置仍暴露后台阶段比例或素材模板');
+
 if (mainSource.includes('今天发完了') && !mainSource.includes('今天没有必须处理的动作')) ok('今日队列清空后有明确完工状态');
 else fail('今日队列清空状态仍不明确');
 
