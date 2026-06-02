@@ -1894,18 +1894,6 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
             <TextPanel title="剪辑要求" text={texts.editBrief} onCopy={onCopy} copyable={copyAllowed} completeKey="editBrief" completed={handoffDone.has('editBrief')} enabled={handoffStepEnabled('editBrief')} blockedNote={handoffBlockText('editBrief')} onComplete={markHandoffDone} />
           </div>
           <div className="hintBox">{view.editing?.completionNote || '剪辑或发布完成后，在系统里标记「已完成」。'}</div>
-          {view.sourceAssets?.length > 0 && (
-            <div className="sourceList">
-              <strong>可用源素材</strong>
-              {view.sourceAssets.slice(0, 12).map((asset) => (
-                <div className="sourceRow" key={asset.id}>
-                  <span>{asset.kind}｜{asset.stage}｜{asset.source}</span>
-                  <small>{asset.path}</small>
-                  {copyAllowed && handoffDone.has('recipient') ? <a className="button" href={asset.url} download>下载源素材</a> : <span className="lockedNote">{copyAllowed ? '先完成：收件微信确认' : '只读预览'}</span>}
-                </div>
-              ))}
-            </div>
-          )}
         </section>
       )}
 

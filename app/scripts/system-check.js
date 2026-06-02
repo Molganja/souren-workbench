@@ -364,6 +364,9 @@ else fail('交付弹窗缺少单账号固定步骤');
 if (mainSource.includes('复制口播/字幕文案') && mainSource.includes('复制剪辑要求') && mainSource.includes('固定剪辑配方，剪辑只替换素材和标题') && styleSource.includes('repeat(auto-fit, minmax(150px, 1fr))')) ok('视频交付顶部步骤和实际剪辑门禁一致');
 else fail('视频交付顶部步骤没有覆盖口播、剪辑要求或步骤布局过窄');
 
+if (!mainSource.includes('下载源素材') && !mainSource.includes('可用源素材') && !mainSource.includes('view.sourceAssets') && !serverSource.includes('sourceAssets,')) ok('视频交付不再暴露第二套源素材入口');
+else fail('视频交付仍暴露源素材下载区，容易和本次视频素材重复');
+
 if (mainSource.includes('deliveryRequiredSteps') && mainSource.includes('handoffReady') && mainSource.includes('missingHandoffSteps') && mainSource.includes('disabled={!handoffReady}') && mainSource.includes('handoffGuard')) ok('交付弹窗未完成复制下载步骤前不能标记派发');
 else fail('交付弹窗仍可跳过复制下载步骤直接标记派发');
 

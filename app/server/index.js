@@ -4508,12 +4508,6 @@ function deliveryViewForSlot(slot) {
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
   const mediaFiles = files.filter((item) => ['图片', '视频'].includes(item.kind));
-  const sourceAssets = [...deliveryAssetsForSlot(slot, caze, 30), ...sharedAssetsForDelivery(12)]
-    .filter((asset, index, list) => list.findIndex((item) => item.path === asset.path) === index)
-    .map((asset) => ({
-      ...asset,
-      url: assetFileUrl(asset.path)
-    }));
   const videoDelivery = isVideoDelivery(candidate.format);
   const guideAlreadySent = caseGuideAlreadySent(slot);
   const shouldSendFreelancerGuide = slot.status === '可交付' && !guideAlreadySent;
@@ -4541,7 +4535,6 @@ function deliveryViewForSlot(slot) {
     },
     files,
     mediaFiles,
-    sourceAssets,
     editing: videoDelivery ? {
       sourceDir: caze.localCaseDir,
       deliveryDir,
