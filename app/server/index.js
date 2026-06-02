@@ -3691,19 +3691,19 @@ function systemReadiness() {
       status: network.lanEnabled ? (network.accessCodeRequired ? 'ready' : 'warning') : 'waiting',
       detail: network.lanEnabled
         ? `${network.lanUrls[0] || `http://${LISTEN_HOST}:${PORT}`}｜${network.accessCodeRequired ? '访问码已开启' : '未设置访问码'}`
-        : '当前只允许本机访问；设置 SOUREN_HOST=0.0.0.0 后可给同局域网工作人员使用'
+        : '当前只允许本机访问；需要给同局域网工作人员使用时，先在主机开启局域网访问和访问码'
     },
-    { key: 'sqlite', label: 'SQLite 数据库', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: dbPath },
-    { key: 'material-root', label: '真实案例素材目录', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: MATERIAL_ROOT },
-    { key: 'case-library-root', label: '服务器案例库', status: fs.existsSync(CASE_LIBRARY_ROOT) ? 'ready' : 'warning', detail: CASE_LIBRARY_ROOT },
-    { key: 'shared-material-root', label: '通用素材库', status: fs.existsSync(SHARED_MATERIAL_ROOT) ? 'ready' : 'warning', detail: SHARED_MATERIAL_ROOT },
+    { key: 'sqlite', label: '本地数据记录', status: fs.existsSync(dbPath) ? 'ready' : 'warning', detail: '账号、排期、交付状态可正常保存' },
+    { key: 'material-root', label: '真实案例素材', status: fs.existsSync(MATERIAL_ROOT) ? 'ready' : 'warning', detail: '案例素材可扫描、同步和用于交付' },
+    { key: 'case-library-root', label: '服务器案例库', status: fs.existsSync(CASE_LIBRARY_ROOT) ? 'ready' : 'warning', detail: '可扫描待分配案例目录' },
+    { key: 'shared-material-root', label: '通用素材库', status: fs.existsSync(SHARED_MATERIAL_ROOT) ? 'ready' : 'warning', detail: '医院素材、套图素材和备用素材可复用' },
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例四项录入与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目 + 共享素材路径即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，并按素材顺序和完成确认闭环' },
-    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并写入后台' },
+    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: '默认使用主机浏览器登录态采集清单；主机端用已登录抖音的浏览器逐个查看并写入后台' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
-    { key: 'image-api', label: '图片生成接口', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? `已接入 ${image.model}｜${image.apiUrl}` : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
+    { key: 'image-api', label: '图片生成', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? '已接入，可在图片任务里生成并下载' : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
   ];
   return {
     summary: {

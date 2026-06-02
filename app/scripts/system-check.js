@@ -92,11 +92,14 @@ if (
   && serverSource.includes('function agentWorkQueue')
   && mainSource.includes('className="panel systemBackstage"')
   && mainSource.includes('<h2>系统后台</h2>')
+  && mainSource.includes('<h2>素材保存位置</h2>')
   && mainSource.includes('/agent-work')
   && !mainSource.includes('主机侧工作清单')
+  && !mainSource.includes('{item.endpoint}')
+  && !mainSource.includes('<h2>本地素材根目录</h2>')
   && smokeSource.includes('agent work queue missing pending viral analysis')
-) ok('后台动作聚合爆款分析、Chrome采集和图片任务，默认折叠且不进入首页');
-else fail('缺少折叠的系统后台，或仍保留主机侧工作清单旧口径');
+) ok('后台动作聚合爆款分析、采集和图片任务，默认折叠且不暴露技术接口或独立本地目录面板');
+else fail('缺少折叠的系统后台，或仍暴露技术接口/本地目录旧口径');
 
 if (serverSource.includes('DEFAULT_IMAGE_API_URL') && serverSource.includes("DEFAULT_IMAGE_MODEL = 'gpt-image-1'") && serverSource.includes('apiUrlDefaulted') && !serverSource.includes('IMAGE_API_KEY 和 IMAGE_API_URL') && !readmeSource.includes('同时填写 `IMAGE_API_KEY` 和 `IMAGE_API_URL`') && smokeSource.includes('image config should be ready with key only')) ok('图片接口只要求 IMAGE_API_KEY，接口地址仅作为可选覆盖');
 else fail('图片接口仍要求同时填写 key 和 URL，或缺少 key-only 验收');
@@ -151,6 +154,20 @@ else fail('系统配置仍暴露后台阶段比例或素材模板');
 
 if (mainSource.includes('系统验收清单') && mainSource.includes('readinessChecks') && mainSource.includes('readinessStatusLabel')) ok('系统配置展示简短验收清单');
 else fail('系统配置缺少 SOP 要求的验收清单');
+
+if (
+  !mainSource.includes('SOUREN_ACCESS_CODE') &&
+  !mainSource.includes('SOUREN_HOST') &&
+  !mainSource.includes('等待Key') &&
+  !mainSource.includes('等待Chrome') &&
+  !serverSource.includes('设置 SOUREN_HOST=0.0.0.0 后可') &&
+  !serverSource.includes('默认使用 Chrome 登录态采集清单') &&
+  mainSource.includes('开放局域网前请先设置访问码') &&
+  mainSource.includes('等密钥') &&
+  serverSource.includes('开启局域网访问和访问码') &&
+  serverSource.includes('主机浏览器登录态采集清单')
+) ok('系统配置前台不暴露英文环境变量、Key 或 Chrome 状态口径');
+else fail('系统配置前台仍暴露英文环境变量、Key 或 Chrome 状态口径');
 
 const pkg = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8'));
 if (pkg.scripts?.['client:verify']?.includes('client:mac') && pkg.scripts?.['client:verify']?.includes('client:package:check')) ok('客户端可一条命令打包并启动验收');

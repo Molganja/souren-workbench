@@ -19,7 +19,7 @@ const STATUS_LABELS = {
   timeout: '超时',
   active: '待互动',
   handled: '已处理',
-  waiting_chrome: '等待Chrome采集',
+  waiting_chrome: '等待浏览器采集',
   unknown: '未知'
 };
 const REVIEW_ACTIONS = [
@@ -2194,10 +2194,10 @@ function SettingsView({ config, onAct }) {
         <div>
           <p className="eyebrow">系统配置</p>
           <h1>运行状态</h1>
-          <p>日常只看局域网、素材目录、图片接口和验收清单；采集登记、爆款分析和图片生成排队放进系统后台，平时不用展开。</p>
+          <p>日常只看局域网网址、通用素材扫描、图片生成状态和验收清单；采集登记、爆款分析和图片生成排队放进系统后台，平时不用展开。</p>
         </div>
         <div className="stats">
-          <Metric label="图片接口" value={config.image?.ready ? '已接入' : '待接入'} />
+          <Metric label="图片生成" value={config.image?.ready ? '已接入' : '待接入'} />
           <Metric label="局域网" value={config.network?.lanEnabled ? '已开放' : '本机'} />
           <Metric label="通用素材" value={config.sharedAssets?.total || 0} />
         </div>
@@ -2217,7 +2217,7 @@ function SettingsView({ config, onAct }) {
           </div>
           <div className="templateRow">
             <strong>访问码</strong>
-            <span>{config.network?.accessCodeRequired ? '已开启' : '未开启；建议开放局域网时设置 SOUREN_ACCESS_CODE'}</span>
+            <span>{config.network?.accessCodeRequired ? '已开启' : '未开启；开放局域网前请先设置访问码'}</span>
           </div>
         </div>
       </section>
@@ -2267,7 +2267,7 @@ function SettingsView({ config, onAct }) {
                 <Metric label="监控账号" value={monitorTotals.monitoredAccounts || 0} />
                 <Metric label="到期采集" value={monitorTotals.dueCollection || 0} />
                 <Metric label="已排队" value={monitorTotals.collectionQueued || 0} />
-                <Metric label="等待Chrome" value={monitorTotals.waitingChrome || 0} />
+                <Metric label="等采集" value={monitorTotals.waitingChrome || 0} />
                 <Metric label="爆款提醒" value={monitorTotals.viralAlerts || 0} />
               </div>
               <div className="templateList settingsList">
@@ -2295,7 +2295,7 @@ function SettingsView({ config, onAct }) {
                 <Metric label="爆款待分析" value={agentWorkCounts.viralAnalysis || 0} />
                 <Metric label="采集目标" value={agentWorkCounts.douyinCollection || 0} />
                 <Metric label="图片任务" value={agentWorkCounts.imageWork || 0} />
-                <Metric label="等待Key" value={agentWorkCounts.imageWaitingKey || 0} />
+                <Metric label="等密钥" value={agentWorkCounts.imageWaitingKey || 0} />
                 <Metric label="可生成图" value={agentWorkCounts.imageReadyToGenerate || 0} />
               </div>
               <div className="templateList settingsList">
@@ -2308,7 +2308,6 @@ function SettingsView({ config, onAct }) {
                       <span className={`status ${agentWorkStatusClass(item)}`}>{item.kind} · {displayStatus(item.status)}</span>
                     </div>
                     <small>{item.case?.weixinNick ? `${item.case.weixinNick}｜${item.case.project}｜` : ''}{item.action}</small>
-                    <small>{item.endpoint}</small>
                   </div>
                 ))}
               </div>
@@ -2316,19 +2315,30 @@ function SettingsView({ config, onAct }) {
           </div>
         </details>
       </section>
-      <section className="panel">
-        <div className="sectionHead"><h2>本地素材根目录</h2></div>
-        <div className="path">{config.materialRoot}</div>
-      </section>
-      <section className="panel">
-        <div className="sectionHead"><h2>服务器案例库</h2><span>未登记 {config.caseLibrary?.unregistered || 0} 个</span></div>
-        <div className="path">{config.caseLibraryRoot}</div>
-        <div className="templateList">
-          <div className="templateRow">
-            <strong>可登记目录</strong>
-            <span>{config.caseLibrary?.total || 0} 个</span>
+      <section className="panel systemBackstage">
+        <details>
+          <summary>
+            <div>
+              <h2>素材保存位置</h2>
+              <p>只在排查路径或核对服务器目录时展开，日常不用看。</p>
+            </div>
+            <span>服务器案例 {config.caseLibrary?.total || 0} · 未登记 {config.caseLibrary?.unregistered || 0}</span>
+          </summary>
+          <div className="templateList settingsList">
+            <div className="templateRow">
+              <strong>真实案例素材</strong>
+              <span className="path">{config.materialRoot}</span>
+            </div>
+            <div className="templateRow">
+              <strong>服务器案例库</strong>
+              <span className="path">{config.caseLibraryRoot}</span>
+            </div>
+            <div className="templateRow">
+              <strong>通用素材库</strong>
+              <span className="path">{config.sharedMaterialRoot}</span>
+            </div>
           </div>
-        </div>
+        </details>
       </section>
       <section className="panel">
         <div className="sectionHead">
@@ -2342,7 +2352,6 @@ function SettingsView({ config, onAct }) {
             (result) => `通用素材扫描完成：新增 ${result.inserted} 个`
           )}>扫描通用素材</button>
         </div>
-        <div className="path">{config.sharedMaterialRoot}</div>
         <div className="templateList">
           <div className="templateRow">
             <strong>总数</strong>
@@ -2369,11 +2378,11 @@ function SettingsView({ config, onAct }) {
         onAct={onAct}
       />
       <section className="panel">
-        <div className="sectionHead"><h2>图片生成接口</h2></div>
+        <div className="sectionHead"><h2>图片生成</h2></div>
         <div className="templateList">
           <div className="templateRow">
             <strong>状态</strong>
-            <span>{config.image?.ready ? `${config.image.model}｜${config.image.size}｜${config.image.apiUrlConfigured ? '自定义地址' : '默认地址'}` : `${config.image?.missing || '未接入'}，图片任务仍会保留提示词`}</span>
+            <span>{config.image?.ready ? '已接入，可在图片任务里生成并下载' : `${config.image?.missing || '未接入'}，图片任务仍会保留提示词`}</span>
           </div>
         </div>
       </section>
