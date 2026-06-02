@@ -276,7 +276,7 @@ function App() {
             setSelectedCaseId(created.id);
             setView('case');
             return created;
-          }, (created) => `案例已创建，排期 ${created.slotsCreated || 0} 条`)}
+          }, (created) => `案例已创建：同步素材 ${created.sync?.inserted || 0} 个，排期 ${created.slotsCreated || 0} 条`)}
         />
       )}
       {bulkCaseOpen && (

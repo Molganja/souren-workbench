@@ -1090,6 +1090,22 @@ function normalizeDouyinUrl(value) {
   return url;
 }
 
+function normalizeSourceMaterialDir(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    const err = new Error('必须填写共享原始素材路径');
+    err.status = 400;
+    throw err;
+  }
+  const resolved = path.resolve(raw);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+    const err = new Error('共享原始素材路径不存在或不是目录');
+    err.status = 404;
+    throw err;
+  }
+  return resolved;
+}
+
 function createCaseFromBody(body = {}) {
   const id = uid('case');
   const created = now();
@@ -1111,12 +1127,7 @@ function createCaseFromBody(body = {}) {
     err.status = 400;
     throw err;
   }
-  const sourceMaterialDir = String(body.sourceMaterialDir || body.source_material_dir || '').trim();
-  if (!sourceMaterialDir) {
-    const err = new Error('必须填写共享原始素材路径');
-    err.status = 400;
-    throw err;
-  }
+  const sourceMaterialDir = normalizeSourceMaterialDir(body.sourceMaterialDir || body.source_material_dir || '');
   const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(weixinNick)}`;
   const caseDir = path.join(MATERIAL_ROOT, dirName);
   ensureCaseDirs(caseDir);
@@ -3815,8 +3826,9 @@ app.post('/api/cases', (req, res) => {
   try {
     const body = req.body || {};
     const created = createCaseFromBody(body);
+    const sync = syncCaseSourceMaterials(created);
     const slots = generateSlotsForCase(created, { days: 14 });
-    res.json({ ...created, slotsCreated: slots.length });
+    res.json({ ...created, sync, slotsCreated: slots.length });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }

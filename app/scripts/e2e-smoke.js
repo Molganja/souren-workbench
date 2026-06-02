@@ -403,14 +403,16 @@ async function main() {
     assert(caze.weixinNick === '验收兼职' && caze.persona.age && caze.persona.tone && caze.persona.motivation, 'case required nickname or random defaults missing');
     assert(caze.stage === '起号期' && caze.slotsCreated >= 14, 'case create should ignore external stage and generate schedule by default');
     assert(caze.sourceMaterialDir === sharedSourceDir, 'case source material dir missing');
+    assert(caze.sync?.copied === 1 && caze.sync?.inserted === 1, 'case create did not automatically sync shared source material');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
     const agentWorkAfterCase = await api('/agent-work');
     assert(agentWorkAfterCase.counts.douyinCollection >= 1 && agentWorkAfterCase.items.some((item) => item.kind === '抖音采集' && item.case?.id === caze.id && item.endpoint === '/api/douyin-monitor/ingest'), 'agent work queue missing chrome collection work');
     const syncedMaterials = await api(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' });
-    assert(syncedMaterials.copied === 1 && syncedMaterials.inserted === 1, 'source material sync did not copy and insert shared asset');
+    assert(syncedMaterials.copied === 0 && syncedMaterials.inserted === 0, 'source material sync duplicated asset that was already synced on create');
     const syncedAssetPath = path.join(caze.localCaseDir, '00-原始素材', '共享同步', '共享-D1.jpg');
     assert(fs.existsSync(syncedAssetPath), 'synced source material missing in local case dir');
-    assert(syncedMaterials.assets.some((asset) => asset.path === syncedAssetPath && asset.originPath === path.join(sharedSourceDir, '共享-D1.jpg') && asset.source === '共享导入' && asset.usage === '案例过程'), 'synced source material metadata missing');
+    const createdCaseDetail = await api(`/cases/${caze.id}`);
+    assert(createdCaseDetail.assets.some((asset) => asset.path === syncedAssetPath && asset.originPath === path.join(sharedSourceDir, '共享-D1.jpg') && asset.source === '共享导入' && asset.usage === '案例过程'), 'synced source material metadata missing');
     fs.writeFileSync(path.join(sharedSourceDir, '共享-对比.jpg'), 'fake unsynced shared case image');
     const beforeSyncDashboard = await api('/dashboard');
     const pendingSync = beforeSyncDashboard.materialSync.find((item) => item.case?.id === caze.id);
@@ -515,6 +517,20 @@ async function main() {
       missingSourceRejected = /共享原始素材路径/.test(error.message);
     }
     assert(missingSourceRejected, 'case create allowed missing shared source path');
+    let invalidSourceRejected = false;
+    try {
+      await api('/cases', {
+        method: 'POST',
+        body: JSON.stringify({
+          weixinNick: '假共享路径验收兼职',
+          douyinUrl: 'https://www.douyin.com/user/invalid-source-smoke',
+          sourceMaterialDir: path.join(ROOT_DIR, '不存在的共享目录')
+        })
+      });
+    } catch (error) {
+      invalidSourceRejected = /不存在或不是目录/.test(error.message);
+    }
+    assert(invalidSourceRejected, 'case create allowed missing shared source directory');
     const minimalCase = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({
