@@ -1027,6 +1027,7 @@ async function main() {
     const deliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(deliveryView.texts.operatorInstruction.includes('微信收件人：验收兼职改名'), 'delivery view missing operator instruction');
     assert(deliveryView.texts.operatorInstruction.includes('固定发布说明') && deliveryView.texts.operatorInstruction.includes('时间窗') && deliveryView.texts.operatorInstruction.includes('话题只用文案里已有的'), 'delivery view missing fixed publish instructions');
+    assert(!deliveryView.texts.operatorInstruction.includes('smoke_dy /') && !deliveryView.texts.operatorInstruction.includes(' / https://www.douyin.com/'), 'delivery view still displays derived Douyin id');
     assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复') && deliveryView.texts.freelancerGuide.includes('话题只用抖音发布文案里已有的'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');

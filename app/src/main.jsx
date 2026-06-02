@@ -690,10 +690,8 @@ function summarizeQueuedKinds(items = []) {
 }
 
 function douyinDisplay(caze = {}) {
-  const douyinId = String(caze.douyinId || '').trim();
   const douyinUrl = String(caze.douyinUrl || '').trim();
-  if (douyinId && douyinUrl) return `${douyinId} / ${douyinUrl}`;
-  return douyinId || douyinUrl || '未填抖音链接';
+  return douyinUrl || '未填抖音链接';
 }
 
 function PriorityFocusMeta({ caze }) {
@@ -1020,7 +1018,7 @@ function shortTime(value) {
 
 function caseAccountLine(caze = {}) {
   return [
-    caze.caseCode || caze.douyinId || '未建案例'
+    caze.caseCode || caze.douyinUrl || '未建案例'
   ].filter(Boolean).join(' · ');
 }
 
