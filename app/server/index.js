@@ -4658,6 +4658,9 @@ app.patch('/api/slots/:id/status', (req, res) => {
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message });
   }
+  if (status === '已完成' && slot.status === '已派发' && req.body?.completionConfirmed !== true) {
+    return res.status(409).json({ error: '收到兼职或剪辑人员完成回复后，才能标记已完成' });
+  }
   let handoffGuard = null;
   if (status === '已派发') {
     const deliveryView = deliveryViewForSlot(slot);

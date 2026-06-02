@@ -1670,10 +1670,12 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const [error, setError] = useState('');
   const [handoffDone, setHandoffDone] = useState(() => new Set());
   const [handoffError, setHandoffError] = useState('');
+  const [completionConfirmed, setCompletionConfirmed] = useState(false);
   useEffect(() => {
     let alive = true;
     setHandoffDone(new Set());
     setHandoffError('');
+    setCompletionConfirmed(false);
     request(`/slots/${slot.id}/delivery-view`)
       .then((data) => {
         if (alive) {
@@ -1858,10 +1860,16 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
           }, '已标记派发')}>已用微信发送</button>
         )}
         {completionAllowed && (
-          <button className="primary" onClick={() => onAct(async () => {
-            await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
-            onClose();
-          }, '已标记完成')}>标记完成</button>
+          <>
+            <label className={`completionConfirm ${completionConfirmed ? 'confirmed' : ''}`}>
+              <input type="checkbox" checked={completionConfirmed} onChange={(event) => setCompletionConfirmed(event.target.checked)} />
+              <span>已收到对方完成回复</span>
+            </label>
+            <button className="primary" disabled={!completionConfirmed} onClick={() => onAct(async () => {
+              await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成', completionConfirmed: true }) });
+              onClose();
+            }, '已标记完成')}>标记完成</button>
+          </>
         )}
       </div>
     </Modal>

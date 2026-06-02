@@ -1626,6 +1626,26 @@ textarea {
   border-color: var(--green-soft);
 }
 
+.completionConfirm {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.completionConfirm.confirmed {
+  color: var(--green);
+  background: var(--green-soft);
+  border-color: var(--green-soft);
+}
+
 .hintBox {
   border: 1px solid var(--line);
   background: #f8fafc;

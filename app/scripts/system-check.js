@@ -596,8 +596,19 @@ else fail('已派发交付素材仍可能下载重发');
 if (mainSource.includes('已用微信发送') && !mainSource.includes('>标记派发</button>') && !mainSource.includes('>已微信发送</button>')) ok('派发确认只保留在交付弹窗内');
 else fail('列表页仍有绕过交付弹窗的派发按钮');
 
-if (!mainSource.includes('markCompleted') && mainSource.includes('打开交付内容，确认完成后标记完成') && mainSource.includes("view.slot.status === '已派发'")) ok('完成确认只保留在交付弹窗内');
-else fail('列表页仍有绕过交付弹窗的完成按钮');
+if (
+  !mainSource.includes('markCompleted')
+  && mainSource.includes('打开交付内容，确认完成后标记完成')
+  && mainSource.includes("view.slot.status === '已派发'")
+  && mainSource.includes('completionConfirmed')
+  && mainSource.includes('已收到对方完成回复')
+  && serverSource.includes('completionConfirmed')
+  && serverSource.includes('收到兼职或剪辑人员完成回复后')
+  && readmeSource.includes('已收到对方完成回复')
+  && sopSource.includes('已收到对方完成回复')
+  && smokeSource.includes('sent slot completed without explicit reply confirmation')
+) ok('完成确认只保留在交付弹窗内，且必须确认收到完成回复');
+else fail('列表页仍可能直接完成任务，或未确认收到回复就能完成');
 
 if (serverSource.includes('canGenerateDeliveryForSlot') && serverSource.includes('CANDIDATE_SELECT_STATUSES') && serverSource.includes('不能再改候选') && mainSource.includes('canGenerateDelivery') && mainSource.includes('lockedNote')) ok('交付后禁止重生成交付或改候选');
 else fail('交付后仍可能重生成交付或改候选');
