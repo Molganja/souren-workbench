@@ -213,6 +213,9 @@ else fail('同一排期仍可能重复创建剪辑任务');
 if (mainSource.includes('ClipTaskModal') && mainSource.includes('我已看完固定配方') && mainSource.includes('recipeConfirmed: true') && !mainSource.includes('CLIP_ACTIONS') && serverSource.includes('完成剪辑前必须先确认已看完固定剪辑配方') && smokeSource.includes('clipCompletedWithoutRecipeRejected')) ok('剪辑任务必须先查看完整固定配方才能标记完成');
 else fail('剪辑任务仍可能不看配方直接标记完成');
 
+if (mainSource.includes('先打开完整剪辑要求并确认看完配方') && readmeSource.includes('打开完整要求并确认看完配方') && !readmeSource.includes('可在首页查看并标记状态')) ok('剪辑任务前台和文档不再保留直接标记旧口径');
+else fail('剪辑任务仍有直接查看标记的旧口径');
+
 if (serverSource.includes('剪辑任务必须绑定具体排期') && mainSource.includes('来自具体排期') && !mainSource.includes('新建剪辑任务') && !mainSource.includes('临时剪辑任务')) ok('剪辑任务只能从具体排期创建');
 else fail('剪辑任务仍存在临时建单入口');
 

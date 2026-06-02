@@ -569,7 +569,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       statusClass: statusClass(task.status),
       title: `${task.case?.weixinNick || '未知账号'} 要剪辑`,
       detail: task.title,
-      note: '查看剪辑要求，剪完或安排发布后标记完成。',
+      note: '先打开完整剪辑要求并确认看完配方，剪完或安排发布后再标记完成。',
       case: task.case,
       clipTask: task
     });
