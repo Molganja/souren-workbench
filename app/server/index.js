@@ -32,6 +32,13 @@ const AUTH_SECRET = process.env.SOUREN_AUTH_SECRET || `${ROOT_DIR}:${ACCESS_CODE
 const DEFAULT_IMAGE_MODEL = 'image-v2';
 const DOUYIN_COLLECTION_INTERVAL_MS = Number(process.env.DOUYIN_COLLECTION_INTERVAL_MS || 24 * 60 * 60 * 1000);
 const ROLLING_SCHEDULE_DAYS = Math.max(0, Number(process.env.SOUREN_ROLLING_SCHEDULE_DAYS || 14));
+const LOOPBACK_LISTEN_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+const DELETED_CASE_ROOT = path.join(MATERIAL_ROOT, '_deleted');
+
+if (!LOOPBACK_LISTEN_HOSTS.has(LISTEN_HOST) && !ACCESS_CODE) {
+  console.error('安全限制：开放局域网访问时必须设置 SOUREN_ACCESS_CODE。请改回 SOUREN_HOST=127.0.0.1，或填写访问码后再启动。');
+  process.exit(1);
+}
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -62,6 +69,7 @@ app.use('/shared-files', requireWorkbenchAccess);
 
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
+const PLAN_SLOT_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常'];
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.avi', '.webm']);
 const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
@@ -90,8 +98,34 @@ const STATUS_LABELS = {
   warning: '需处理'
 };
 
+const COMPLIANCE_RULES = [
+  { label: '绝对化承诺', pattern: /(保证|包成功|百分百|100%|根治|治愈|永久|永不|彻底解决)/i },
+  { label: '效果承诺', pattern: /(立刻见效|马上见效|当天见效|快速见效|一次见效|术后立马|效果翻倍)/i },
+  { label: '安全无风险表述', pattern: /(零风险|无风险|完全无痛|没有副作用|绝对安全)/i },
+  { label: '极限排名表述', pattern: /(第一|唯一|顶级|国家级|最(好|强|快|安全|有效|专业|权威|便宜|厉害|靠谱|自然|明显))/i },
+  { label: '诱导性价格表述', pattern: /(低价引流|限时秒杀|错过再等一年|内部价|超低价)/i }
+];
+
 function displayStatus(status) {
   return STATUS_LABELS[status] || status || '未知';
+}
+
+function complianceHitsForText(text) {
+  const content = String(text || '');
+  const hits = [];
+  COMPLIANCE_RULES.forEach((rule) => {
+    const match = content.match(rule.pattern);
+    if (match?.[0]) hits.push({ rule: rule.label, match: match[0] });
+  });
+  return hits;
+}
+
+function complianceHitsForCandidate(candidate) {
+  return complianceHitsForText(`${candidate?.title || ''}\n${candidate?.publishText || ''}`);
+}
+
+function formatComplianceHits(hits) {
+  return hits.map((item, index) => `${index + 1}. ${item.rule}：${item.match}`).join('\n');
 }
 
 function networkSettings() {
@@ -101,7 +135,7 @@ function networkSettings() {
     .filter((item) => item && item.family === 'IPv4' && !item.internal)
     .map((item) => item.address);
   const lanUrls = Array.from(new Set(lanIps.map((ip) => `http://${ip}:${PORT}`)));
-  const lanEnabled = !['127.0.0.1', 'localhost', '::1'].includes(LISTEN_HOST);
+  const lanEnabled = !LOOPBACK_LISTEN_HOSTS.has(LISTEN_HOST);
   return {
     listenHost: LISTEN_HOST,
     port: PORT,
@@ -792,6 +826,9 @@ function createCandidate(slot, caze, variant, viral = null, seed = null, overrid
   const publishText = override.publishText || draftText(slot.contentKind, variant, caze, slot, viral, seed);
   const operatorInstruction = override.operatorInstruction || operatorInstructionFor(slot, caze);
   const format = override.format || formatForKind(slot.contentKind, seed);
+  const complianceHits = Array.isArray(override.complianceHits)
+    ? override.complianceHits
+    : complianceHitsForText(`${title}\n${publishText}`);
   run(
     `INSERT INTO candidate_drafts
     (id, slot_id, variant, title, publish_text, operator_instruction, format, source_template_id, compliance_hits, selected, created_at)
@@ -805,7 +842,7 @@ function createCandidate(slot, caze, variant, viral = null, seed = null, overrid
       operatorInstruction,
       format,
       override.sourceTemplateId || viral?.id || seed?.id || null,
-      JSON.stringify(override.complianceHits || []),
+      JSON.stringify(complianceHits),
       now()
     ]
   );
@@ -1125,16 +1162,25 @@ function writeCaseManifest(caze) {
 }
 
 function removeCaseDirectory(caze) {
-  if (!caze?.localCaseDir) return false;
+  if (!caze?.localCaseDir) return { removedDir: false, archivedDir: '' };
   const target = assertInsideMaterialRoot(caze.localCaseDir);
   if (target === MATERIAL_ROOT) {
     const err = new Error('refuse to delete material root');
     err.status = 400;
     throw err;
   }
-  if (!fs.existsSync(target)) return false;
-  fs.rmSync(target, { recursive: true, force: true });
-  return true;
+  if (!fs.existsSync(target)) return { removedDir: false, archivedDir: '' };
+  fs.mkdirSync(DELETED_CASE_ROOT, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const baseName = safeSegment(`${stamp}_${caze.caseCode || caze.id}_${path.basename(target)}`);
+  let archivedDir = path.join(DELETED_CASE_ROOT, baseName);
+  let suffix = 1;
+  while (fs.existsSync(archivedDir)) {
+    archivedDir = path.join(DELETED_CASE_ROOT, `${baseName}_${suffix}`);
+    suffix += 1;
+  }
+  fs.renameSync(target, archivedDir);
+  return { removedDir: true, archivedDir };
 }
 
 function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
@@ -3000,9 +3046,9 @@ app.delete('/api/cases/:id', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });
   try {
-    const removedDir = removeCaseDirectory(caze);
+    const { removedDir, archivedDir } = removeCaseDirectory(caze);
     run('DELETE FROM cases WHERE id = ?', [caze.id]);
-    res.json({ deleted: true, id: caze.id, removedDir, localCaseDir: caze.localCaseDir });
+    res.json({ deleted: true, id: caze.id, removedDir, archivedDir, localCaseDir: caze.localCaseDir });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -3171,7 +3217,10 @@ app.post('/api/candidates/:id/select', (req, res) => {
 app.patch('/api/slots/:id/status', (req, res) => {
   const slot = slotById(req.params.id);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
-  const status = req.body?.status || slot.status;
+  const status = String(req.body?.status || '').trim();
+  if (!PLAN_SLOT_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `非法槽位状态：${status || '空值'}` });
+  }
   run('UPDATE plan_slots SET status = ?, updated_at = ? WHERE id = ?', [status, now(), slot.id]);
   res.json(slotById(slot.id));
 });
@@ -3184,6 +3233,29 @@ function createDeliveryForSlot(slot) {
   const folder = `${slot.date}_${safeSegment(slot.stage)}_${safeSegment(slot.contentKind)}`;
   const deliveryDir = path.join(caze.localCaseDir, '03-交付给兼职', folder);
   fs.mkdirSync(deliveryDir, { recursive: true });
+  const complianceHits = complianceHitsForCandidate(candidate);
+  if (JSON.stringify(complianceHits) !== JSON.stringify(candidate.complianceHits || [])) {
+    run('UPDATE candidate_drafts SET compliance_hits = ? WHERE id = ?', [JSON.stringify(complianceHits), candidate.id]);
+  }
+  if (complianceHits.length) {
+    fs.writeFileSync(path.join(deliveryDir, '00-合规阻塞说明.txt'), [
+      `案例：${caze.caseCode} / ${caze.weixinNick}`,
+      `内容：${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.stage}`,
+      `标题：${candidate.title}`,
+      '',
+      '当前不能标记为可交付：文案命中本地合规提示。',
+      '',
+      '命中内容：',
+      formatComplianceHits(complianceHits),
+      '',
+      '下一步：',
+      '1. 回到候选稿，重新生成或选择没有命中的版本',
+      '2. 必要时人工改写标题和正文',
+      '3. 再重新生成交付内容'
+    ].join('\n'));
+    run('UPDATE plan_slots SET status = ?, delivery_dir = ?, updated_at = ? WHERE id = ?', ['异常', deliveryDir, now(), slot.id]);
+    return { blocked: true, reason: 'compliance_hits', complianceHits, deliveryDir, copiedAssets: [], slot: slotById(slot.id) };
+  }
   fs.writeFileSync(path.join(deliveryDir, '00-微信发送清单.txt'), [
     `发给：${caze.weixinNick || '未命名兼职'}`,
     `抖音号：${caze.douyinId || '未填'}`,
@@ -3353,7 +3425,8 @@ function deliveryViewForSlot(slot) {
       assetOrder: readDeliveryText(deliveryDir, '05-素材顺序清单.txt'),
       publishRules: readDeliveryText(deliveryDir, '06-发布要求.txt'),
       finalVideoNote: readDeliveryText(deliveryDir, '07-成片回收说明.txt'),
-      blockedNote: readDeliveryText(deliveryDir, '00-素材阻塞说明.txt')
+      blockedNote: readDeliveryText(deliveryDir, '00-素材阻塞说明.txt'),
+      complianceNote: readDeliveryText(deliveryDir, '00-合规阻塞说明.txt')
     },
     files,
     mediaFiles,

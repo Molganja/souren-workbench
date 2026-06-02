@@ -1371,7 +1371,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy, onDelivery, canOpenLocal
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
-        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), (result) => result.blocked ? '缺少素材，已打开阻塞说明' : '交付内容已生成')}>生成交付内容</button>}
+        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
         {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
@@ -1437,7 +1437,7 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy, onDelivery, canOpenLocalPath
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>}
-        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), (result) => result.blocked ? '缺少素材，已打开阻塞说明' : '交付内容已生成')}>生成交付内容</button>}
+        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
         {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
@@ -1601,8 +1601,9 @@ function registerLibraryCase(item, onAct, onDone) {
 }
 
 function deleteCase(item, onAct) {
-  if (!window.confirm(`删除案例「${item.weixinNick}」？数据库记录和本地素材目录都会删除，不能恢复。`)) return;
-  onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), (result) => result.removedDir ? '案例和本地素材目录已删除' : '案例已删除，本地目录原本不存在');
+  if (!window.confirm(`删除案例「${item.weixinNick}」？系统会移除数据库记录，并把本地素材目录移入 _deleted。`)) return;
+  if (!window.confirm('再次确认删除？删除后首页不会再显示这个案例，需要主机端从 _deleted 手动恢复目录。')) return;
+  onAct(() => request(`/cases/${item.id}`, { method: 'DELETE' }), (result) => result.removedDir ? '案例已删除，本地素材已移入回收目录' : '案例已删除，本地目录原本不存在');
 }
 
 function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPaths }) {
@@ -1852,6 +1853,12 @@ async function generateImageTask(task, onAct) {
   );
 }
 
+function deliveryResultMessage(result) {
+  if (!result?.blocked) return '交付内容已生成';
+  if (result.reason === 'compliance_hits') return '文案命中合规提示，已打开说明';
+  return '缺少素材，已打开阻塞说明';
+}
+
 function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery, canOpenLocalPaths }) {
   const selected = candidates.find((item) => item.selected);
   return (
@@ -1868,7 +1875,7 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery, canOpenLo
         {!selected && ['待生成', '候选待选', '素材阻塞', '异常'].includes(slot.status) && (
           <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
         )}
-        {selected && <button onClick={() => onAct(() => generateDeliveryAndOpen({ ...slot, case: caze }, onDelivery), (result) => result.blocked ? '缺少素材，已打开阻塞说明' : '交付内容已生成')}>生成交付内容</button>}
+        {selected && <button onClick={() => onAct(() => generateDeliveryAndOpen({ ...slot, case: caze }, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
         {selected && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), '剪辑任务已创建')}>创建剪辑任务</button>}
         {slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
         {slot.status === '素材阻塞' && <button onClick={() => copyMaterialIntakeNote(caze, onCopy)}>复制补素材说明</button>}
@@ -1881,13 +1888,18 @@ function SlotCard({ slot, candidates, caze, onAct, onCopy, onDelivery, canOpenLo
       {candidates.length > 0 && (
         <div className="draftGrid">
           {candidates.map((draft) => (
-            <div className={`draft ${draft.selected ? 'selected' : ''}`} key={draft.id}>
+            <div className={`draft ${draft.selected ? 'selected' : ''} ${draft.complianceHits?.length ? 'complianceWarning' : ''}`} key={draft.id}>
               <div className="draftHead">
                 <strong>{draft.variant}</strong>
                 <span>{draft.format}</span>
               </div>
               <h3>{draft.title}</h3>
               <p>{draft.publishText}</p>
+              {draft.complianceHits?.length > 0 && (
+                <div className="complianceHits">
+                  合规提示：{draft.complianceHits.map((hit) => `${hit.rule}「${hit.match}」`).join(' / ')}
+                </div>
+              )}
               <div className="inlineActions">
                 <button onClick={() => onAct(() => request(`/candidates/${draft.id}/select`, { method: 'POST' }), '已锁定候选')}>{draft.selected ? '已选择' : '选择这条'}</button>
               </div>
@@ -1949,6 +1961,12 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
         <div className="textPanel warningPanel">
           <strong>素材阻塞说明</strong>
           <pre>{texts.blockedNote}</pre>
+        </div>
+      )}
+      {texts.complianceNote && (
+        <div className="textPanel warningPanel">
+          <strong>合规阻塞说明</strong>
+          <pre>{texts.complianceNote}</pre>
         </div>
       )}
 

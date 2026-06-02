@@ -965,6 +965,11 @@ button.activeSmall {
   background: var(--blue-soft);
 }
 
+.draft.complianceWarning {
+  border-color: #f5c2b8;
+  background: #fff8f6;
+}
+
 .draftHead {
   display: flex;
   justify-content: space-between;
@@ -981,6 +986,16 @@ button.activeSmall {
   white-space: pre-wrap;
   color: var(--ink);
   line-height: 1.6;
+}
+
+.complianceHits {
+  border: 1px solid #f5c2b8;
+  border-radius: 7px;
+  background: var(--red-soft);
+  color: var(--red);
+  padding: 8px;
+  line-height: 1.5;
+  font-size: 12px;
 }
 
 .twoCol {

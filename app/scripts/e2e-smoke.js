@@ -7,6 +7,7 @@ const TEST_PORT = 5184;
 const TEST_IMAGE_APP_PORT = 5188;
 const TEST_IMAGE_PORT = 5189;
 const TEST_AUTH_PORT = 5190;
+const TEST_LAN_FAIL_PORT = 5191;
 const ORIGIN = `http://127.0.0.1:${TEST_PORT}`;
 const BASE = `${ORIGIN}/api`;
 const APP_DIR = path.resolve(import.meta.dirname, '..');
@@ -14,6 +15,7 @@ const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
 const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
 const IMAGE_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-image');
 const AUTH_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-auth');
+const LAN_FAIL_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-lan-fail');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -153,6 +155,40 @@ async function authAccessSmoke() {
   }
 }
 
+async function lanFailClosedSmoke() {
+  fs.rmSync(path.join(LAN_FAIL_ROOT_DIR, 'data'), { recursive: true, force: true });
+  fs.rmSync(path.join(LAN_FAIL_ROOT_DIR, '素材库'), { recursive: true, force: true });
+  fs.mkdirSync(LAN_FAIL_ROOT_DIR, { recursive: true });
+  let output = '';
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: {
+      ...process.env,
+      PORT: String(TEST_LAN_FAIL_PORT),
+      SOUREN_ROOT_DIR: LAN_FAIL_ROOT_DIR,
+      SOUREN_HOST: '0.0.0.0',
+      SOUREN_ACCESS_CODE: '',
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => { output += chunk.toString(); });
+  server.stderr.on('data', (chunk) => { output += chunk.toString(); });
+  const exitCode = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      server.kill('SIGTERM');
+      reject(new Error('LAN fail-closed server did not exit'));
+    }, 5000);
+    server.on('exit', (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
+  fs.rmSync(LAN_FAIL_ROOT_DIR, { recursive: true, force: true });
+  assert(exitCode !== 0, 'LAN server without access code should fail startup');
+  assert(output.includes('SOUREN_ACCESS_CODE') || output.includes('访问码'), 'LAN fail-closed message missing access code guidance');
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -261,7 +297,8 @@ async function main() {
     assert(fs.existsSync(deletedCaseDir), 'case directory missing before delete');
     const deletedCase = await api(`/cases/${bulk.cases[1].id}`, { method: 'DELETE' });
     assert(deletedCase.removedDir === true, 'case delete did not report local directory removal');
-    assert(!fs.existsSync(deletedCaseDir), 'case delete did not remove local material directory');
+    assert(!fs.existsSync(deletedCaseDir), 'case delete did not move original material directory');
+    assert(deletedCase.archivedDir?.includes('_deleted') && fs.existsSync(deletedCase.archivedDir), 'case delete did not archive local material directory');
     const afterDelete = await api('/cases');
     assert(afterDelete.length === 1 && afterDelete[0].id === bulk.cases[0].id, 'case delete failed');
     const batchGenerated = await api('/dashboard/generate-today', { method: 'POST' });
@@ -488,8 +525,47 @@ async function main() {
     assert(deliveryDashboardSlot?.selectedCandidate?.operatorInstruction, 'dashboard missing ready delivery copy data');
     assert(deliveryDashboardSlot.case.weixinNick === '验收兼职改名', 'dashboard missing case recipient');
     assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitReport), 'dashboard work split counts missing');
+
+    const complianceSeed = await api('/content-seeds', {
+      method: 'POST',
+      body: JSON.stringify({
+        project: '合规验收项目',
+        stage: '起号期',
+        contentKind: '素人种草',
+        format: '图文',
+        titleTemplate: '保证当天见效的记录',
+        contentTemplate: '这个内容写着保证当天见效，用来验收合规阻断。',
+        tags: ['合规验收'],
+        baseWeight: 1
+      })
+    });
+    assert(complianceSeed.id, 'compliance seed not created');
+    const complianceCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '合规验收兼职',
+        douyinUrl: 'https://www.douyin.com/user/compliance-smoke',
+        project: '合规验收项目'
+      })
+    });
+    const complianceSlot = await api(`/cases/${complianceCase.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-01', contentKind: '素人种草', stage: '起号期', goal: '合规阻断验收' })
+    });
+    const complianceDrafts = await api(`/slots/${complianceSlot.id}/generate-candidates`, { method: 'POST' });
+    assert(complianceDrafts.every((draft) => draft.complianceHits?.length > 0), 'candidate compliance hits were not written');
+    await api(`/candidates/${complianceDrafts[0].id}/select`, { method: 'POST' });
+    const complianceDelivery = await api(`/slots/${complianceSlot.id}/delivery`, { method: 'POST' });
+    assert(complianceDelivery.blocked === true && complianceDelivery.reason === 'compliance_hits', 'compliance delivery was not blocked');
+    assert(complianceDelivery.slot.status === '异常', 'compliance blocked slot was not marked abnormal');
+    assert(fs.existsSync(path.join(complianceDelivery.deliveryDir, '00-合规阻塞说明.txt')), 'compliance blocked note missing');
+    const complianceView = await api(`/slots/${complianceSlot.id}/delivery-view`);
+    assert(complianceView.texts.complianceNote.includes('合规提示'), 'compliance delivery view missing note');
+    await api(`/cases/${complianceCase.id}`, { method: 'DELETE' });
+
     await imageGenerationSmoke();
     await authAccessSmoke();
+    await lanFailClosedSmoke();
 
     const videoSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -629,6 +705,15 @@ async function main() {
     assert(!afterHandledDashboard.monitorActions.some((item) => item.alertId === ingested.viralAlerts[0].id), 'handled viral alert still shown in monitor actions');
     const abnormalSlot = await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) });
     assert(abnormalSlot.status === '异常', 'manual abnormal status failed');
+    let invalidSlotStatusRejected = false;
+    try {
+      await api(`/slots/${manualSlot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '乱写状态' }) });
+    } catch (error) {
+      invalidSlotStatusRejected = /400/.test(error.message) || /非法槽位状态/.test(error.message);
+    }
+    assert(invalidSlotStatusRejected, 'invalid slot status was accepted');
+    const afterInvalidStatus = await api(`/cases/${caze.id}`);
+    assert(afterInvalidStatus.slots.find((item) => item.id === manualSlot.id)?.status === '异常', 'invalid slot status changed persisted status');
 
     const imageTask = await api('/image-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, purpose: '封面图' }) });
     assert(imageTask.status === 'waiting_key' || imageTask.status === 'draft', 'image task status invalid');
@@ -695,6 +780,7 @@ async function main() {
     fs.rmSync(ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(IMAGE_ROOT_DIR, { recursive: true, force: true });
     fs.rmSync(AUTH_ROOT_DIR, { recursive: true, force: true });
+    fs.rmSync(LAN_FAIL_ROOT_DIR, { recursive: true, force: true });
   }
 }
 
