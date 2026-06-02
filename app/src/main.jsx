@@ -2685,7 +2685,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
   }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {isCreate && <div className="hintBox">新建时先填兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。人设默认随机生成，用来先建目录、排期和交付链路，后面需要再细改。</div>}
+      {isCreate && <div className="hintBox">新建时先填兼职微信昵称、抖音主页/作品链接、项目、对接咨询和共享原始素材路径。人设默认随机生成，用来先建目录、排期和交付链路，后面需要再细改。</div>}
       {isCreate && (
         <div className="generatedPreview">
           <strong>{form.weixinNick}</strong>
@@ -2696,12 +2696,12 @@ function CaseForm({ initial, onClose, onSubmit }) {
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
+        <label>对接咨询/负责人<input placeholder="例如：咨询A / 小王" value={form.staff} onChange={(e) => update('staff', e.target.value)} /></label>
         <label className="wide">项目<input value={form.project} onChange={(e) => update('project', e.target.value)} placeholder="例如：吸脂 / 复诊 / 其他项目" /></label>
         <label className="wide">共享原始素材路径<input value={form.sourceMaterialDir} onChange={(e) => update('sourceMaterialDir', e.target.value)} placeholder="工作人员在共享盘/服务器里放素材的目录路径" /></label>
         {(!isCreate || showAdvanced) && (
           <>
             <label>抖音号<input value={form.douyinId} onChange={(e) => update('douyinId', e.target.value)} /></label>
-            <label>对接咨询/负责人<input placeholder="例如：咨询A / 小王" value={form.staff} onChange={(e) => update('staff', e.target.value)} /></label>
           </>
         )}
         {(!isCreate || showAdvanced) && (
