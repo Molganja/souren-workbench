@@ -71,6 +71,9 @@ else fail('排期规划或案例详情仍可能绕过今日队首处理任务');
 if (mainSource.includes('activeQueueMatchesCaseMaterial') && mainSource.includes('canRunMaterialActions') && mainSource.includes('素材动作排到今日队列队首后处理') && !mainSource.includes('>同步共享素材</button>\n          <button onClick')) ok('案例详情素材同步和扫描也受队首限制');
 else fail('案例详情仍可能绕过今日队首执行素材同步或扫描');
 
+if (mainSource.includes('素材标记排到今日队列队首后处理') && mainSource.includes('素材缺口排到今日队列队首后处理') && mainSource.includes('图片任务排到今日队列队首后处理') && mainSource.includes('canRunMaterialActions && REVIEW_ACTIONS')) ok('素材标记、缺口建图和图片审核也受队首限制');
+else fail('案例详情仍可能绕过今日队首执行素材标记、缺口建图或图片审核');
+
 if (mainSource.includes('今天发完了') && !mainSource.includes('今天没有必须处理的动作')) ok('今日队列清空后有明确完工状态');
 else fail('今日队列清空状态仍不明确');
 

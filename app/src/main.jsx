@@ -1326,12 +1326,13 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
                   <small>{asset.path}</small>
                   {asset.originPath && <small>来源：{asset.originPath}</small>}
                   <div className="inlineActions">
-                    {['可用', '需处理', '不可用'].map((status) => (
+                    {canRunMaterialActions && ['可用', '需处理', '不可用'].map((status) => (
                       <button key={status} onClick={() => onAct(() => request(`/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: status }) }), `素材已标记：${status}`)}>{status}</button>
                     ))}
-                    {['案例人物', '案例过程', '案例对比', '案例场景', '日常素材'].map((usage) => (
+                    {canRunMaterialActions && ['案例人物', '案例过程', '案例对比', '案例场景', '日常素材'].map((usage) => (
                       <button key={usage} onClick={() => onAct(() => request(`/assets/${asset.id}`, { method: 'PATCH', body: JSON.stringify({ usage }) }), `素材用途已标记：${usage}`)}>{usage}</button>
                     ))}
+                    {!canRunMaterialActions && <span className="lockedNote">素材标记排到今日队列队首后处理</span>}
                   </div>
                 </div>
               ))}
@@ -1350,7 +1351,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
                   </div>
                   <em>{gap.status}</em>
                   <small>{gap.suggestion}</small>
-                  {gap.status !== '已满足' && (
+                  {gap.status !== '已满足' && canRunMaterialActions && (
                     <div className="inlineActions gapActions">
                       <button onClick={() => onAct(() => request('/image-tasks', {
                         method: 'POST',
@@ -1360,6 +1361,11 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
                           prompt: `为${personaText(caze.persona)}生成/整理一张用于「${gap.label}」的${caze.project}内容辅助图，适合抖音图文发布，画面自然，手机拍摄质感。`
                         })
                       }), '已按素材缺口创建图片任务')}>创建图片任务</button>
+                    </div>
+                  )}
+                  {gap.status !== '已满足' && !canRunMaterialActions && (
+                    <div className="inlineActions gapActions">
+                      <span className="lockedNote">素材缺口排到今日队列队首后处理</span>
                     </div>
                   )}
                 </div>
@@ -1403,10 +1409,11 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, acti
                   <small>{task.prompt}</small>
                   <GeneratedImageStrip files={task.generatedFiles || []} />
                   <div className="inlineActions">
-                    <button onClick={() => generateImageTask(task, onAct)}>生成图片</button>
-                    {REVIEW_ACTIONS.map(([status, label]) => (
+                    {canRunMaterialActions && <button onClick={() => generateImageTask(task, onAct)}>生成图片</button>}
+                    {canRunMaterialActions && REVIEW_ACTIONS.map(([status, label]) => (
                       <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${displayStatus(status)}`)}>{label}</button>
                     ))}
+                    {!canRunMaterialActions && <span className="lockedNote">图片任务排到今日队列队首后处理</span>}
                   </div>
                 </div>
               ))}
