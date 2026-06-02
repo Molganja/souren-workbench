@@ -182,6 +182,9 @@ else fail('采集写入后仍可能留下旧的未来待生成或已准备未派
 if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)') && serverSource.includes('item.collectionPolicy?.intervalHours != null')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
 else fail('Chrome采集清单缺少活跃度优先排序');
 
+if (serverSource.includes('async function enqueueDouyinCollection') && serverSource.includes('return registerChromeCollectionQueue({ limit: 200, source })') && serverSource.includes('const toRegister = queue.targets.filter((target) => !target.collectionQueued)') && smokeSource.includes('monitor run duplicated already waiting Chrome collection tasks')) ok('定时/手动采集登记复用活跃度队列，不会重复排队已等待 Chrome 的账号');
+else fail('定时/手动采集登记仍可能绕过队列去重复创建 Chrome 采集单');
+
 if (
   mainSource.includes('<h3>采集状态</h3>')
   && mainSource.includes('systemBackstage')

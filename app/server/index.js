@@ -2977,28 +2977,34 @@ function chromeCollectionQueue(options = {}) {
 
 function registerChromeCollectionQueue(options = {}) {
   const queue = chromeCollectionQueue(options);
+  const source = String(options.source || 'chrome-agent').trim() || 'chrome-agent';
   const toRegister = queue.targets.filter((target) => !target.collectionQueued);
+  const registeredRuns = [];
   toRegister.forEach((target) => {
+    const id = uid('collect');
     run(
       `INSERT INTO collection_runs
       (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        uid('collect'),
+        id,
         target.caseId,
         queue.generatedAt,
         null,
         'waiting_chrome',
-        'chrome-agent',
+        source,
         '已生成 Chrome 采集清单，等待主机端用已登录抖音的 Chrome 打开主页并写入账号/作品数据',
         now(),
         now()
       ]
     );
+    registeredRuns.push(rowCollectionRun(get('SELECT * FROM collection_runs WHERE id = ?', [id])));
   });
   return {
     ...queue,
     registeredCount: toRegister.length,
+    createdCount: toRegister.length,
+    runs: registeredRuns,
     skippedQueuedCount: queue.targets.length - toRegister.length,
     monitor: monitorData()
   };
@@ -3082,33 +3088,7 @@ function agentWorkQueue() {
 }
 
 async function enqueueDouyinCollection(source = 'manual') {
-  const targets = monitorData().accounts.filter((item) => item.dueCollection).map((item) => item.case);
-  const runs = [];
-  for (const caze of targets) {
-    const id = uid('collect');
-    run(
-      `INSERT INTO collection_runs
-      (id, case_id, started_at, finished_at, status, source, note, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        caze.id,
-        now(),
-        null,
-        'waiting_chrome',
-        source,
-        '已按账号活跃度策略登记 Chrome 采集任务，等待主机端用已登录抖音的 Chrome 写入账号和作品数据',
-        now(),
-        now()
-      ]
-    );
-    runs.push(rowCollectionRun(get('SELECT * FROM collection_runs WHERE id = ?', [id])));
-  }
-  return {
-    createdCount: runs.length,
-    runs: runs.map((item) => rowCollectionRun(get('SELECT * FROM collection_runs WHERE id = ?', [item.id]))),
-    monitor: monitorData()
-  };
+  return registerChromeCollectionQueue({ limit: 200, source });
 }
 
 function caseFromMonitorPayload(body = {}) {

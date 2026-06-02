@@ -1068,6 +1068,9 @@ async function main() {
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
     assert(monitorQueued.createdCount >= 2, 'monitor run did not register Chrome collection tasks');
     assert(monitorQueued.monitor.totals.collectionQueued >= 2 && monitorQueued.monitor.totals.waitingChrome >= 2, 'monitor run did not mark queued Chrome collection');
+    const monitorQueuedAgain = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual-repeat' }) });
+    assert(monitorQueuedAgain.createdCount === 0 && monitorQueuedAgain.skippedQueuedCount >= monitorQueued.createdCount, 'monitor run duplicated already waiting Chrome collection tasks');
+    assert(monitorQueuedAgain.monitor.totals.waitingChrome === monitorQueued.monitor.totals.waitingChrome, 'duplicate monitor run changed waiting Chrome count');
     const pauseCleanup = await api(`/cases/${pauseCleanupCase.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) });
     assert(pauseCleanup.pauseMaintenance?.canceledSlotCount > 0, 'pause did not cancel open schedule slots');
     assert(pauseCleanup.pauseMaintenance?.canceledCollectionCount > 0, 'pause did not cancel waiting chrome collection run');
