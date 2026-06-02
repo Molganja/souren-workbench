@@ -367,6 +367,14 @@ else fail('视频交付顶部步骤没有覆盖口播、剪辑要求或步骤布
 if (mainSource.includes('deliveryRequiredSteps') && mainSource.includes('handoffReady') && mainSource.includes('missingHandoffSteps') && mainSource.includes('disabled={!handoffReady}') && mainSource.includes('handoffGuard')) ok('交付弹窗未完成复制下载步骤前不能标记派发');
 else fail('交付弹窗仍可跳过复制下载步骤直接标记派发');
 
+if (
+  mainSource.includes('const missingMedia = mediaFiles.length === 0')
+  && mainSource.includes('还差：本次可发送图片或视频')
+  && serverSource.includes("label: '本次可发送图片或视频'")
+  && smokeSource.includes('ready delivery without media was allowed to dispatch')
+) ok('交付派发要求至少有一个可发送素材');
+else fail('交付派发仍可能在没有图片或视频素材时被标记已派发');
+
 if (mainSource.includes("key: 'recipient'") && mainSource.includes('确认只发给这个微信') && mainSource.includes('RecipientConfirmPanel') && serverSource.includes("key: 'recipient'") && smokeSource.includes("key !== 'recipient'")) ok('交付必须先确认收件微信，前端和后端都不能跳过');
 else fail('交付仍可能跳过收件微信确认');
 

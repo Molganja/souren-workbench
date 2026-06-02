@@ -1035,6 +1035,35 @@ async function main() {
     assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复') && deliveryView.texts.freelancerGuide.includes('话题只用抖音发布文案里已有的'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
+
+    const staleMediaSlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-23', contentKind: '日常养号', stage: '起号期', goal: '交付素材丢失门禁验收' })
+    });
+    const staleMediaDrafts = await api(`/slots/${staleMediaSlot.id}/generate-candidates`, { method: 'POST' });
+    await api(`/candidates/${staleMediaDrafts[0].id}/select`, { method: 'POST' });
+    const staleMediaDelivery = await api(`/slots/${staleMediaSlot.id}/delivery`, { method: 'POST' });
+    fs.readdirSync(staleMediaDelivery.deliveryDir)
+      .filter((file) => /\.(jpe?g|png|webp|gif|heic|mp4|mov|m4v|avi|webm)$/i.test(file))
+      .forEach((file) => fs.rmSync(path.join(staleMediaDelivery.deliveryDir, file), { force: true }));
+    const staleMediaView = await api(`/slots/${staleMediaSlot.id}/delivery-view`);
+    assert(staleMediaView.mediaFiles.length === 0, 'stale delivery media simulation failed');
+    let dispatchWithoutMediaRejected = false;
+    let dispatchWithoutMediaError = '';
+    try {
+      await api(`/slots/${staleMediaSlot.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(staleMediaView) })
+      });
+    } catch (error) {
+      dispatchWithoutMediaError = error.message;
+      dispatchWithoutMediaRejected = /可发送图片或视频/.test(error.message);
+    }
+    assert(dispatchWithoutMediaRejected, `ready delivery without media was allowed to dispatch: ${dispatchWithoutMediaError || 'status changed to sent'}`);
+    const staleMediaDb = new DatabaseSync(path.join(ROOT_DIR, 'data', 'souren.sqlite'));
+    staleMediaDb.prepare('UPDATE plan_slots SET status = ? WHERE id = ?').run('已取消', staleMediaSlot.id);
+    staleMediaDb.close();
+
     const nonHeadGenerateSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
       body: JSON.stringify({ date: '2026-06-20', contentKind: '日常养号', stage: '起号期', goal: '非队首生成门禁验收' })

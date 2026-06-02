@@ -1811,6 +1811,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
   const requiredHandoffSteps = deliveryRequiredSteps(view, mediaFiles, showFreelancerGuide);
   const missingHandoffSteps = requiredHandoffSteps.filter((item) => !handoffDone.has(item.key));
   const nextHandoffStep = missingHandoffSteps[0] || null;
+  const missingMedia = mediaFiles.length === 0;
   const handoffStepEnabled = (key) => !key || handoffDone.has(key) || nextHandoffStep?.key === key;
   const handoffBlockText = (key) => {
     if (handoffStepEnabled(key)) return '';
@@ -1820,7 +1821,12 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
     if (!key || !handoffStepEnabled(key)) return;
     setHandoffDone((prev) => new Set([...prev, key]));
   };
-  const handoffReady = copyAllowed && missingHandoffSteps.length === 0;
+  const handoffReady = copyAllowed && !missingMedia && missingHandoffSteps.length === 0;
+  const handoffGuardText = handoffReady
+    ? '本条交付动作已完成，可以标记已派发。'
+    : (missingMedia
+      ? '还差：本次可发送图片或视频'
+      : `还差：${missingHandoffSteps.slice(0, 4).map((item) => item.label).join('、')}${missingHandoffSteps.length > 4 ? `等 ${missingHandoffSteps.length} 步` : ''}`);
   return (
     <Modal title="交付内容" onClose={onClose}>
       <div className="deliveryHeader">
@@ -1928,7 +1934,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       <div className="modalActions">
         {copyAllowed && (
           <div className={`handoffGuard ${handoffReady ? 'ready' : ''}`}>
-            {handoffReady ? '本条交付动作已完成，可以标记已派发。' : `还差：${missingHandoffSteps.slice(0, 4).map((item) => item.label).join('、')}${missingHandoffSteps.length > 4 ? `等 ${missingHandoffSteps.length} 步` : ''}`}
+            {handoffGuardText}
           </div>
         )}
         <button onClick={onClose}>关闭</button>

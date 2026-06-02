@@ -4223,7 +4223,11 @@ app.patch('/api/slots/:id/status', (req, res) => {
     return res.status(error.status || 500).json({ error: error.message });
   }
   if (status === '已派发') {
-    const guard = deliveryHandoffGuard(slot, req.body?.handoffDone || req.body?.deliveryChecklist);
+    const deliveryView = deliveryViewForSlot(slot);
+    if (!deliveryView?.mediaFiles?.length) {
+      return res.status(409).json({ error: '交付动作还没完成：本次可发送图片或视频' });
+    }
+    const guard = deliveryHandoffGuard(slot, req.body?.handoffDone || req.body?.deliveryChecklist, deliveryView);
     if (!guard.ok) {
       return res.status(409).json({ error: `交付动作还没完成：${guard.missing.map((item) => item.label).join('、')}` });
     }
@@ -4438,9 +4442,16 @@ function deliveryRequiredHandoffSteps(view) {
   return steps;
 }
 
-function deliveryHandoffGuard(slot, completed = []) {
-  const view = deliveryViewForSlot(slot);
+function deliveryHandoffGuard(slot, completed = [], deliveryView = null) {
+  const view = deliveryView || deliveryViewForSlot(slot);
   if (!view || slot.status !== '可交付') return { ok: false, missing: [{ key: 'delivery', label: '交付内容' }] };
+  if (!view.mediaFiles?.length) {
+    return {
+      ok: false,
+      required: deliveryRequiredHandoffSteps(view),
+      missing: [{ key: 'media', label: '本次可发送图片或视频' }]
+    };
+  }
   const required = deliveryRequiredHandoffSteps(view);
   const requiredKeys = required.map((item) => item.key);
   const completedKeys = [];
