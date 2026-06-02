@@ -36,6 +36,32 @@ const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const ALLOWED_OPEN_ROOTS = [ROOT_DIR];
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft', 'review'];
+const STATUS_LABELS = {
+  waiting_key: '待填图片密钥',
+  draft: '待生成',
+  generating: '生成中',
+  review: '待审核',
+  approved: '已通过',
+  rejected: '已驳回',
+  waiting_edit: '待剪辑',
+  completed: '已完成',
+  unavailable: '未接入',
+  error: '异常',
+  timeout: '超时',
+  pending: '待核对',
+  checking: '核对中',
+  verified: '已核对',
+  mismatch: '不匹配',
+  not_found: '未找到',
+  unknown: '未知',
+  ready: '已就绪',
+  waiting: '待接入',
+  warning: '需处理'
+};
+
+function displayStatus(status) {
+  return STATUS_LABELS[status] || status || '未知';
+}
 
 const STAGE_RATIOS = {
   起号期: { 日常养号: 0.5, 爆款提权: 0.4, 素人种草: 0.1 },
@@ -631,7 +657,7 @@ function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
     `图片用途：${purpose}`,
     `参考素材路径：${sourceMaterials.length ? sourceMaterials.join('；') : '暂无，按账号人设和内容阶段生成'}`,
     '风格要求：自然生活感，手机拍摄质感，画面干净，适合微信发给兼职后直接保存使用。',
-    '输出要求：生成后保存到指定 outputDir，并回到系统标记 review / approved / rejected。'
+    '输出要求：生成后保存到指定目录，并回到系统标记待审核、已通过或已驳回。'
   ].join('\n');
 }
 
@@ -719,13 +745,13 @@ function imagePromptText(task) {
     'Image 生成任务',
     `任务ID：${task.id}`,
     `用途：${task.purpose}`,
-    `状态：${task.status}`,
+    `状态：${displayStatus(task.status)}`,
     `保存目录：${task.outputDir}`,
     '',
-    'Prompt:',
+    '正向提示词：',
     task.prompt,
     '',
-    'Negative prompt:',
+    '反向提示词：',
     task.negativePrompt || ''
   ].join('\n');
 }
@@ -1436,7 +1462,7 @@ function systemReadiness() {
     { key: 'delivery-package', label: '微信交付包', status: 'ready', detail: '写入收件人、对接人、发布文案、素材顺序和回传要求' },
     { key: 'douyin-verify', label: '抖音核对回填', status: 'ready', detail: '记录作品链接、核对清单、播放/点赞/评论/粉丝' },
     { key: 'viral-qingdou', label: '爆款链接与青豆任务', status: 'ready', detail: '链接先入库，复制青豆提取任务后回填结构' },
-    { key: 'image-key', label: 'Image v2 Key', status: imageReady ? 'ready' : 'waiting', detail: imageReady ? 'IMAGE_API_KEY 已配置' : 'IMAGE_API_KEY 为空，图片任务进入 waiting_key' },
+    { key: 'image-key', label: '图片生成密钥', status: imageReady ? 'ready' : 'waiting', detail: imageReady ? '图片生成密钥已配置' : '图片生成密钥为空，图片任务会显示“待填图片密钥”' },
     { key: 'local-ai', label: '本地 clude/Claude 顾问', status: ai.ready ? 'ready' : 'waiting', detail: ai.ready ? ai.command : ai.message },
     { key: 'github-sync', label: 'GitHub main 同步', status: github.status, detail: github.detail },
     { key: 'operator-packet', label: 'AI 工作包和顾问记录', status: 'ready', detail: `${OPERATOR_PACKET_DIR} / ${AI_CONSULT_DIR}` }
@@ -2004,14 +2030,14 @@ app.post('/api/image-tasks', (req, res) => {
   );
   fs.writeFileSync(path.join(outputDir, `${id}-图片任务说明.txt`), [
     `任务ID：${id}`,
-    `状态：${status}`,
+    `状态：${displayStatus(status)}`,
     `用途：${purpose}`,
     `保存目录：${outputDir}`,
     '',
-    'Prompt:',
+    '正向提示词：',
     prompt,
     '',
-    'Negative prompt:',
+    '反向提示词：',
     negativePrompt
   ].join('\n'));
   res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [id])));

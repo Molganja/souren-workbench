@@ -237,7 +237,7 @@ async function main() {
     assert(gapImage.purpose === withGaps.materialGaps[0].label, 'gap image task failed');
     assert(fs.existsSync(path.join(gapImage.outputDir, `${gapImage.id}-图片任务说明.txt`)), 'image task brief missing');
     const gapImagePrompt = await api(`/image-tasks/${gapImage.id}/prompt`);
-    assert(gapImagePrompt.text.includes('Prompt:') && gapImagePrompt.text.includes('Negative prompt:'), 'image prompt copy text missing');
+    assert(gapImagePrompt.text.includes('正向提示词：') && gapImagePrompt.text.includes('反向提示词：'), 'image prompt copy text missing');
     const imageDashboard = await api('/dashboard');
     assert(imageDashboard.counts.imageTasks >= 1 && imageDashboard.counts.imageWaitingKey >= 1, 'dashboard image task counts missing');
     assert(imageDashboard.imageTasks.some((item) => item.id === gapImage.id && item.case?.id === caze.id), 'dashboard image task list missing case task');

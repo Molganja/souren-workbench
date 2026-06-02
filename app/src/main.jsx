@@ -12,6 +12,30 @@ const RANDOM_CASE_PROFILES = {
   tones: ['自然', '轻松', '克制', '真实记录', '生活化', '碎碎念'],
   motivations: ['想把状态变化记录下来', '想做一点真实生活记录', '想看看自己坚持更新后的变化', '想把纠结和决策过程讲清楚', '想用普通人的方式记录恢复过程']
 };
+const STATUS_LABELS = {
+  waiting_key: '待填图片密钥',
+  draft: '待生成',
+  generating: '生成中',
+  review: '待审核',
+  approved: '已通过',
+  rejected: '已驳回',
+  waiting_edit: '待剪辑',
+  completed: '已完成',
+  unavailable: '未接入',
+  error: '异常',
+  timeout: '超时',
+  pending: '待核对',
+  checking: '核对中',
+  verified: '已核对',
+  mismatch: '不匹配',
+  not_found: '未找到',
+  unknown: '未知'
+};
+const REVIEW_ACTIONS = [
+  ['review', '标记待审核'],
+  ['approved', '标记通过'],
+  ['rejected', '标记驳回']
+];
 
 async function request(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
@@ -35,7 +59,15 @@ function statusClass(status) {
   if (['已派发', '已汇报'].includes(status)) return 'report';
   if (['已核对'].includes(status)) return 'ok';
   if (['素材阻塞', '异常'].includes(status)) return 'bad';
+  if (['waiting_key', 'draft', 'waiting_edit', 'pending', 'unavailable'].includes(status)) return 'wait';
+  if (['generating', 'review', 'checking'].includes(status)) return 'report';
+  if (['approved', 'completed', 'verified'].includes(status)) return 'ok';
+  if (['rejected', 'mismatch', 'not_found', 'error', 'timeout', 'unknown'].includes(status)) return 'bad';
   return 'bad';
+}
+
+function displayStatus(status) {
+  return STATUS_LABELS[status] || status || '未知';
 }
 
 function pickRandom(items) {
@@ -430,16 +462,16 @@ function ImageTaskSection({ items, onOpenCase, onAct, onCopy }) {
               <div className="taskMain">
                 <div className="rowTitle">
                   <button className="linkButton" onClick={() => task.case?.id && onOpenCase(task.case.id)}>{task.case?.weixinNick || '未知账号'}</button>
-                  <span className={`status ${statusClass(task.status)}`}>{task.status}</span>
+                  <span className={`status ${statusClass(task.status)}`}>{displayStatus(task.status)}</span>
                 </div>
                 <p>{task.purpose}</p>
                 <small>{task.prompt}</small>
               </div>
               <div className="rowActions">
-                <button onClick={() => copyImagePrompt(task, onCopy)}>复制 Prompt</button>
+                <button onClick={() => copyImagePrompt(task, onCopy)}>复制图片提示词</button>
                 <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开输出目录')}>打开目录</button>
-                {['review', 'approved', 'rejected'].map((status) => (
-                  <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${status}`)}>{status}</button>
+                {REVIEW_ACTIONS.map(([status, label]) => (
+                  <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${displayStatus(status)}`)}>{label}</button>
                 ))}
               </div>
             </div>
@@ -464,7 +496,7 @@ function ClipTaskSection({ items, onOpenCase, onAct, onCopy }) {
               <div className="taskMain">
                 <div className="rowTitle">
                   <button className="linkButton" onClick={() => task.case?.id && onOpenCase(task.case.id)}>{task.case?.weixinNick || '未知账号'}</button>
-                  <span className={`status ${statusClass(task.status)}`}>{task.status}</span>
+                  <span className={`status ${statusClass(task.status)}`}>{displayStatus(task.status)}</span>
                 </div>
                 <p>{task.title}</p>
                 <small>{task.outputDir}</small>
@@ -472,8 +504,8 @@ function ClipTaskSection({ items, onOpenCase, onAct, onCopy }) {
               <div className="rowActions">
                 <button onClick={() => onCopy(task.brief, '剪辑任务单已复制')}>复制任务单</button>
                 <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>
-                {['review', 'approved', 'rejected'].map((status) => (
-                  <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${status}`)}>{status}</button>
+                {REVIEW_ACTIONS.map(([status, label]) => (
+                  <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
                 ))}
               </div>
             </div>
@@ -497,7 +529,7 @@ function AiConsultSection({ items, onAct }) {
             <div className="consultRow" key={item.path}>
               <div>
                 <div className="rowTitle">
-                  <span className={`status ${consultStatusClass(item.status)}`}>{item.status}</span>
+                  <span className={`status ${consultStatusClass(item.status)}`}>{displayStatus(item.status)}</span>
                   <strong>{formatDateTime(item.createdAt)}</strong>
                   <small>{item.command}</small>
                 </div>
@@ -1128,13 +1160,13 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
               {clipTasks.map((task) => (
                 <div className="assetRow" key={task.id}>
                   <strong>{task.title}</strong>
-                  <span>{task.status}</span>
+                  <span>{displayStatus(task.status)}</span>
                   <small>{task.outputDir}</small>
                   <div className="inlineActions">
                     <button onClick={() => onCopy(task.brief, '剪辑任务单已复制')}>复制任务单</button>
                     <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开剪辑目录')}>打开目录</button>
-                    {['review', 'approved', 'rejected'].map((status) => (
-                      <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${status}`)}>{status}</button>
+                    {REVIEW_ACTIONS.map(([status, label]) => (
+                      <button key={status} onClick={() => onAct(() => request(`/clip-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `剪辑任务已标记：${displayStatus(status)}`)}>{label}</button>
                     ))}
                   </div>
                 </div>
@@ -1159,9 +1191,9 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
                   <small>{task.prompt}</small>
                   <div className="inlineActions">
                     <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: task.outputDir }) }), '已打开输出目录')}>打开目录</button>
-                    <button onClick={() => copyImagePrompt(task, onCopy)}>复制 Prompt</button>
-                    {['review', 'approved', 'rejected'].map((status) => (
-                      <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${status}`)}>{status}</button>
+                    <button onClick={() => copyImagePrompt(task, onCopy)}>复制图片提示词</button>
+                    {REVIEW_ACTIONS.map(([status, label]) => (
+                      <button key={status} onClick={() => onAct(() => request(`/image-tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }), `图片任务已标记：${displayStatus(status)}`)}>{label}</button>
                     ))}
                   </div>
                 </div>
@@ -1178,7 +1210,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack }) {
             {verifyTasks.map((task) => (
               <div className="taskRow" key={task.id}>
                 <div className="taskMain">
-                  <div className="rowTitle"><strong>{task.expectedTitle || '待核对内容'}</strong><span className={`status ${statusClass(task.status)}`}>{task.status}</span></div>
+                  <div className="rowTitle"><strong>{task.expectedTitle || '待核对内容'}</strong><span className={`status ${statusClass(task.status)}`}>{displayStatus(task.status)}</span></div>
                   <p>{task.expectedPublishDate} · 预期素材 {task.expectedAssets?.length || 0} 个 · {task.resultNote || '等待打开抖音核对'}</p>
                 </div>
                 <div className="rowActions">
@@ -1226,7 +1258,7 @@ async function copyMaterialIntakeNote(caze, onCopy) {
 
 async function copyImagePrompt(task, onCopy) {
   const result = await request(`/image-tasks/${task.id}/prompt`);
-  onCopy(result.text, 'Image Prompt 已复制');
+  onCopy(result.text, '图片提示词已复制');
 }
 
 async function copyVerifyChecklist(task, onCopy) {
@@ -1449,8 +1481,8 @@ function SettingsView({ config, onAct, onCopy }) {
           <p>这里显示当前工作台实际采用的阶段、内容比例、素材模板和本地目录。后续可继续扩展成可编辑配置。</p>
         </div>
         <div className="stats">
-          <Metric label="Image Key" value={config.imageKeyReady ? 'ON' : '空'} />
-          <Metric label="LLM Key" value={config.llmKeyReady ? 'ON' : '空'} />
+          <Metric label="图片密钥" value={config.imageKeyReady ? '已填' : '未填'} />
+          <Metric label="文案密钥" value={config.llmKeyReady ? '已填' : '未填'} />
           <Metric label="阶段" value={config.stages.length} />
           <Metric label="内容类" value={config.contentKinds.length} />
           <Metric label="模板" value={Object.keys(config.materialTemplates).length} />
