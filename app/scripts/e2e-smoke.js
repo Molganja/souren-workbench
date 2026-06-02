@@ -311,6 +311,7 @@ async function main() {
     const caze = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({
+        weixinNick: '验收兼职',
         douyinId: 'smoke_dy',
         douyinUrl: 'https://www.douyin.com/',
         project: '吸脂',
@@ -319,7 +320,7 @@ async function main() {
         persona: { city: '成都', occupation: '上班族' }
       })
     });
-    assert(caze.weixinNick.includes('成都') && caze.persona.age && caze.persona.tone && caze.persona.motivation, 'case random defaults missing');
+    assert(caze.weixinNick === '验收兼职' && caze.persona.age && caze.persona.tone && caze.persona.motivation, 'case required nickname or random defaults missing');
     assert(caze.stage === '起号期' && caze.slotsCreated >= 14, 'case create should ignore external stage and generate schedule by default');
     assert(caze.sourceMaterialDir === sharedSourceDir, 'case source material dir missing');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-原始素材')), 'case material dir missing');
@@ -372,11 +373,21 @@ async function main() {
       duplicateLibraryRejected = /已经登记/.test(error.message);
     }
     assert(duplicateLibraryRejected, 'case library allowed duplicate source directory');
+    let missingWeixinRejected = false;
+    try {
+      await api('/cases', {
+        method: 'POST',
+        body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke' })
+      });
+    } catch (error) {
+      missingWeixinRejected = /兼职微信昵称/.test(error.message);
+    }
+    assert(missingWeixinRejected, 'case create allowed missing WeChat nickname');
     const minimalCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke' })
+      body: JSON.stringify({ weixinNick: '最小验收兼职', douyinUrl: 'https://www.douyin.com/video/minimal-smoke' })
     });
-    assert(minimalCase.weixinNick && minimalCase.weixinNick !== '未命名兼职', 'minimal case did not generate nick');
+    assert(minimalCase.weixinNick === '最小验收兼职', 'minimal case did not preserve required WeChat nickname');
     assert(minimalCase.persona.city && minimalCase.persona.motivation, 'minimal case defaults missing');
     assert(!minimalCase.localCaseDir.includes('未命名'), 'minimal case directory used unnamed segment');
     assert(minimalCase.slotsCreated >= 14, 'minimal case did not auto generate default slots');

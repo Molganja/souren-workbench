@@ -999,7 +999,12 @@ function createCaseFromBody(body = {}) {
   const date = created.slice(0, 10).replaceAll('-', '');
   const seq = all('SELECT id FROM cases').length + 1;
   const caseCode = body.caseCode || `XZ-${date}-${String(seq).padStart(3, '0')}`;
-  const weixinNick = body.weixinNick || `${persona.city}${persona.occupation}${String(seq).padStart(2, '0')}`;
+  const weixinNick = String(body.weixinNick || body.weixin_nick || '').trim();
+  if (!weixinNick) {
+    const err = new Error('必须填写兼职微信昵称');
+    err.status = 400;
+    throw err;
+  }
   const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(weixinNick)}`;
   const caseDir = path.join(MATERIAL_ROOT, dirName);
   ensureCaseDirs(caseDir);
@@ -3358,10 +3363,14 @@ app.get('/api/cases', (_req, res) => {
 });
 
 app.post('/api/cases', (req, res) => {
-  const body = req.body || {};
-  const created = createCaseFromBody(body);
-  const slots = generateSlotsForCase(created, { days: 14 });
-  res.json({ ...created, slotsCreated: slots.length });
+  try {
+    const body = req.body || {};
+    const created = createCaseFromBody(body);
+    const slots = generateSlotsForCase(created, { days: 14 });
+    res.json({ ...created, slotsCreated: slots.length });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.post('/api/cases/bulk', (req, res) => {
