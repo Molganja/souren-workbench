@@ -947,6 +947,12 @@ function canPatchSlotStatus(slot, nextStatus) {
   return false;
 }
 
+function slotIsDashboardQueueHead(slot) {
+  if (!slot?.id) return false;
+  const queueHead = dashboardQueueHead(dashboard());
+  return Boolean(queueHead?.slot?.id && queueHead.slot.id === slot.id);
+}
+
 function createSlotForCase(caze, input = {}) {
   const contentKind = CONTENT_KINDS.includes(input.contentKind) ? input.contentKind : '日常养号';
   const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
@@ -3777,6 +3783,9 @@ app.patch('/api/slots/:id/status', (req, res) => {
   }
   if (!canPatchSlotStatus(slot, status)) {
     return res.status(409).json({ error: '这个排期已经进入交付链路，不能直接改成这个状态' });
+  }
+  if (status === '已派发' && !slotIsDashboardQueueHead(slot)) {
+    return res.status(409).json({ error: '这条不是今日操作队列队首，不能越过前面的任务改状态' });
   }
   if (status === '已派发') {
     const guard = deliveryHandoffGuard(slot, req.body?.handoffDone || req.body?.deliveryChecklist);

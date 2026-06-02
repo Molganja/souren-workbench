@@ -740,6 +740,24 @@ async function main() {
     assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
+    const nonHeadDispatchSlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-01', contentKind: '日常养号', stage: '起号期', goal: '非队首派发验收' })
+    });
+    const nonHeadDispatchDrafts = await api(`/slots/${nonHeadDispatchSlot.id}/generate-candidates`, { method: 'POST' });
+    await api(`/candidates/${nonHeadDispatchDrafts[0].id}/select`, { method: 'POST' });
+    await api(`/slots/${nonHeadDispatchSlot.id}/delivery`, { method: 'POST' });
+    const nonHeadDispatchView = await api(`/slots/${nonHeadDispatchSlot.id}/delivery-view`);
+    let nonHeadDispatchRejected = false;
+    try {
+      await api(`/slots/${nonHeadDispatchSlot.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(nonHeadDispatchView) })
+      });
+    } catch (error) {
+      nonHeadDispatchRejected = /队首/.test(error.message);
+    }
+    assert(nonHeadDispatchRejected, 'non-head ready delivery was allowed to dispatch');
     const mediaResponse = await fetch(`${ORIGIN}${deliveryView.mediaFiles[0].url}`);
     assert(mediaResponse.ok, 'delivery media url did not serve material file');
     const lockedDeliveryResponse = await fetch(`${BASE}/slots/${slot.id}/delivery`, {
