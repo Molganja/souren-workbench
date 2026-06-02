@@ -1004,6 +1004,12 @@ function maintainRollingSchedule(cases = all('SELECT * FROM cases ORDER BY creat
   return { days, startDate, createdCount: created.length, prunedCount, touchedCases, created };
 }
 
+function normalizeDouyinUrl(value) {
+  const url = String(value || '').trim();
+  if (!/^https?:\/\//i.test(url) || !/douyin\.com/i.test(url)) return '';
+  return url;
+}
+
 function createCaseFromBody(body = {}) {
   const id = uid('case');
   const created = now();
@@ -1019,6 +1025,12 @@ function createCaseFromBody(body = {}) {
     err.status = 400;
     throw err;
   }
+  const douyinUrl = normalizeDouyinUrl(body.douyinUrl || body.douyin_url || '');
+  if (!douyinUrl) {
+    const err = new Error('必须填写有效的抖音主页或作品链接');
+    err.status = 400;
+    throw err;
+  }
   const dirName = `${caseCode}_${safeSegment(persona.city)}_${safeSegment(project)}_${safeSegment(weixinNick)}`;
   const caseDir = path.join(MATERIAL_ROOT, dirName);
   ensureCaseDirs(caseDir);
@@ -1031,7 +1043,7 @@ function createCaseFromBody(body = {}) {
       caseCode,
       weixinNick,
       body.douyinId || '',
-      body.douyinUrl || '',
+      douyinUrl,
       project,
       stage,
       JSON.stringify(persona),
@@ -1611,7 +1623,7 @@ function parseBulkCaseText(text) {
       return {
         weixinNick,
         douyinId: '',
-        douyinUrl: /^https?:\/\//i.test(douyinUrl || '') ? douyinUrl : '',
+        douyinUrl: normalizeDouyinUrl(douyinUrl),
         sourceMaterialDir: sourceMaterialDir || '',
         project: project || '吸脂',
         persona: randomPersona()
@@ -3524,26 +3536,34 @@ app.post('/api/cases', (req, res) => {
 });
 
 app.post('/api/cases/bulk', (req, res) => {
-  const body = req.body || {};
-  const rows = Array.isArray(body.cases) ? body.cases : parseBulkCaseText(body.text);
-  if (!rows.length) return res.status(400).json({ error: 'no valid case rows' });
-  const created = rows.map((row) => createCaseFromBody(row));
-  created.forEach((caze) => {
-    generateSlotsForCase(caze, { days: 14 });
-  });
-  res.json({ createdCount: created.length, cases: created });
+  try {
+    const body = req.body || {};
+    const rows = Array.isArray(body.cases) ? body.cases : parseBulkCaseText(body.text);
+    if (!rows.length) return res.status(400).json({ error: '没有有效账号行：每行必须包含微信昵称和抖音链接' });
+    const created = rows.map((row) => createCaseFromBody(row));
+    created.forEach((caze) => {
+      generateSlotsForCase(caze, { days: 14 });
+    });
+    res.json({ createdCount: created.length, cases: created });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.patch('/api/cases/:id', (req, res) => {
   const caze = caseById(req.params.id);
   if (!caze) return res.status(404).json({ error: 'case not found' });
   const body = req.body || {};
+  const nextDouyinUrl = body.douyinUrl !== undefined || body.douyin_url !== undefined
+    ? normalizeDouyinUrl(body.douyinUrl ?? body.douyin_url)
+    : caze.douyinUrl;
+  if (!nextDouyinUrl) return res.status(400).json({ error: '必须填写有效的抖音主页或作品链接' });
   run(
     `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
     [
       body.weixinNick ?? caze.weixinNick,
       body.douyinId ?? caze.douyinId,
-      body.douyinUrl ?? caze.douyinUrl,
+      nextDouyinUrl,
       body.project ?? caze.project,
       JSON.stringify(body.persona ?? caze.persona),
       body.sourceMaterialDir ?? body.source_material_dir ?? caze.sourceMaterialDir,

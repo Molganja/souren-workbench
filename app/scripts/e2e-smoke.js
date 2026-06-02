@@ -85,7 +85,7 @@ async function imageGenerationSmoke() {
     assert(config.image.ready === true && config.image.model === 'fake-image-model', 'image config did not show ready');
     const caze = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '图片生成兼职', persona: { city: '成都', occupation: '上班族' } })
+      body: JSON.stringify({ weixinNick: '图片生成兼职', douyinUrl: 'https://www.douyin.com/user/image-smoke', persona: { city: '成都', occupation: '上班族' } })
     }, imageBase);
     const task = await api('/image-tasks', {
       method: 'POST',
@@ -359,6 +359,16 @@ async function main() {
       missingLibraryWeixinRejected = /兼职微信昵称/.test(error.message);
     }
     assert(missingLibraryWeixinRejected, 'case library register allowed missing WeChat nickname');
+    let missingLibraryDouyinRejected = false;
+    try {
+      await api('/case-library/register', {
+        method: 'POST',
+        body: JSON.stringify({ sourceMaterialDir: libraryCaseDir, weixinNick: '库登记缺抖音' })
+      });
+    } catch (error) {
+      missingLibraryDouyinRejected = /抖音/.test(error.message);
+    }
+    assert(missingLibraryDouyinRejected, 'case library register allowed missing Douyin URL');
     const registeredLibraryCase = await api('/case-library/register', {
       method: 'POST',
       body: JSON.stringify({
@@ -395,6 +405,26 @@ async function main() {
       missingWeixinRejected = /兼职微信昵称/.test(error.message);
     }
     assert(missingWeixinRejected, 'case create allowed missing WeChat nickname');
+    let missingDouyinRejected = false;
+    try {
+      await api('/cases', {
+        method: 'POST',
+        body: JSON.stringify({ weixinNick: '缺抖音验收兼职' })
+      });
+    } catch (error) {
+      missingDouyinRejected = /抖音/.test(error.message);
+    }
+    assert(missingDouyinRejected, 'case create allowed missing Douyin URL');
+    let invalidDouyinRejected = false;
+    try {
+      await api('/cases', {
+        method: 'POST',
+        body: JSON.stringify({ weixinNick: '假链接验收兼职', douyinUrl: 'https://example.com/not-douyin' })
+      });
+    } catch (error) {
+      invalidDouyinRejected = /抖音/.test(error.message);
+    }
+    assert(invalidDouyinRejected, 'case create allowed non-Douyin URL');
     const minimalCase = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({ weixinNick: '最小验收兼职', douyinUrl: 'https://www.douyin.com/video/minimal-smoke' })

@@ -1227,8 +1227,8 @@ function CaseLibraryPanel({ library, loading, onReload, onRegister, onOpenCase, 
 function registerLibraryCase(item, onAct, onDone) {
   const weixinNick = window.prompt('兼职微信昵称（必须，用来知道发给谁）', item.suggestedWeixinNick || item.name || '');
   if (!weixinNick || !weixinNick.trim()) return;
-  const douyinUrl = window.prompt('抖音主页/作品链接（可以先空着，后面编辑案例补）', '');
-  if (douyinUrl === null) return;
+  const douyinUrl = window.prompt('抖音主页/作品链接（必须，用来自动采集账号数据）', '');
+  if (!douyinUrl || !douyinUrl.trim()) return;
   onAct(async () => {
     const result = await request('/case-library/register', {
       method: 'POST',
@@ -2127,7 +2127,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
   }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {isCreate && <div className="hintBox">新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。系统会自动建立目录和近期排期。</div>}
+      {isCreate && <div className="hintBox">新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。微信和抖音必须填，系统会自动建立目录、近期排期和采集链路。</div>}
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
@@ -2150,7 +2150,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" disabled={isCreate && !form.weixinNick.trim()} onClick={submit}>{initial ? '保存' : '创建'}</button>
+        <button className="primary" disabled={isCreate && (!form.weixinNick.trim() || !form.douyinUrl.trim())} onClick={submit}>{initial ? '保存' : '创建'}</button>
       </div>
     </Modal>
   );
