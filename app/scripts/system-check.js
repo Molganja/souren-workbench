@@ -200,6 +200,12 @@ if (
   !mainSource.includes('标记待审核') &&
   !mainSource.includes('标记通过') &&
   !mainSource.includes('标记驳回') &&
+  !mainSource.includes('待审核') &&
+  !mainSource.includes('已通过') &&
+  !mainSource.includes('已驳回') &&
+  !serverSource.includes('标记待审核') &&
+  !serverSource.includes('已通过') &&
+  !serverSource.includes('已驳回') &&
   !mainSource.includes('待确认</button>') &&
   !mainSource.includes('退回处理') &&
   !mainSource.includes('已按配方完成') &&
@@ -208,8 +214,8 @@ if (
   mainSource.includes('待检查') &&
   mainSource.includes('需要重剪') &&
   mainSource.includes('剪辑已完成')
-) ok('候选、图片和剪辑按钮使用日常话术，不暴露技术口径');
-else fail('候选、图片或剪辑按钮仍有重 roll、审核、驳回等技术口径');
+) ok('候选、图片和剪辑使用日常话术，不暴露技术口径');
+else fail('候选、图片或剪辑仍有重 roll、审核、驳回等技术口径');
 
 if (!mainSource.includes('内容阶段比例') && !mainSource.includes('<h2>素材模板</h2>') && !serverSource.includes('stageRatios: STAGE_RATIOS') && !serverSource.includes('materialTemplates: MATERIAL_TEMPLATES')) ok('运行状态不暴露后台阶段比例和素材模板');
 else fail('运行状态仍暴露后台阶段比例或素材模板');

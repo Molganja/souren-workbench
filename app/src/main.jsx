@@ -9,9 +9,9 @@ const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
   generating: '生成中',
-  review: '待审核',
-  approved: '已通过',
-  rejected: '已驳回',
+  review: '待检查',
+  approved: '可用',
+  rejected: '不用',
   waiting_edit: '待剪辑',
   completed: '已完成',
   unavailable: '未接入',
@@ -1611,7 +1611,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueue
 async function generateImageTask(task, onAct) {
   await onAct(
     () => request(`/image-tasks/${task.id}/generate`, { method: 'POST' }),
-    (result) => `图片已生成 ${result.files?.length || 0} 张，等待审核`
+    (result) => `图片已生成 ${result.files?.length || 0} 张，待检查`
   );
 }
 

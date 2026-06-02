@@ -84,9 +84,9 @@ const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
   generating: '生成中',
-  review: '待审核',
-  approved: '已通过',
-  rejected: '已驳回',
+  review: '待检查',
+  approved: '可用',
+  rejected: '不用',
   waiting_edit: '待剪辑',
   completed: '已完成',
   unavailable: '未接入',
@@ -95,7 +95,7 @@ const STATUS_LABELS = {
   active: '待互动',
   handled: '已处理',
   canceled: '已取消',
-  waiting_chrome: '等待Chrome采集',
+  waiting_chrome: '等待浏览器采集',
   unknown: '未知',
   ready: '已就绪',
   waiting: '待接入',
@@ -1404,7 +1404,7 @@ function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
     `参考素材：${formatSourceMaterials(sourceMaterials)}`,
     '风格要求：自然生活感，手机拍摄质感，画面干净，适合微信发给兼职后直接保存使用。',
     '合成要求：如果包含案例人物参考和医院/场景素材，保持人物身份特征和真实生活质感，把场景自然融合，不要做明显棚拍感。',
-    '输出要求：生成后保存到指定目录，并回到系统标记待审核、已通过或已驳回。'
+    '输出要求：生成后保存到指定目录，并回到系统标记“待检查 / 可用 / 不用”。'
   ].join('\n');
 }
 
@@ -1595,7 +1595,7 @@ async function generateImageFiles(task) {
       '生成文件：',
       ...files.map((file, index) => `${index + 1}. ${file}`),
       '',
-      '下一步：在系统或素材清单里确认图片，适合使用就标记“已通过”或把素材标记“可用”。'
+      '下一步：在系统或素材清单里检查图片，适合使用就标记“可用”，不合适就标记“不用”。'
     ].join('\n'));
     writeImageTaskBrief(updated, ['', '生成文件：', ...files.map((file, index) => `${index + 1}. ${file}`)]);
     return { task: updated, files, assets };
@@ -3146,7 +3146,7 @@ function agentWorkQueue() {
     priority: task.status === 'draft' && image.ready ? 85 : 35,
     title: `${task.purpose} 图片任务`,
     action: image.ready
-      ? '图片接口已接入时，主机侧可调用生成接口生成图片并审核。'
+      ? '图片接口已接入时，主机侧可调用生成接口生成图片并检查。'
       : '图片接口未接入时，系统只保留提示词和参考素材；接入 Image2 后再生成。',
     endpoint: `/api/image-tasks/${task.id}/generate`,
     case: byCase[task.caseId] || null,
