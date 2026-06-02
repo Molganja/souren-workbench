@@ -3192,7 +3192,7 @@ function systemReadiness() {
     { key: 'case-library-root', label: '服务器案例库', status: fs.existsSync(CASE_LIBRARY_ROOT) ? 'ready' : 'warning', detail: CASE_LIBRARY_ROOT },
     { key: 'shared-material-root', label: '通用素材库', status: fs.existsSync(SHARED_MATERIAL_ROOT) ? 'ready' : 'warning', detail: SHARED_MATERIAL_ROOT },
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
-    { key: 'case-defaults', label: '新建案例随机人设与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目即可先建链路' },
+    { key: 'case-defaults', label: '新建案例四项录入与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目 + 共享素材路径即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
     { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并写入后台' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },

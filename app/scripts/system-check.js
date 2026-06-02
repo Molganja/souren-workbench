@@ -108,7 +108,7 @@ const oldDeletedDirMarker = '_' + 'deleted';
 if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地案例素材目录也不会保留')) ok('删除案例会同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
-if (mainSource.includes('新建时只填真实对接信息') && !mainSource.includes('generatedPreview') && !mainSource.includes('随机换一组') && mainSource.includes("disabled={isCreate && !form.weixinNick.trim()}")) ok('新建案例不再让工作人员挑随机人设');
+if (mainSource.includes('新建时只填四项') && !mainSource.includes('RANDOM_CASE_PROFILES') && !mainSource.includes('randomCaseDefaults') && !mainSource.includes('随机换一组') && mainSource.includes("disabled={isCreate && !form.weixinNick.trim()}")) ok('新建案例前端只保留四项录入');
 else fail('新建案例仍暴露随机人设选择或允许缺少微信名');
 
 if (serverSource.includes('必须填写兼职微信昵称') && !serverSource.includes('body.weixinNick || `${persona.city}') && !serverSource.includes('input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick')) ok('后端不再随机生成兼职微信名');

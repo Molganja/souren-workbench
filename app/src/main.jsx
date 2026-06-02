@@ -5,13 +5,6 @@ import './styles.css';
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const KINDS = ['素人种草', '日常养号', '爆款提权'];
 const API = '/api';
-const RANDOM_CASE_PROFILES = {
-  cities: ['成都', '杭州', '重庆', '西安', '长沙', '武汉', '南京', '苏州', '广州', '深圳'],
-  ages: [23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
-  occupations: ['上班族', '自由职业', '美业顾问', '行政', '设计师', '护士', '教师', '运营', '店员', '宝妈'],
-  tones: ['自然', '轻松', '克制', '真实记录', '生活化', '碎碎念'],
-  motivations: ['想把状态变化记录下来', '想做一点真实生活记录', '想看看自己坚持更新后的变化', '想把纠结和决策过程讲清楚', '想用普通人的方式记录恢复过程']
-};
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
@@ -79,25 +72,6 @@ async function generateDeliveryAndOpen(slot, onDelivery) {
   const result = await request(`/slots/${slot.id}/delivery`, { method: 'POST' });
   onDelivery({ ...(result.slot || slot), case: result.slot?.case || slot.case });
   return result;
-}
-
-function pickRandom(items) {
-  return items[Math.floor(Math.random() * items.length)];
-}
-
-function randomCaseDefaults() {
-  const city = pickRandom(RANDOM_CASE_PROFILES.cities);
-  const occupation = pickRandom(RANDOM_CASE_PROFILES.occupations);
-  return {
-    weixinNick: `${city}${occupation}${Math.floor(10 + Math.random() * 90)}`,
-    persona: {
-      city,
-      age: pickRandom(RANDOM_CASE_PROFILES.ages),
-      occupation,
-      tone: pickRandom(RANDOM_CASE_PROFILES.tones),
-      motivation: pickRandom(RANDOM_CASE_PROFILES.motivations)
-    }
-  };
 }
 
 function AccessGate({ session, onLogin }) {
@@ -2064,7 +2038,6 @@ function bulkGenerateViral(template, onAct) {
 
 function CaseForm({ initial, onClose, onSubmit }) {
   const isCreate = !initial;
-  const defaults = useMemo(() => initial ? null : randomCaseDefaults(), [initial]);
   const [form, setForm] = useState(() => ({
     weixinNick: initial?.weixinNick || '',
     douyinId: initial?.douyinId || '',
@@ -2072,11 +2045,11 @@ function CaseForm({ initial, onClose, onSubmit }) {
     project: initial?.project || '吸脂',
     sourceMaterialDir: initial?.sourceMaterialDir || '',
     persona: {
-      city: initial?.persona?.city || defaults?.persona.city || '',
-      age: initial?.persona?.age || defaults?.persona.age || '',
-      occupation: initial?.persona?.occupation || defaults?.persona.occupation || '',
-      tone: initial?.persona?.tone || defaults?.persona.tone || '',
-      motivation: initial?.persona?.motivation || defaults?.persona.motivation || ''
+      city: initial?.persona?.city || '',
+      age: initial?.persona?.age || '',
+      occupation: initial?.persona?.occupation || '',
+      tone: initial?.persona?.tone || '',
+      motivation: initial?.persona?.motivation || ''
     }
   }));
   function update(key, value) {
@@ -2085,9 +2058,21 @@ function CaseForm({ initial, onClose, onSubmit }) {
   function updatePersona(key, value) {
     setForm((prev) => ({ ...prev, persona: { ...prev.persona, [key]: value } }));
   }
+  function submit() {
+    if (isCreate) {
+      onSubmit({
+        weixinNick: form.weixinNick,
+        douyinUrl: form.douyinUrl,
+        project: form.project,
+        sourceMaterialDir: form.sourceMaterialDir
+      });
+      return;
+    }
+    onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } });
+  }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {isCreate && <div className="hintBox">新建时只填真实对接信息：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。人设由系统后台生成，后面需要再细改。</div>}
+      {isCreate && <div className="hintBox">新建时只填四项：兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。系统会自动建立目录和近期排期。</div>}
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
@@ -2110,7 +2095,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" disabled={isCreate && !form.weixinNick.trim()} onClick={() => onSubmit({ ...form, persona: { ...form.persona, age: Number(form.persona.age) || '' } })}>{initial ? '保存' : '创建'}</button>
+        <button className="primary" disabled={isCreate && !form.weixinNick.trim()} onClick={submit}>{initial ? '保存' : '创建'}</button>
       </div>
     </Modal>
   );
