@@ -98,8 +98,8 @@ else fail('后台准备接口仍可能批量推进今日队列');
 if (serverSource.includes('当前队首不是待生成任务，不能越过队首批量生成') && serverSource.includes('当前队首不是已锁定任务，不能越过队首批量生成交付') && !serverSource.includes('SELECT * FROM plan_slots WHERE date <= ? AND status = ? ORDER BY date ASC, created_at ASC') && !serverSource.includes('SELECT * FROM plan_slots WHERE date <= ? AND status = ? AND selected_candidate_id IS NOT NULL ORDER BY date ASC, created_at ASC')) ok('后台生成和交付接口也只处理当前队首');
 else fail('后台生成或交付接口仍可能越过队首批量处理');
 
-if (mainSource.includes('activeQueueMatchesSlot') && mainSource.includes('activeQueueMatchesClip') && mainSource.includes('activeQueueMatchesAlert') && mainSource.includes('排到今日队列队首后处理') && mainSource.includes('这条不是今日操作队列的当前任务') && mainSource.includes("copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot")) ok('二级页面不能绕过今日队首执行交付、剪辑和爆款互动动作');
-else fail('排期规划或案例详情仍可能绕过今日队首处理任务');
+if (mainSource.includes('activeQueueMatchesSlot') && mainSource.includes('activeQueueMatchesClip') && mainSource.includes('activeQueueMatchesAlert') && mainSource.includes('排到今日队列队首后处理') && mainSource.includes('这条不是今日操作队列的当前任务') && mainSource.includes("copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot") && serverSource.includes('requireQueueHeadForSlot') && serverSource.includes('requireQueueHeadForAlert') && serverSource.includes('requireQueueHeadForClipTask') && smokeSource.includes('non-head slot was allowed to generate candidates') && smokeSource.includes('non-head slot was allowed to generate delivery')) ok('二级页面和后端接口都不能绕过今日队首执行交付、剪辑和爆款互动动作');
+else fail('排期规划、案例详情或后端接口仍可能绕过今日队首处理任务');
 
 if (mainSource.includes('activeQueueMatchesCaseMaterial') && mainSource.includes('canRunMaterialActions') && mainSource.includes('素材动作排到今日队列队首后处理') && !mainSource.includes('>同步共享素材</button>\n          <button onClick')) ok('案例详情素材同步和扫描也受队首限制');
 else fail('案例详情仍可能绕过今日队首执行素材同步或扫描');
@@ -188,7 +188,7 @@ else fail('交付动作仍可能不按顺序完成');
 if (!mainSource.includes('completeKey="rules"') && !serverSource.includes("steps.push({ key: 'rules'")) ok('发布要求不再作为额外复制步骤');
 else fail('发布要求仍被当成必须复制步骤');
 
-if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes('slotIsDashboardQueueHead') && serverSource.includes('这条不是今日操作队列队首') && serverSource.includes("status === '已派发' && !slotIsDashboardQueueHead(slot)") && serverSource.includes('交付动作还没完成') && mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端派发状态接口也要求队首和交付步骤完成清单');
+if (serverSource.includes('deliveryHandoffGuard') && serverSource.includes("requireQueueHeadForSlot(req, slot, '改状态')") && serverSource.includes('这条不是今日操作队列队首') && serverSource.includes("['异常', '已派发', '已完成'].includes(status)") && serverSource.includes('交付动作还没完成') && mainSource.includes('handoffDone: Array.from(handoffDone)')) ok('后端派发状态接口也要求队首和交付步骤完成清单');
 else fail('后端状态接口仍可能绕过交付步骤门禁');
 
 const oldDeliveryConfirmLabel = '核' + '对发给兼职文案';

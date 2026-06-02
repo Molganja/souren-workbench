@@ -956,6 +956,46 @@ function slotIsDashboardQueueHead(slot) {
   return Boolean(queueHead?.slot?.id && queueHead.slot.id === slot.id);
 }
 
+function queueGuardBypassed(req) {
+  return process.env.SOUREN_E2E_QUEUE_BYPASS === '1' && req.get('X-Souren-E2E-Setup') === '1';
+}
+
+function queueGuardError(message = '这条不是今日操作队列队首，不能越过前面的任务处理') {
+  const error = new Error(message);
+  error.status = 409;
+  return error;
+}
+
+function requireQueueHeadForSlot(req, slot, action = '处理') {
+  if (queueGuardBypassed(req)) return;
+  if (slotIsDashboardQueueHead(slot)) return;
+  throw queueGuardError(`这条不是今日操作队列队首，不能越过前面的任务${action}`);
+}
+
+function alertIsDashboardQueueHead(alert) {
+  if (!alert?.id) return false;
+  const queueHead = dashboardQueueHead(dashboard());
+  return Boolean(queueHead?.alert?.id && queueHead.alert.id === alert.id);
+}
+
+function requireQueueHeadForAlert(req, alert, action = '处理') {
+  if (queueGuardBypassed(req)) return;
+  if (alertIsDashboardQueueHead(alert)) return;
+  throw queueGuardError(`这条爆款提醒不是今日操作队列队首，不能越过前面的任务${action}`);
+}
+
+function clipTaskIsDashboardQueueHead(task) {
+  if (!task?.id) return false;
+  const queueHead = dashboardQueueHead(dashboard());
+  return Boolean(queueHead?.clipTask?.id && queueHead.clipTask.id === task.id);
+}
+
+function requireQueueHeadForClipTask(req, task, action = '处理') {
+  if (queueGuardBypassed(req)) return;
+  if (clipTaskIsDashboardQueueHead(task)) return;
+  throw queueGuardError(`这条剪辑任务不是今日操作队列队首，不能越过前面的任务${action}`);
+}
+
 function createSlotForCase(caze, input = {}) {
   const contentKind = CONTENT_KINDS.includes(input.contentKind) ? input.contentKind : '日常养号';
   const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
@@ -3513,6 +3553,11 @@ app.patch('/api/viral-alerts/:id', (req, res) => {
   const alert = rowViralAlert(get('SELECT * FROM viral_alerts WHERE id = ?', [req.params.id]));
   if (!alert) return res.status(404).json({ error: 'viral alert not found' });
   const body = req.body || {};
+  try {
+    if ((body.status || alert.status) === 'handled') requireQueueHeadForAlert(req, alert, '标记互动');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
   run(
     'UPDATE viral_alerts SET status = ?, interaction_note = ?, updated_at = ? WHERE id = ?',
     [
@@ -3840,6 +3885,11 @@ app.post('/api/slots/:id/generate-candidates', async (req, res) => {
   if (slot.selectedCandidateId || ['已锁定', '可交付', '已派发', '已完成'].includes(slot.status)) {
     return res.status(409).json({ error: '该槽位已锁定，不能重新生成候选' });
   }
+  try {
+    requireQueueHeadForSlot(req, slot, '生成候选');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
   res.json(await generateCandidatesForSlot(slot));
 });
 
@@ -3850,6 +3900,11 @@ app.post('/api/candidates/:id/select', (req, res) => {
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   if (!CANDIDATE_SELECT_STATUSES.includes(slot.status)) {
     return res.status(409).json({ error: '这个排期已经锁定或进入交付链路，不能再改候选' });
+  }
+  try {
+    requireQueueHeadForSlot(req, slot, '选择候选');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
   }
   run('UPDATE candidate_drafts SET selected = 0 WHERE slot_id = ?', [candidate.slotId]);
   run('UPDATE candidate_drafts SET selected = 1 WHERE id = ?', [candidate.id]);
@@ -3867,8 +3922,10 @@ app.patch('/api/slots/:id/status', (req, res) => {
   if (!canPatchSlotStatus(slot, status)) {
     return res.status(409).json({ error: '这个排期已经进入交付链路，不能直接改成这个状态' });
   }
-  if (status === '已派发' && !slotIsDashboardQueueHead(slot)) {
-    return res.status(409).json({ error: '这条不是今日操作队列队首，不能越过前面的任务改状态' });
+  try {
+    if (['异常', '已派发', '已完成'].includes(status)) requireQueueHeadForSlot(req, slot, '改状态');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
   }
   if (status === '已派发') {
     const guard = deliveryHandoffGuard(slot, req.body?.handoffDone || req.body?.deliveryChecklist);
@@ -4193,6 +4250,11 @@ app.post('/api/slots/:id/delivery', (req, res) => {
   if (!DELIVERY_GENERATION_STATUSES.includes(slot.status) || !canGenerateDeliveryForSlot(slot)) {
     return res.status(409).json({ error: '这个排期已经生成交付或进入派发链路，不能重新生成交付内容' });
   }
+  try {
+    requireQueueHeadForSlot(req, slot, '生成交付');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
   const result = createDeliveryForSlot(slot);
   if (!result) return res.status(400).json({ error: 'select a candidate first' });
   res.json(result);
@@ -4287,6 +4349,11 @@ app.post('/api/clip-tasks', (req, res) => {
   const slot = slotById(body.planSlotId);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   if (slot && slot.caseId !== caze.id) return res.status(400).json({ error: 'slot does not belong to this case' });
+  try {
+    requireQueueHeadForSlot(req, slot, '创建剪辑任务');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
   const existing = rowClipTask(get('SELECT * FROM clip_tasks WHERE plan_slot_id = ? ORDER BY created_at ASC LIMIT 1', [slot.id]));
   if (existing) return res.json({ ...existing, alreadyExisting: true });
   const selected = slot?.selectedCandidateId ? rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId])) : null;
@@ -4341,6 +4408,11 @@ app.patch('/api/clip-tasks/:id', (req, res) => {
   if (!task) return res.status(404).json({ error: 'clip task not found' });
   const body = req.body || {};
   const nextStatus = body.status ?? task.status;
+  try {
+    if (nextStatus !== task.status) requireQueueHeadForClipTask(req, task, '改状态');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
   if (nextStatus === 'completed' && task.status !== 'completed' && body.recipeConfirmed !== true) {
     return res.status(409).json({ error: '完成剪辑前必须先确认已看完固定剪辑配方' });
   }

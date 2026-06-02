@@ -10,6 +10,7 @@ const TEST_AUTH_PORT = 5190;
 const TEST_LAN_FAIL_PORT = 5191;
 const ORIGIN = `http://127.0.0.1:${TEST_PORT}`;
 const BASE = `${ORIGIN}/api`;
+const E2E_SETUP_HEADER = { 'X-Souren-E2E-Setup': '1' };
 const APP_DIR = path.resolve(import.meta.dirname, '..');
 const REAL_ROOT_DIR = path.resolve(APP_DIR, '..');
 const ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e');
@@ -23,7 +24,7 @@ function sleep(ms) {
 
 async function api(pathname, options = {}, base = BASE) {
   const res = await fetch(`${base}${pathname}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER, ...(options.headers || {}) },
     ...options
   });
   const text = await res.text();
@@ -232,6 +233,7 @@ async function main() {
       PORT: String(TEST_PORT),
       SOUREN_ROOT_DIR: ROOT_DIR,
       SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
+      SOUREN_E2E_QUEUE_BYPASS: '1',
       IMAGE_API_KEY: '',
       IMAGE_API_URL: ''
     },
@@ -811,6 +813,36 @@ async function main() {
     assert(deliveryView.texts.freelancerGuide.includes('兼职须知') && deliveryView.texts.freelancerGuide.includes('发完后回复'), 'delivery view missing freelancer guide');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
+    const nonHeadGenerateSlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-20', contentKind: '日常养号', stage: '起号期', goal: '非队首生成门禁验收' })
+    });
+    const nonHeadGenerateResponse = await fetch(`${BASE}/slots/${nonHeadGenerateSlot.id}/generate-candidates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    assert(nonHeadGenerateResponse.status === 409, 'non-head slot was allowed to generate candidates');
+    const nonHeadSelectSlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-21', contentKind: '日常养号', stage: '起号期', goal: '非队首选稿门禁验收' })
+    });
+    const nonHeadSelectDrafts = await api(`/slots/${nonHeadSelectSlot.id}/generate-candidates`, { method: 'POST' });
+    const nonHeadSelectResponse = await fetch(`${BASE}/candidates/${nonHeadSelectDrafts[0].id}/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    assert(nonHeadSelectResponse.status === 409, 'non-head slot was allowed to select a candidate');
+    const nonHeadDeliverySlot = await api(`/cases/${caze.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-06-22', contentKind: '日常养号', stage: '起号期', goal: '非队首交付门禁验收' })
+    });
+    const nonHeadDeliveryDrafts = await api(`/slots/${nonHeadDeliverySlot.id}/generate-candidates`, { method: 'POST' });
+    await api(`/candidates/${nonHeadDeliveryDrafts[0].id}/select`, { method: 'POST' });
+    const nonHeadDeliveryResponse = await fetch(`${BASE}/slots/${nonHeadDeliverySlot.id}/delivery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    assert(nonHeadDeliveryResponse.status === 409, 'non-head slot was allowed to generate delivery');
     const nonHeadDispatchSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
       body: JSON.stringify({ date: '2026-06-01', contentKind: '日常养号', stage: '起号期', goal: '非队首派发验收' })
@@ -819,16 +851,12 @@ async function main() {
     await api(`/candidates/${nonHeadDispatchDrafts[0].id}/select`, { method: 'POST' });
     await api(`/slots/${nonHeadDispatchSlot.id}/delivery`, { method: 'POST' });
     const nonHeadDispatchView = await api(`/slots/${nonHeadDispatchSlot.id}/delivery-view`);
-    let nonHeadDispatchRejected = false;
-    try {
-      await api(`/slots/${nonHeadDispatchSlot.id}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(nonHeadDispatchView) })
-      });
-    } catch (error) {
-      nonHeadDispatchRejected = /队首/.test(error.message);
-    }
-    assert(nonHeadDispatchRejected, 'non-head ready delivery was allowed to dispatch');
+    const nonHeadDispatchResponse = await fetch(`${BASE}/slots/${nonHeadDispatchSlot.id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: '已派发', handoffDone: handoffDoneForDeliveryView(nonHeadDispatchView) })
+    });
+    assert(nonHeadDispatchResponse.status === 409, 'non-head ready delivery was allowed to dispatch');
     const mediaResponse = await fetch(`${ORIGIN}${deliveryView.mediaFiles[0].url}`);
     assert(mediaResponse.ok, 'delivery media url did not serve material file');
     const lockedDeliveryResponse = await fetch(`${BASE}/slots/${slot.id}/delivery`, {
