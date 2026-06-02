@@ -92,6 +92,9 @@ else fail('缺少固定剪辑配方');
 if (!mainSource.includes('成片保存到') && !mainSource.includes('封面保存到') && !serverSource.includes('07-成片回收说明') && !serverSource.includes('final.mp4 放回') && serverSource.includes('不需要上传成片')) ok('视频剪辑完成后只标记完成，不要求上传成片');
 else fail('视频剪辑仍要求上传成片或保存到本地目录');
 
+if (!mainSource.includes('等回传') && !serverSource.includes('回传要求') && !serverSource.includes('sentWaitReport') && mainSource.includes('待完成') && serverSource.includes('sentWaitDone')) ok('已派发任务统一为待完成确认口径');
+else fail('已派发任务仍保留回传口径或旧计数字段');
+
 if (serverSource.includes('失联处理') && serverSource.includes('失联暂停') && serverSource.includes('不进入采集队列')) ok('失联账号会暂停排期和采集');
 else fail('缺少失联账号暂停逻辑');
 

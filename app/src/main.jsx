@@ -814,7 +814,7 @@ function groupTodayByAccount(slots) {
     locked: items.filter((slot) => slot.status === '已锁定').length,
     blocked: items.filter((slot) => slot.status === '素材阻塞').length,
     readyDelivery: items.filter((slot) => slot.status === '可交付').length,
-    sentWaitReport: items.filter((slot) => slot.status === '已派发').length,
+    sentWaitDone: items.filter((slot) => slot.status === '已派发').length,
     completed: items.filter((slot) => slot.status === '已完成').length
   })).sort((a, b) => {
     const aPriority = Math.max(...a.items.map((slot) => CONTACT_STATUS_PRIORITY[slot.status] || 0));
@@ -830,7 +830,7 @@ function accountStatusSummary(group) {
     ['已锁定', group.locked],
     ['阻塞', group.blocked],
     ['可交付', group.readyDelivery],
-    ['等回传', group.sentWaitReport],
+    ['待完成', group.sentWaitDone],
     ['已完成', group.completed]
   ]
     .filter(([, count]) => count > 0)

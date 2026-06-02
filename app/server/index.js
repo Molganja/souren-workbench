@@ -3189,7 +3189,7 @@ function dashboard() {
       pendingChoose: dueSlots.filter((s) => s.status === '候选待选').length,
       locked: dueSlots.filter((s) => s.status === '已锁定').length,
       readyDelivery: dueSlots.filter((s) => s.status === '可交付').length,
-      sentWaitReport: dueSlots.filter((s) => s.status === '已派发').length,
+      sentWaitDone: dueSlots.filter((s) => s.status === '已派发').length,
       completed: dueSlots.filter((s) => s.status === '已完成').length,
       viralAlerts: monitor.totals.viralAlerts,
       monitorActions: monitorActions.length,
@@ -3296,7 +3296,7 @@ function systemReadiness() {
     { key: 'shared-material-root', label: '通用素材库', status: fs.existsSync(SHARED_MATERIAL_ROOT) ? 'ready' : 'warning', detail: SHARED_MATERIAL_ROOT },
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例四项录入与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目 + 共享素材路径即可先建链路' },
-    { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，同时本地保留素材顺序和回传要求' },
+    { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，并按素材顺序和完成确认闭环' },
     { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: '默认使用 Chrome 登录态采集清单；主机端用已登录抖音的 Chrome 逐个查看并写入后台' },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
@@ -3847,7 +3847,7 @@ function createDeliveryForSlot(slot) {
       '素材使用：',
       '1. 优先使用本次交付内容内视频素材，其次使用图片做轻动态。',
       '2. 封面图如需单独制作，直接随视频素材一起发给兼职。',
-      '3. 剪辑或发布完成后，只需要在系统里标记「已完成」，不要求回传成片文件。'
+      '3. 剪辑或发布完成后，只需要在系统里标记「已完成」，不需要上传成片文件。'
     ].join('\n'));
   }
   const assets = deliveryAssetsForSlot(slot, caze, 9);

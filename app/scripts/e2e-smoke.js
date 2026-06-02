@@ -691,7 +691,8 @@ async function main() {
       || deliveryDashboard.todaySlots.find((item) => item.id === slot.id);
     assert(deliveryDashboardSlot?.selectedCandidate?.operatorInstruction, 'dashboard missing ready delivery copy data');
     assert(deliveryDashboardSlot.case.weixinNick === '验收兼职改名', 'dashboard missing case recipient');
-    assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitReport), 'dashboard work split counts missing');
+    assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitDone), 'dashboard work split counts missing');
+    assert(!('sentWaitReport' in deliveryDashboard.counts), 'dashboard still exposes old sent wait report count');
 
     const complianceSeed = await api('/content-seeds', {
       method: 'POST',
