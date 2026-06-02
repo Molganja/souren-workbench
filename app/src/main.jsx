@@ -2525,7 +2525,6 @@ function CaseForm({ initial, onClose, onSubmit }) {
   const isCreate = !initial;
   const [form, setForm] = useState(() => ({
     weixinNick: initial?.weixinNick || '',
-    douyinId: initial?.douyinId || '',
     douyinUrl: initial?.douyinUrl || '',
     project: initial?.project || '吸脂',
     sourceMaterialDir: initial?.sourceMaterialDir || ''
@@ -2552,7 +2551,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
       </div>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" disabled={isCreate && (!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.sourceMaterialDir.trim())} onClick={submit}>{initial ? '保存' : '创建'}</button>
+        <button className="primary" disabled={isCreate && (!form.weixinNick.trim() || !form.douyinUrl.trim() || !form.project.trim() || !form.sourceMaterialDir.trim())} onClick={submit}>{initial ? '保存' : '创建'}</button>
       </div>
     </Modal>
   );

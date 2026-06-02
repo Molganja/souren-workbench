@@ -109,6 +109,7 @@ async function imageGenerationSmoke() {
       body: JSON.stringify({
         weixinNick: '图片生成兼职',
         douyinUrl: 'https://www.douyin.com/user/image-smoke',
+        project: '吸脂',
         sourceMaterialDir: makeSharedSourceDir(IMAGE_ROOT_DIR, '图片生成兼职'),
         persona: { city: '成都', occupation: '上班族' }
       })
@@ -436,11 +437,51 @@ async function main() {
       invalidSourcePatchRejected = /共享原始素材路径不存在/.test(error.message);
     }
     assert(invalidSourcePatchRejected, 'case edit allowed a missing shared source directory');
+    let blankWeixinPatchRejected = false;
+    try {
+      await api(`/cases/${legacyCase.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          weixinNick: '   ',
+          douyinUrl: 'https://www.douyin.com/user/legacy-fixed-smoke',
+          project: '吸脂',
+          sourceMaterialDir: legacyDir
+        })
+      });
+    } catch (error) {
+      blankWeixinPatchRejected = /兼职微信昵称/.test(error.message);
+    }
+    assert(blankWeixinPatchRejected, 'case edit allowed blank WeChat nickname');
+    let blankProjectPatchRejected = false;
+    try {
+      await api(`/cases/${legacyCase.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          weixinNick: '历史缺资料账号',
+          douyinUrl: 'https://www.douyin.com/user/legacy-fixed-smoke',
+          project: '   ',
+          sourceMaterialDir: legacyDir
+        })
+      });
+    } catch (error) {
+      blankProjectPatchRejected = /必须填写项目/.test(error.message);
+    }
+    assert(blankProjectPatchRejected, 'case edit allowed blank project');
     const fixedLegacyCase = await api(`/cases/${legacyCase.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/user/legacy-fixed-smoke', sourceMaterialDir: legacyDir })
+      body: JSON.stringify({
+        weixinNick: '历史缺资料账号改',
+        douyinId: 'manual_should_ignore',
+        douyinUrl: 'https://www.douyin.com/user/legacy-fixed-smoke',
+        project: '复诊',
+        persona: { city: '不该写入', age: 99, occupation: '不该写入' },
+        sourceMaterialDir: legacyDir
+      })
     });
+    assert(fixedLegacyCase.weixinNick === '历史缺资料账号改' && fixedLegacyCase.project === '复诊', 'case edit did not persist simplified editable fields');
     assert(fixedLegacyCase.douyinUrl.includes('legacy-fixed-smoke') && fixedLegacyCase.sourceMaterialDir === legacyDir, 'case edit did not restore intake fields');
+    assert(fixedLegacyCase.douyinId === 'legacy-fixed-smoke', 'case edit accepted manual Douyin id');
+    assert(fixedLegacyCase.persona.city !== '不该写入' && fixedLegacyCase.persona.occupation !== '不该写入', 'case edit accepted hidden persona patch');
     const fixedIntakeDashboard = await api('/dashboard');
     assert(!fixedIntakeDashboard.intakeIssues.some((item) => item.caseId === legacyCase.id), 'fixed legacy account still appears in intake issue queue');
     await api(`/cases/${legacyCase.id}`, { method: 'DELETE' });
@@ -466,6 +507,7 @@ async function main() {
       })
     });
     assert(caze.weixinNick === '验收兼职' && caze.persona.age && caze.persona.tone && caze.persona.motivation, 'case required nickname or random defaults missing');
+    assert(caze.douyinId !== 'smoke_dy', 'case create accepted manual Douyin id');
     assert(caze.stage === '起号期' && caze.slotsCreated >= 14, 'case create should ignore external stage and generate schedule by default');
     assert(caze.sourceMaterialDir === sharedSourceDir, 'case source material dir missing');
     assert(caze.sync?.copied === 1 && caze.sync?.inserted === 1, 'case create did not automatically sync shared source material');
@@ -542,11 +584,16 @@ async function main() {
       duplicateLibraryRejected = /已经登记/.test(error.message);
     }
     assert(duplicateLibraryRejected, 'case library allowed duplicate source directory');
+    const validationDir = makeSharedSourceDir(ROOT_DIR, '字段校验');
     let missingWeixinRejected = false;
     try {
       await api('/cases', {
         method: 'POST',
-        body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke' })
+        body: JSON.stringify({
+          douyinUrl: 'https://www.douyin.com/video/minimal-smoke',
+          project: '吸脂',
+          sourceMaterialDir: validationDir
+        })
       });
     } catch (error) {
       missingWeixinRejected = /兼职微信昵称/.test(error.message);
@@ -556,17 +603,40 @@ async function main() {
     try {
       await api('/cases', {
         method: 'POST',
-        body: JSON.stringify({ weixinNick: '缺抖音验收兼职' })
+        body: JSON.stringify({
+          weixinNick: '缺抖音验收兼职',
+          project: '吸脂',
+          sourceMaterialDir: validationDir
+        })
       });
     } catch (error) {
       missingDouyinRejected = /抖音/.test(error.message);
     }
     assert(missingDouyinRejected, 'case create allowed missing Douyin URL');
+    let missingProjectRejected = false;
+    try {
+      await api('/cases', {
+        method: 'POST',
+        body: JSON.stringify({
+          weixinNick: '缺项目验收兼职',
+          douyinUrl: 'https://www.douyin.com/user/missing-project-smoke',
+          sourceMaterialDir: validationDir
+        })
+      });
+    } catch (error) {
+      missingProjectRejected = /必须填写项目/.test(error.message);
+    }
+    assert(missingProjectRejected, 'case create allowed missing project');
     let invalidDouyinRejected = false;
     try {
       await api('/cases', {
         method: 'POST',
-        body: JSON.stringify({ weixinNick: '假链接验收兼职', douyinUrl: 'https://example.com/not-douyin' })
+        body: JSON.stringify({
+          weixinNick: '假链接验收兼职',
+          douyinUrl: 'https://example.com/not-douyin',
+          project: '吸脂',
+          sourceMaterialDir: validationDir
+        })
       });
     } catch (error) {
       invalidDouyinRejected = /抖音/.test(error.message);
@@ -576,7 +646,11 @@ async function main() {
     try {
       await api('/cases', {
         method: 'POST',
-        body: JSON.stringify({ weixinNick: '缺共享路径验收兼职', douyinUrl: 'https://www.douyin.com/user/missing-source-smoke' })
+        body: JSON.stringify({
+          weixinNick: '缺共享路径验收兼职',
+          douyinUrl: 'https://www.douyin.com/user/missing-source-smoke',
+          project: '吸脂'
+        })
       });
     } catch (error) {
       missingSourceRejected = /共享原始素材路径/.test(error.message);
@@ -589,6 +663,7 @@ async function main() {
         body: JSON.stringify({
           weixinNick: '假共享路径验收兼职',
           douyinUrl: 'https://www.douyin.com/user/invalid-source-smoke',
+          project: '吸脂',
           sourceMaterialDir: path.join(ROOT_DIR, '不存在的共享目录')
         })
       });
@@ -601,6 +676,7 @@ async function main() {
       body: JSON.stringify({
         weixinNick: '最小验收兼职',
         douyinUrl: 'https://www.douyin.com/video/minimal-smoke',
+        project: '吸脂',
         sourceMaterialDir: makeSharedSourceDir(ROOT_DIR, '最小验收兼职')
       })
     });
@@ -928,7 +1004,7 @@ async function main() {
     assert(fs.existsSync(path.join(delivery.deliveryDir, '00-兼职须知.txt')), 'delivery package missing freelancer guide');
     assert(fs.existsSync(path.join(caze.localCaseDir, '00-兼职须知.txt')), 'case folder missing freelancer guide');
     const wxChecklist = fs.readFileSync(wxChecklistPath, 'utf8');
-    assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('抖音：smoke_dy / https://www.douyin.com/'), 'WeChat checklist missing recipient routing');
+    assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('抖音：https://www.douyin.com/') && !wxChecklist.includes('smoke_dy'), 'WeChat checklist missing recipient routing');
     assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('兼职须知') && wxChecklist.includes('完成口径'), 'WeChat checklist missing send or completion instructions');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');

@@ -1072,6 +1072,18 @@ function normalizeDouyinUrl(value) {
   return url;
 }
 
+function douyinIdFromUrl(value) {
+  const url = normalizeDouyinUrl(value);
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    const match = parsed.pathname.match(/\/(?:share\/)?user\/([^/?#]+)/i);
+    return match ? decodeURIComponent(match[1]).slice(0, 120) : '';
+  } catch {
+    return '';
+  }
+}
+
 function normalizeSourceMaterialDir(value) {
   const raw = String(value || '').trim();
   if (!raw) {
@@ -1091,7 +1103,12 @@ function normalizeSourceMaterialDir(value) {
 function createCaseFromBody(body = {}) {
   const id = uid('case');
   const created = now();
-  const project = body.project || '吸脂';
+  const project = String(body.project || '').trim();
+  if (!project) {
+    const err = new Error('必须填写项目');
+    err.status = 400;
+    throw err;
+  }
   const stage = '起号期';
   const persona = randomPersona(body.persona || {});
   const date = created.slice(0, 10).replaceAll('-', '');
@@ -1121,7 +1138,7 @@ function createCaseFromBody(body = {}) {
       id,
       caseCode,
       weixinNick,
-      body.douyinId || '',
+      douyinIdFromUrl(douyinUrl),
       douyinUrl,
       project,
       stage,
@@ -1332,7 +1349,6 @@ function createCaseFromLibrary(input = {}) {
   }
   const created = createCaseFromBody({
     weixinNick: input.weixinNick || input.weixin_nick || '',
-    douyinId: input.douyinId || input.douyin_id || '',
     douyinUrl: input.douyinUrl || input.douyin_url || '',
     project: input.project || candidate.project || '吸脂',
     stage: input.stage || '起号期',
@@ -1744,10 +1760,11 @@ function parseBulkCaseText(text) {
     .map((line) => {
       const parts = line.split(/,|\t/).map((item) => item.trim());
       const [weixinNick, douyinUrl, project, sourceMaterialDir] = parts;
+      const normalizedDouyinUrl = normalizeDouyinUrl(douyinUrl);
       return {
         weixinNick,
-        douyinId: '',
-        douyinUrl: normalizeDouyinUrl(douyinUrl),
+        douyinId: douyinIdFromUrl(normalizedDouyinUrl),
+        douyinUrl: normalizedDouyinUrl,
         sourceMaterialDir: sourceMaterialDir || '',
         project: project || '吸脂',
         persona: randomPersona()
@@ -1788,7 +1805,7 @@ function prepareBulkCaseRows(rows = []) {
     return {
       ...row,
       weixinNick,
-      douyinId: row.douyinId || row.douyin_id || '',
+      douyinId: douyinIdFromUrl(douyinUrl),
       douyinUrl,
       sourceMaterialDir,
       project: row.project || '吸脂'
@@ -3938,10 +3955,14 @@ app.patch('/api/cases/:id', (req, res) => {
     const caze = caseById(req.params.id);
     if (!caze) return res.status(404).json({ error: 'case not found' });
     const body = req.body || {};
+    const nextWeixinNick = String(body.weixinNick ?? body.weixin_nick ?? caze.weixinNick ?? '').trim();
+    if (!nextWeixinNick) return res.status(400).json({ error: '必须填写兼职微信昵称' });
     const nextDouyinUrl = body.douyinUrl !== undefined || body.douyin_url !== undefined
       ? normalizeDouyinUrl(body.douyinUrl ?? body.douyin_url)
       : caze.douyinUrl;
     if (!nextDouyinUrl) return res.status(400).json({ error: '必须填写有效的抖音主页或作品链接' });
+    const nextProject = String(body.project ?? caze.project ?? '').trim();
+    if (!nextProject) return res.status(400).json({ error: '必须填写项目' });
     const nextSourceMaterialDir = body.sourceMaterialDir !== undefined || body.source_material_dir !== undefined
       ? normalizeSourceMaterialDir(body.sourceMaterialDir ?? body.source_material_dir)
       : caze.sourceMaterialDir;
@@ -3949,11 +3970,11 @@ app.patch('/api/cases/:id', (req, res) => {
     run(
       `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
       [
-        body.weixinNick ?? caze.weixinNick,
-        body.douyinId ?? caze.douyinId,
+        nextWeixinNick,
+        douyinIdFromUrl(nextDouyinUrl),
         nextDouyinUrl,
-        body.project ?? caze.project,
-        JSON.stringify(body.persona ?? caze.persona),
+        nextProject,
+        JSON.stringify(caze.persona || {}),
         nextSourceMaterialDir,
         nextHealthStatus,
         now(),
