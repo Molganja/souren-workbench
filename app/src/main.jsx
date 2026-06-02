@@ -228,6 +228,7 @@ function App() {
   );
   const canUseWorkbench = session ? (!session.authRequired || session.authenticated) : false;
   const canOpenLocalPaths = Boolean(session?.canOpenLocalPaths);
+  const activeQueueItem = dashboard ? firstPriorityAction(dashboard) : null;
 
   return (
     <div>
@@ -252,13 +253,13 @@ function App() {
           <ReviewView data={review} onOpenCase={openCase} />
         )}
         {!loading && canUseWorkbench && view === 'schedule' && schedule && (
-          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
+          <ScheduleView data={schedule} onOpenCase={openCase} onAct={act} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} activeQueueItem={activeQueueItem} />
         )}
         {!loading && canUseWorkbench && view === 'cases' && (
           <CasesView cases={cases} onOpenCase={openCase} onNew={() => setCaseFormOpen(true)} onBulk={() => setBulkCaseOpen(true)} onAct={act} canOpenLocalPaths={canOpenLocalPaths} />
         )}
         {!loading && canUseWorkbench && view === 'case' && caseDetail && (
-          <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} />
+          <CaseDetail detail={caseDetail} onAct={act} onBack={() => setView('cases')} onDelivery={setDeliverySlotOpen} canOpenLocalPaths={canOpenLocalPaths} activeQueueItem={activeQueueItem} />
         )}
         {!loading && canUseWorkbench && view === 'viral' && (
           <ViralView
@@ -325,6 +326,7 @@ function App() {
           onAct={act}
           onCopy={copyText}
           canOpenLocalPaths={canOpenLocalPaths}
+          activeQueueItem={activeQueueItem}
         />
       )}
       {toast && <div className="toast">{toast}</div>}
@@ -431,6 +433,20 @@ function buildDashboardStats(data = {}, priorityActions = []) {
     { label: '出爆款', value: counts.viralAlerts || 0 },
     { label: '阻塞/缺口', value: blocked }
   ];
+}
+
+function firstPriorityAction(data = {}) {
+  const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
+  const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
+  return buildPriorityActions(data, strategyActions)[0] || null;
+}
+
+function activeQueueMatchesSlot(activeQueueItem, slot) {
+  return Boolean(activeQueueItem?.slot?.id && slot?.id && activeQueueItem.slot.id === slot.id);
+}
+
+function activeQueueMatchesClip(activeQueueItem, task) {
+  return Boolean(activeQueueItem?.clipTask?.id && task?.id && activeQueueItem.clipTask.id === task.id);
 }
 
 function buildPriorityActions(data = {}, strategyActions = []) {
@@ -945,7 +961,7 @@ function caseAccountLine(caze = {}) {
   ].filter(Boolean).join(' · ');
 }
 
-function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
+function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths, activeQueueItem }) {
   const [range, setRange] = useState('14');
   const [status, setStatus] = useState('全部状态');
   const [kind, setKind] = useState('全部内容');
@@ -973,7 +989,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }
         <div>
           <p className="eyebrow">排期 {data.today}</p>
           <h1>全局排期规划</h1>
-          <p>按日期查看所有兼职/账号未来要发什么，集中处理待生成、待选择、待交付和完成确认。</p>
+          <p>按日期查看所有兼职/账号未来要发什么；执行动作回到今日操作队列，排到第一条再处理。</p>
         </div>
         <div className="stats reviewStats">
           <Metric label="总排期" value={data.counts.total} />
@@ -1007,7 +1023,7 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }
           <div className="sectionHead"><h2>{date}</h2><span>{items.length} 条</span></div>
           <div className="taskList">
             {items.map((slot) => (
-              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} />
+              <ScheduleRow key={slot.id} slot={slot} onOpenCase={onOpenCase} onAct={onAct} onDelivery={onDelivery} canOpenLocalPaths={canOpenLocalPaths} activeQueueItem={activeQueueItem} />
             ))}
           </div>
         </section>
@@ -1016,8 +1032,10 @@ function ScheduleView({ data, onOpenCase, onAct, onDelivery, canOpenLocalPaths }
   );
 }
 
-function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, canOpenLocalPaths }) {
+function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, canOpenLocalPaths, activeQueueItem }) {
   const caze = slot.case || {};
+  const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, slot);
+  const hasQueueAction = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发'].includes(slot.status);
   return (
     <div className="taskRow">
       <div className="dateBox">
@@ -1034,10 +1052,12 @@ function ScheduleRow({ slot, onOpenCase, onAct, onDelivery, canOpenLocalPaths })
         <small>{caseAccountLine(caze)} · 候选 {slot.candidateCount}</small>
       </div>
       <div className="rowActions">
-        {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
-        {['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
-        {slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
-        {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
+        {isActiveQueueSlot && slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
+        {isActiveQueueSlot && slot.status === '候选待选' && <button onClick={() => caze.id && onOpenCase(caze.id)}>去选择</button>}
+        {isActiveQueueSlot && ['已锁定', '素材阻塞'].includes(slot.status) && <button onClick={() => onAct(() => generateDeliveryAndOpen(slot, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
+        {isActiveQueueSlot && slot.deliveryDir && <button onClick={() => onDelivery(slot)}>查看交付内容</button>}
+        {isActiveQueueSlot && canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
+        {!isActiveQueueSlot && hasQueueAction && <span className="lockedNote">排到今日队列队首后处理</span>}
       </div>
     </div>
   );
@@ -1208,7 +1228,7 @@ function caseCanResume(caze = {}) {
   return ['失联暂停', '已放弃', '停用'].includes(caze.healthStatus);
 }
 
-function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths }) {
+function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths, activeQueueItem }) {
   const { case: caze, slots, candidates, assets, imageTasks, clipTasks = [], monitor = {}, videos = [], viralAlerts = [], metrics = [], materialGaps = [], healthReasons = [], healthActions = [] } = detail;
   const [editOpen, setEditOpen] = useState(false);
   const candidatesBySlot = useMemo(() => {
@@ -1280,6 +1300,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths }) {
                 onAct={onAct}
                 onDelivery={onDelivery}
                 canOpenLocalPaths={canOpenLocalPaths}
+                activeQueueItem={activeQueueItem}
               />
             ))}
           </div>
@@ -1476,12 +1497,14 @@ function deliveryResultMessage(result) {
   return '缺少素材，已打开阻塞说明';
 }
 
-function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery, canOpenLocalPaths }) {
+function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery, canOpenLocalPaths, activeQueueItem }) {
   const selected = candidates.find((item) => item.selected);
-  const canSelectCandidate = slot.status === '候选待选';
-  const canGenerateDelivery = selected && (['素材阻塞', '异常'].includes(slot.status) || (slot.status === '已锁定' && !slot.deliveryDir));
-  const canCreateClipTask = selected && !existingClipTask && ['已锁定', '素材阻塞', '可交付'].includes(slot.status);
-  const canMarkException = ['待生成', '候选待选', '已锁定', '素材阻塞'].includes(slot.status);
+  const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, slot);
+  const hasQueueAction = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'].includes(slot.status);
+  const canSelectCandidate = isActiveQueueSlot && slot.status === '候选待选';
+  const canGenerateDelivery = isActiveQueueSlot && selected && (['素材阻塞', '异常'].includes(slot.status) || (slot.status === '已锁定' && !slot.deliveryDir));
+  const canCreateClipTask = isActiveQueueSlot && selected && !existingClipTask && ['已锁定', '素材阻塞', '可交付'].includes(slot.status);
+  const canMarkException = isActiveQueueSlot && ['待生成', '候选待选', '已锁定', '素材阻塞'].includes(slot.status);
   return (
     <div className="slotCard">
       <div className="slotTop">
@@ -1493,15 +1516,16 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
       </div>
       <p>{slot.goal}</p>
       <div className="inlineActions">
-        {!selected && ['待生成', '候选待选', '素材阻塞', '异常'].includes(slot.status) && (
+        {isActiveQueueSlot && !selected && ['待生成', '候选待选', '素材阻塞', '异常'].includes(slot.status) && (
           <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成/重 roll</button>
         )}
         {canGenerateDelivery && <button onClick={() => onAct(() => generateDeliveryAndOpen({ ...slot, case: caze }, onDelivery), deliveryResultMessage)}>生成交付内容</button>}
         {canCreateClipTask && <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: `${slot.date}_${slot.contentKind}_剪辑任务` }) }), (result) => result.alreadyExisting ? '已有剪辑任务' : '剪辑任务已创建')}>创建剪辑任务</button>}
         {existingClipTask && <span className="lockedNote">剪辑任务已建</span>}
-        {slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
-        {canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
+        {isActiveQueueSlot && slot.deliveryDir && <button onClick={() => onDelivery({ ...slot, case: caze })}>查看交付内容</button>}
+        {isActiveQueueSlot && canOpenLocalPaths && slot.status === '素材阻塞' && caze.localCaseDir && <button onClick={() => onAct(() => request('/open-path', { method: 'POST', body: JSON.stringify({ path: caze.localCaseDir }) }), '已打开素材目录')}>打开素材目录</button>}
         {canMarkException && <button onClick={() => onAct(() => request(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '异常' }) }), '已标记异常')}>异常</button>}
+        {!isActiveQueueSlot && hasQueueAction && <span className="lockedNote">排到今日队列队首后处理</span>}
       </div>
       {slot.deliveryDir && <div className="path">交付内容已生成，可在网页内查看、复制和下载。</div>}
       {candidates.length > 0 && (
@@ -1531,7 +1555,7 @@ function SlotCard({ slot, candidates, existingClipTask, caze, onAct, onDelivery,
   );
 }
 
-function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
+function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths, activeQueueItem }) {
   const [view, setView] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -1567,8 +1591,9 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
   const mediaFiles = view.mediaFiles || [];
   const imageFiles = mediaFiles.filter((item) => item.kind === '图片');
   const videoFiles = mediaFiles.filter((item) => item.kind === '视频');
-  const steps = deliverySteps(view, mediaFiles.length);
-  const copyAllowed = view.slot.status === '可交付';
+  const isActiveQueueSlot = activeQueueMatchesSlot(activeQueueItem, view.slot);
+  const steps = deliverySteps(view, mediaFiles.length, isActiveQueueSlot);
+  const copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot;
   return (
     <Modal title="交付内容" onClose={onClose}>
       <div className="deliveryHeader">
@@ -1581,7 +1606,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
 
       {!copyAllowed && (
         <div className="readonlyNotice">
-          这条已经进入「{view.slot.status}」状态，交付内容只读，避免重复发给同一个兼职。
+          {isActiveQueueSlot ? `这条已经进入「${view.slot.status}」状态，交付内容只读，避免重复发给同一个兼职。` : '这条不是今日操作队列的当前任务，交付内容只读；请回到首页按队首顺序处理。'}
         </div>
       )}
 
@@ -1661,13 +1686,13 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
 
       <div className="modalActions">
         <button onClick={onClose}>关闭</button>
-        {view.slot.status === '可交付' && (
+        {isActiveQueueSlot && view.slot.status === '可交付' && (
           <button className="primary" onClick={() => onAct(async () => {
             await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
             onClose();
           }, '已标记派发')}>已用微信发送</button>
         )}
-        {view.slot.status === '已派发' && (
+        {isActiveQueueSlot && view.slot.status === '已派发' && (
           <button className="primary" onClick={() => onAct(async () => {
             await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
             onClose();
@@ -1678,8 +1703,8 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
   );
 }
 
-function deliverySteps(view, mediaCount) {
-  const readonlyDelivery = view.slot.status !== '可交付';
+function deliverySteps(view, mediaCount, isActiveQueueSlot = true) {
+  const readonlyDelivery = view.slot.status !== '可交付' || !isActiveQueueSlot;
   const steps = [
     {
       order: '1',
@@ -1711,8 +1736,8 @@ function deliverySteps(view, mediaCount) {
   }
   steps.push({
     order: String(steps.length + 1),
-    label: view.slot.status === '已派发' ? '确认完成后收尾' : '发完微信后标记已派发',
-    detail: view.slot.status === '已派发' ? '兼职确认发布或剪辑交付后，点“标记完成”。' : '按钮只用于当前这个交付内容，点完会从队列里消失。'
+    label: !isActiveQueueSlot ? '排到队首后再处理' : (view.slot.status === '已派发' ? '确认完成后收尾' : '发完微信后标记已派发'),
+    detail: !isActiveQueueSlot ? '先回到今日操作队列，处理当前第一条，避免漏发、错发或重发。' : (view.slot.status === '已派发' ? '兼职确认发布或剪辑交付后，点“标记完成”。' : '按钮只用于当前这个交付内容，点完会从队列里消失。')
   });
   let number = 0;
   return steps.map((item) => ({

@@ -58,6 +58,9 @@ else fail('首页缺少操作队列或账号概览');
 if (mainSource.includes('activePriority') && mainSource.includes('queueSummary') && mainSource.includes('后面还有')) ok('今日队列只开放队首任务操作');
 else fail('今日队列缺少队首防呆状态');
 
+if (mainSource.includes('activeQueueMatchesSlot') && mainSource.includes('排到今日队列队首后处理') && mainSource.includes('这条不是今日操作队列的当前任务') && mainSource.includes("copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot")) ok('二级页面不能绕过今日队首执行交付动作');
+else fail('排期规划或案例详情仍可能绕过今日队首处理任务');
+
 if (mainSource.includes('今天发完了') && !mainSource.includes('今天没有必须处理的动作')) ok('今日队列清空后有明确完工状态');
 else fail('今日队列清空状态仍不明确');
 
