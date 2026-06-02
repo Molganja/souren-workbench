@@ -1,8 +1,10 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import os from 'node:os';
+import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
 const DEFAULT_BASE = process.env.SOUREN_API_BASE || 'http://127.0.0.1:5174/api';
+const execFileAsync = promisify(execFile);
 
 function argValue(name, fallback = '') {
   const index = process.argv.indexOf(name);
@@ -129,7 +131,7 @@ function chromePageScript() {
   })()`;
 }
 
-function readChromePage(url, waitMs = 6000) {
+async function readChromePage(url, waitMs = 6000) {
   if (os.platform() !== 'darwin') {
     throw new Error('当前采集执行器只支持 macOS Google Chrome；其他系统先用采集清单和 ingest 接口写回。');
   }
@@ -144,10 +146,12 @@ function readChromePage(url, waitMs = 6000) {
     'end tell',
     'return pageJson'
   ].join('\n');
-  const output = execFileSync('osascript', ['-e', script], {
+  const { stdout } = await execFileAsync('osascript', ['-e', script], {
     encoding: 'utf8',
-    maxBuffer: 20 * 1024 * 1024
-  }).trim();
+    maxBuffer: 20 * 1024 * 1024,
+    timeout: Math.round(waitSeconds * 1000) + 15000
+  });
+  const output = stdout.trim();
   try {
     return JSON.parse(output);
   } catch (error) {
@@ -178,13 +182,14 @@ function payloadForTarget(target, parsed, page) {
   };
 }
 
-async function runCollector() {
-  const base = argValue('--base', DEFAULT_BASE).replace(/\/$/, '');
-  const limit = Number(argValue('--limit', '10')) || 10;
-  const waitMs = Number(argValue('--wait-ms', '6000')) || 6000;
-  const includeFresh = hasFlag('--include-fresh');
-  const dryRun = hasFlag('--dry-run');
-  const register = hasFlag('--register');
+export async function runCollector(options = {}) {
+  const base = String(options.base || argValue('--base', DEFAULT_BASE)).replace(/\/$/, '');
+  const limit = Number(options.limit ?? argValue('--limit', '10')) || 10;
+  const waitMs = Number(options.waitMs ?? argValue('--wait-ms', '6000')) || 6000;
+  const includeFresh = options.includeFresh ?? hasFlag('--include-fresh');
+  const dryRun = options.dryRun ?? hasFlag('--dry-run');
+  const register = options.register ?? hasFlag('--register');
+  const print = options.print !== false;
   const queue = register
     ? await api(base, '/douyin-monitor/chrome-queue', {
       method: 'POST',
@@ -194,7 +199,7 @@ async function runCollector() {
   const results = [];
   for (const target of queue.targets || []) {
     try {
-      const page = readChromePage(target.douyinUrl, waitMs);
+      const page = await readChromePage(target.douyinUrl, waitMs);
       const parsed = parseDouyinPage(page);
       const payload = payloadForTarget(target, parsed, page);
       if (!hasAnyMetric(parsed)) {
@@ -232,13 +237,15 @@ async function runCollector() {
       });
     }
   }
-  console.log(JSON.stringify({
+  const summary = {
     ok: true,
     generatedAt: queue.generatedAt,
     count: queue.count,
     registeredCount: queue.registeredCount || 0,
     results
-  }, null, 2));
+  };
+  if (print) console.log(JSON.stringify(summary, null, 2));
+  return summary;
 }
 
 function selfTest() {
@@ -268,7 +275,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (hasFlag('--self-test')) {
     selfTest();
   } else {
-    runCollector().catch((error) => {
+    runCollector({ print: true }).catch((error) => {
       console.error(error.message);
       process.exit(1);
     });

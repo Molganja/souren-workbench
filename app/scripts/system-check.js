@@ -323,8 +323,20 @@ else fail('采集写入后仍可能留下旧的未来待生成或已准备未派
 if (serverSource.includes('collectionPriorityFor') && serverSource.includes("item.activityTier === '起量'") && serverSource.includes("item.activityTier === '休眠'") && serverSource.includes('collectionPriorityFor(b) - collectionPriorityFor(a)') && serverSource.includes('item.collectionPolicy?.intervalHours != null')) ok('Chrome采集清单按活跃度优先，不按账号数硬跑');
 else fail('Chrome采集清单缺少活跃度优先排序');
 
-if (serverSource.includes('async function enqueueDouyinCollection') && serverSource.includes('return registerChromeCollectionQueue({ limit: 200, source })') && serverSource.includes('const toRegister = queue.targets.filter((target) => !target.collectionQueued)') && serverSource.includes("setTimeout(() => runScheduledDouyinCollection('startup')") && serverSource.includes("setInterval(() => runScheduledDouyinCollection('scheduled')") && smokeSource.includes('monitor run duplicated already waiting Chrome collection tasks')) ok('启动和定时采集登记复用活跃度队列，不会重复排队已等待 Chrome 的账号');
+if (serverSource.includes('async function enqueueDouyinCollection') && serverSource.includes('const queue = registerChromeCollectionQueue({ limit: 200, source })') && serverSource.includes('const toRegister = queue.targets.filter((target) => !target.collectionQueued)') && serverSource.includes("setTimeout(() => runScheduledDouyinCollection('startup')") && serverSource.includes("setInterval(() => runScheduledDouyinCollection('scheduled')") && smokeSource.includes('monitor run duplicated already waiting Chrome collection tasks')) ok('启动和定时采集登记复用活跃度队列，不会重复排队已等待 Chrome 的账号');
 else fail('启动或定时采集登记仍可能缺失，或绕过队列重复创建 Chrome 采集单');
+
+if (
+  serverSource.includes('function requestDouyinCollectorRun')
+  && serverSource.includes("import('../scripts/douyin-chrome-collector.js')")
+  && serverSource.includes('requestDouyinCollectorRun(source, queue)')
+  && serverSource.includes('DOUYIN_COLLECTOR_AUTO_RUN')
+  && collectorSource.includes('export async function runCollector')
+  && mainSource.includes('Metric label="抖音采集"')
+  && mainSource.includes('主机上自动启动已登录浏览器采集')
+  && readmeSource.includes('后端默认会自动启动主机上已登录抖音的 Chrome')
+) ok('到期采集会触发主机 Chrome 自动执行器，不只停留在等待队列');
+else fail('到期采集仍可能只自动排队，未自动启动主机 Chrome 执行器');
 
 if (
   serverSource.includes('function registerCaseCollectionQueue')
@@ -360,6 +372,10 @@ if (
   envExampleSource.includes('SOUREN_CASE_LIBRARY_ROOT=')
   && envExampleSource.includes('SOUREN_SHARED_MATERIAL_ROOT=')
   && envExampleSource.includes('DOUYIN_COLLECTION_CHECK_INTERVAL_MS=')
+  && envExampleSource.includes('DOUYIN_COLLECTOR_AUTO_RUN=')
+  && envExampleSource.includes('DOUYIN_COLLECTOR_LIMIT=')
+  && envExampleSource.includes('DOUYIN_COLLECTOR_WAIT_MS=')
+  && envExampleSource.includes('DOUYIN_COLLECTOR_COOLDOWN_MS=')
   && envExampleSource.includes('IMAGE_API_KEY=')
 ) ok('.env.example 覆盖共享目录、采集间隔和图片接口关键配置');
 else fail('.env.example 缺少共享目录、采集间隔或图片接口关键配置');

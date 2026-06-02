@@ -31,8 +31,18 @@ const AUTH_SECRET = process.env.SOUREN_AUTH_SECRET || `${ROOT_DIR}:${ACCESS_CODE
 const DEFAULT_IMAGE_MODEL = 'gpt-image-1';
 const DEFAULT_IMAGE_API_URL = 'https://api.openai.com/v1/images/generations';
 const DOUYIN_COLLECTION_CHECK_INTERVAL_MS = Number(process.env.DOUYIN_COLLECTION_CHECK_INTERVAL_MS || 6 * 60 * 60 * 1000);
+const DOUYIN_COLLECTOR_AUTO_RUN = process.env.DOUYIN_COLLECTOR_AUTO_RUN !== '0' && process.env.SOUREN_GITHUB_SYNC_CHECK_DISABLED !== '1';
+const DOUYIN_COLLECTOR_LIMIT = Math.max(1, Math.min(Number(process.env.DOUYIN_COLLECTOR_LIMIT || 10), 50));
+const DOUYIN_COLLECTOR_WAIT_MS = Math.max(1000, Math.min(Number(process.env.DOUYIN_COLLECTOR_WAIT_MS || 6000), 30000));
+const DOUYIN_COLLECTOR_COOLDOWN_MS = Math.max(0, Number(process.env.DOUYIN_COLLECTOR_COOLDOWN_MS || 15 * 60 * 1000));
 const ROLLING_SCHEDULE_DAYS = Math.max(0, Number(process.env.SOUREN_ROLLING_SCHEDULE_DAYS || 14));
 const LOOPBACK_LISTEN_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+let douyinCollectorRun = null;
+let douyinCollectorLastStartedAt = null;
+let douyinCollectorLastFinishedAt = null;
+let douyinCollectorLastSource = null;
+let douyinCollectorLastResult = null;
+let douyinCollectorLastError = null;
 
 if (!LOOPBACK_LISTEN_HOSTS.has(LISTEN_HOST) && !ACCESS_CODE) {
   console.error('安全限制：开放局域网访问时必须设置 SOUREN_ACCESS_CODE。请改回 SOUREN_HOST=127.0.0.1，或填写访问码后再启动。');
@@ -3119,6 +3129,70 @@ function registerCaseCollectionQueue(caseIds = [], source = 'case-intake') {
   });
 }
 
+function douyinCollectorStatus() {
+  return {
+    autoRun: DOUYIN_COLLECTOR_AUTO_RUN,
+    supported: os.platform() === 'darwin',
+    running: Boolean(douyinCollectorRun),
+    limit: DOUYIN_COLLECTOR_LIMIT,
+    waitMs: DOUYIN_COLLECTOR_WAIT_MS,
+    cooldownMs: DOUYIN_COLLECTOR_COOLDOWN_MS,
+    lastStartedAt: douyinCollectorLastStartedAt,
+    lastFinishedAt: douyinCollectorLastFinishedAt,
+    lastSource: douyinCollectorLastSource,
+    lastResult: douyinCollectorLastResult,
+    lastError: douyinCollectorLastError
+  };
+}
+
+function requestDouyinCollectorRun(source = 'scheduled', queue = null) {
+  const status = douyinCollectorStatus();
+  const targets = queue?.targets || [];
+  if (!status.autoRun) return { ...status, started: false, reason: '主机自动采集未开启。' };
+  if (!status.supported) return { ...status, started: false, reason: '当前系统不是 macOS，不能自动控制主机浏览器。' };
+  if (douyinCollectorRun) return { ...status, started: false, reason: '已有一轮浏览器采集正在执行。' };
+  if (queue && !targets.length) return { ...status, started: false, reason: '当前没有等待浏览器采集的账号。' };
+  if (douyinCollectorLastStartedAt && DOUYIN_COLLECTOR_COOLDOWN_MS > 0) {
+    const elapsed = Date.now() - Date.parse(douyinCollectorLastStartedAt);
+    if (elapsed >= 0 && elapsed < DOUYIN_COLLECTOR_COOLDOWN_MS) {
+      return { ...status, started: false, reason: '距离上一轮自动采集太近，先合并到下一轮。' };
+    }
+  }
+  douyinCollectorLastStartedAt = now();
+  douyinCollectorLastFinishedAt = null;
+  douyinCollectorLastSource = source;
+  douyinCollectorLastResult = null;
+  douyinCollectorLastError = null;
+  douyinCollectorRun = (async () => {
+    try {
+      const { runCollector } = await import('../scripts/douyin-chrome-collector.js');
+      const result = await runCollector({
+        base: `${networkSettings().localUrl}/api`,
+        limit: DOUYIN_COLLECTOR_LIMIT,
+        waitMs: DOUYIN_COLLECTOR_WAIT_MS,
+        register: false,
+        includeFresh: false,
+        dryRun: false,
+        print: false
+      });
+      douyinCollectorLastResult = {
+        count: result.count || 0,
+        ingested: (result.results || []).filter((item) => item.status === 'ingested').length,
+        skipped: (result.results || []).filter((item) => item.status === 'skipped').length,
+        errors: (result.results || []).filter((item) => item.status === 'error').length
+      };
+      console.log(`Douyin Chrome collector finished: ${JSON.stringify(douyinCollectorLastResult)}`);
+    } catch (error) {
+      douyinCollectorLastError = error.message;
+      console.error(`Douyin Chrome collector failed: ${error.message}`);
+    } finally {
+      douyinCollectorLastFinishedAt = now();
+      douyinCollectorRun = null;
+    }
+  })();
+  return { ...douyinCollectorStatus(), started: true, reason: `已启动主机浏览器自动采集：${source}` };
+}
+
 function agentWorkQueue() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const byCase = Object.fromEntries(cases.map((item) => [item.id, item]));
@@ -3136,7 +3210,7 @@ function agentWorkQueue() {
     status: '待分析',
     priority: 100,
     title: viral.sourceLink ? '待分析爆款链接' : viral.title,
-    action: '主机侧用 Chrome/轻抖提取标题、正文、评论区和结构后写回分析结果。',
+    action: '主机侧用浏览器/轻抖提取标题、正文、评论区和结构后写回分析结果。',
     endpoint: `/api/viral-templates/${viral.id}/analysis-result`,
     sourceLink: viral.sourceLink,
     viralTemplateId: viral.id,
@@ -3148,7 +3222,7 @@ function agentWorkQueue() {
     status: target.collectionQueued ? '已排队' : '到期',
     priority: 70 + (target.collectionPriority || 0),
     title: `${target.weixinNick} 账号数据采集`,
-    action: '主机侧用已登录抖音的 Chrome 打开主页和作品，再把账号快照与作品数据写入后台。',
+    action: '主机后台会用已登录抖音的浏览器打开主页和作品，再把账号快照与作品数据写入后台。',
     endpoint: '/api/douyin-monitor/ingest',
     case: byCase[target.caseId] || null,
     douyinUrl: target.douyinUrl,
@@ -3197,7 +3271,11 @@ function agentWorkQueue() {
 }
 
 async function enqueueDouyinCollection(source = 'manual') {
-  return registerChromeCollectionQueue({ limit: 200, source });
+  const queue = registerChromeCollectionQueue({ limit: 200, source });
+  return {
+    ...queue,
+    collector: requestDouyinCollectorRun(source, queue)
+  };
 }
 
 function caseFromMonitorPayload(body = {}) {
@@ -3735,6 +3813,7 @@ function systemReadiness() {
   const dbPath = path.join(DATA_DIR, 'souren.sqlite');
   const image = imageSettings();
   const network = networkSettings();
+  const collector = douyinCollectorStatus();
   const checks = [
     { key: 'local-web', label: '本地网页工作台', status: 'ready', detail: `http://127.0.0.1:${PORT}` },
     {
@@ -3752,7 +3831,14 @@ function systemReadiness() {
     { key: 'dashboard-flow', label: '今日中控台链路', status: 'ready', detail: '待生成、待选择、素材阻塞、可交付、已派发、已完成' },
     { key: 'case-defaults', label: '新建案例四项录入与自动排期', status: 'ready', detail: '微信昵称 + 抖音主页 + 项目 + 共享素材路径即可先建链路' },
     { key: 'delivery-package', label: '微信交付内容', status: 'ready', detail: '网页内复制文案、下载素材，并按素材顺序和完成确认闭环' },
-    { key: 'douyin-monitor', label: '抖音账号数据监控', status: 'ready', detail: '默认使用主机浏览器登录态采集清单；主机端用已登录抖音的浏览器逐个查看并写入后台' },
+    {
+      key: 'douyin-monitor',
+      label: '抖音账号数据监控',
+      status: collector.autoRun && collector.supported ? 'ready' : 'waiting',
+      detail: collector.autoRun && collector.supported
+        ? `后台会自动启动主机浏览器采集，单轮最多 ${collector.limit} 个账号`
+        : '已保留主机浏览器登录态采集清单；当前未自动启动主机浏览器采集'
+    },
     { key: 'viral-alerts', label: '爆款作品提醒', status: 'ready', detail: '作品数据达到阈值后，首页提醒安排助理号/阑尾号互动' },
     { key: 'viral-analysis', label: '爆款链接分析', status: 'ready', detail: '工作人员只粘贴链接，分析完成后再批量生成同结构内容' },
     { key: 'image-api', label: '图片生成', status: image.ready ? 'ready' : 'waiting', detail: image.ready ? '已接入，可在图片任务里生成并下载' : `${image.missing || '未接入图片接口'}，图片任务仍可生成提示词` }
@@ -3784,6 +3870,7 @@ app.get('/api/health', (_req, res) => {
       missing: image.missing
     },
     network: networkSettings(),
+    douyinCollector: douyinCollectorStatus(),
     readiness: systemReadiness().summary
   });
 });
@@ -4100,6 +4187,7 @@ app.get('/api/config', (_req, res) => {
       missing: image.missing
     },
     network: networkSettings(),
+    douyinCollector: douyinCollectorStatus(),
     readiness: systemReadiness(),
     materialRoot: MATERIAL_ROOT,
     caseLibraryRoot: CASE_LIBRARY_ROOT,

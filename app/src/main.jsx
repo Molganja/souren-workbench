@@ -2196,6 +2196,7 @@ function SettingsView({ config, onAct }) {
   const readinessChecks = config.readiness?.checks || [];
   const agentWorkCounts = agentWork?.counts || {};
   const agentWorkItems = agentWork?.items || [];
+  const collector = config.douyinCollector || {};
   return (
     <div className="stack">
       <section className="hero">
@@ -2207,6 +2208,7 @@ function SettingsView({ config, onAct }) {
         <div className="stats">
           <Metric label="图片生成" value={config.image?.ready ? '已接入' : '待接入'} />
           <Metric label="局域网" value={config.network?.lanEnabled ? '已开放' : '本机'} />
+          <Metric label="抖音采集" value={collector.autoRun && collector.supported ? (collector.running ? '运行中' : '自动') : '排队'} />
           <Metric label="通用素材" value={config.sharedAssets?.total || 0} />
         </div>
       </section>
@@ -2251,7 +2253,7 @@ function SettingsView({ config, onAct }) {
           <summary>
             <div>
               <h2>系统后台</h2>
-              <p>账号采集、爆款分析和图片生成排队都在这里；系统自动排队，只有排查或主机处理时展开。</p>
+              <p>账号采集、爆款分析和图片生成排队都在这里；系统自动排队和执行，只有排查时展开。</p>
             </div>
             <span>到期采集 {monitorTotals.dueCollection || 0} · 后台动作 {agentWorkCounts.total || 0}</span>
           </summary>
@@ -2261,7 +2263,11 @@ function SettingsView({ config, onAct }) {
                 <h3>采集状态</h3>
                 <span>后台自动排队，每分钟刷新状态</span>
               </div>
-              <div className="hintBox">系统会按账号活跃度自动排队采集任务；工作人员不需要在这里点采集，也不需要手工回填。</div>
+              <div className="hintBox">
+                系统会按账号活跃度自动排队采集任务，并在主机上自动启动已登录浏览器采集；工作人员不需要在这里点采集，也不需要手工回填。
+                {collector.lastStartedAt && <span> 上次启动：{shortTime(collector.lastStartedAt)}。</span>}
+                {collector.lastError && <span> 最近异常：{collector.lastError}</span>}
+              </div>
               <div className="stats reviewStats">
                 <Metric label="监控账号" value={monitorTotals.monitoredAccounts || 0} />
                 <Metric label="到期采集" value={monitorTotals.dueCollection || 0} />

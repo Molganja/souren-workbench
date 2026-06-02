@@ -1293,6 +1293,7 @@ async function main() {
     const monitorQueued = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual' }) });
     assert(monitorQueued.skippedQueuedCount >= 2, 'monitor run should see already queued Chrome collection tasks');
     assert(monitorQueued.monitor.totals.collectionQueued >= 2 && monitorQueued.monitor.totals.waitingChrome >= 2, 'monitor run did not preserve queued Chrome collection');
+    assert(monitorQueued.collector?.autoRun === false && monitorQueued.collector?.started === false, 'E2E monitor run should not auto-open Chrome collector');
     const monitorQueuedAgain = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual-repeat' }) });
     assert(monitorQueuedAgain.createdCount === 0 && monitorQueuedAgain.skippedQueuedCount >= monitorQueued.createdCount, 'monitor run duplicated already waiting Chrome collection tasks');
     assert(monitorQueuedAgain.monitor.totals.waitingChrome === monitorQueued.monitor.totals.waitingChrome, 'duplicate monitor run changed waiting Chrome count');
@@ -1524,6 +1525,7 @@ async function main() {
     assert(review.topAccounts.length >= 2, 'review top account missing');
     const config = await api('/config');
     assert(config.caseLibraryRoot.endsWith(path.join('素材库', '服务器案例库')) && config.caseLibrary.total >= 1, 'config missing case library status');
+    assert(config.douyinCollector?.autoRun === false && config.douyinCollector?.running === false, 'test config should keep Chrome collector disabled');
     const hiddenConfigKeys = ['back' + 'ups', 'local' + 'Ai', 'll' + 'm', 'll' + 'mKeyReady', 'operator' + 'PacketDir', 'ai' + 'ConsultDir', 'stageRatios', 'materialTemplates', 'stages', 'contentKinds'];
     assert(!hiddenConfigKeys.some((key) => key in config), 'config exposed removed operational keys');
     assert(config.readiness?.summary?.total >= 8, 'config readiness summary missing');

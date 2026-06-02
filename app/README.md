@@ -87,6 +87,11 @@ SOUREN_HOST=127.0.0.1
 SOUREN_ACCESS_CODE=
 SOUREN_CASE_LIBRARY_ROOT=
 SOUREN_SHARED_MATERIAL_ROOT=
+DOUYIN_COLLECTION_CHECK_INTERVAL_MS=21600000
+DOUYIN_COLLECTOR_AUTO_RUN=1
+DOUYIN_COLLECTOR_LIMIT=10
+DOUYIN_COLLECTOR_WAIT_MS=6000
+DOUYIN_COLLECTOR_COOLDOWN_MS=900000
 IMAGE_API_KEY=
 IMAGE_API_URL=
 IMAGE_MODEL=gpt-image-1
@@ -124,7 +129,7 @@ SOUREN_ACCESS_CODE=给工作人员的访问码
    - 如果是视频内容，可以从排期或案例详情创建「剪辑任务」，剪辑要求直接在网页内展示。
 8. 工作人员点「查看交付内容」，弹窗会锁定当前收件微信；先点「确认只发给这个微信」，再按顺序复制文案、下载图片或视频，用电脑微信发给兼职。第一次给这个兼职发内容时才显示可复制的「兼职须知」，后续交付只保留已发过提示；发布要求已写进「发给兼职文案」，不再单独复制。标记已派发后，交付文案和素材下载都只读，不再显示复制或下载按钮。
 9. 发完微信后，在交付弹窗里点「已用微信发送」；确认兼职或剪辑人员完成发布/交付后标记完成。
-10. 账号数据由系统按活跃度登记采集任务；正在投放或起量的账号勤采，偏冷账号降频，休眠账号一周一次。到期账号会按待首采、起量、活跃、偏冷、休眠排序，不按账号数硬跑。macOS 主机端可运行 `npm run collect:douyin -- --register --limit 10`，用已登录抖音的 Chrome 查看到期主页并把数据写入后台；解析不到真实数据时会跳过，不写空结果。
+10. 账号数据由系统按活跃度登记采集任务；正在投放或起量的账号勤采，偏冷账号降频，休眠账号一周一次。到期账号会按待首采、起量、活跃、偏冷、休眠排序，不按账号数硬跑。主机后台会自动用已登录抖音的 Chrome 查看到期主页并把数据写入后台；解析不到真实数据时会跳过，不写空结果。
 11. 作品达到爆款阈值后，首页提醒安排助理号/阑尾号去评论区互动。
 12. 工作人员在「爆款链接」里只粘贴抖音爆款作品链接；链接进入待分析状态，主机侧写回内容提取和结构拆解后再生成同类型内容。
 
@@ -136,7 +141,7 @@ SOUREN_ACCESS_CODE=给工作人员的访问码
 
 后台默认每 6 小时检查一次是否有账号到期；这只是检查间隔，不代表所有账号都会进入采集清单。已经等待 Chrome 的账号不会重复排队。
 
-主机侧采集执行器：
+主机侧采集执行器会由后端定时自动启动；下面命令只用于排查：
 
 ```bash
 cd /Users/licc/Desktop/素人系统/app
@@ -144,7 +149,7 @@ npm run collect:douyin -- --dry-run --limit 3
 npm run collect:douyin -- --register --limit 10
 ```
 
-第一次运行前确保 Google Chrome 已登录抖音，并允许 Apple Events 执行 JavaScript。`--dry-run` 只看解析结果不写回；`--register` 会先把到期账号登记为等待 Chrome 采集，再把解析到的真实账号/作品数据写回后台。
+第一次自动运行前确保 Google Chrome 已登录抖音，并允许 Apple Events 执行 JavaScript。`--dry-run` 只看解析结果不写回；`--register` 会先把到期账号登记为等待 Chrome 采集，再把解析到的真实账号/作品数据写回后台。
 
 日常操作手册见项目根目录：`日常运营SOP.md`。
 
