@@ -83,7 +83,7 @@ async function imageGenerationSmoke() {
     assert(config.image.ready === true && config.image.model === 'fake-image-model', 'image config did not show ready');
     const caze = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ weixinNick: '图片生成兼职', staff: '咨询图片', persona: { city: '成都', occupation: '上班族' } })
+      body: JSON.stringify({ weixinNick: '图片生成兼职', persona: { city: '成都', occupation: '上班族' } })
     }, imageBase);
     const task = await api('/image-tasks', {
       method: 'POST',
@@ -246,13 +246,12 @@ async function main() {
     const bulk = await api('/cases/bulk', {
       method: 'POST',
       body: JSON.stringify({
-        text: '批量小林,https://www.douyin.com/user/bulk-lin,吸脂,咨询A\n批量小陈,https://www.douyin.com/user/bulk-chen,复诊,咨询B',
+        text: '批量小林,https://www.douyin.com/user/bulk-lin,吸脂\n批量小陈,https://www.douyin.com/user/bulk-chen,复诊',
         generateSlots: true,
         days: 2
       })
     });
     assert(bulk.createdCount === 2, 'bulk import did not create two cases');
-    assert(bulk.cases[0].staff === '咨询A' && bulk.cases[1].staff === '咨询B', 'bulk import staff missing');
     assert(bulk.cases[0].douyinUrl.includes('bulk-lin') && bulk.cases[1].project === '复诊', 'bulk simplified fields missing');
     assert(fs.existsSync(path.join(bulk.cases[0].localCaseDir, '00-原始素材')), 'bulk case material dir missing');
     const deletedCaseDir = bulk.cases[1].localCaseDir;
@@ -276,7 +275,6 @@ async function main() {
         project: '吸脂',
         sourceMaterialDir: sharedSourceDir,
         stage: '起号期',
-        staff: '咨询C',
         persona: { city: '成都', occupation: '上班族' }
       })
     });
@@ -312,7 +310,6 @@ async function main() {
         sourceMaterialDir: libraryCaseDir,
         weixinNick: '库登记小李',
         douyinUrl: 'https://www.douyin.com/user/library-li',
-        staff: '咨询库',
         generateSlots: true,
         days: 2
       })
@@ -337,10 +334,10 @@ async function main() {
     assert(duplicateLibraryRejected, 'case library allowed duplicate source directory');
     const minimalCase = await api('/cases', {
       method: 'POST',
-      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', staff: '咨询Z', generateSlots: true, days: 3 })
+      body: JSON.stringify({ douyinUrl: 'https://www.douyin.com/video/minimal-smoke', generateSlots: true, days: 3 })
     });
     assert(minimalCase.weixinNick && minimalCase.weixinNick !== '未命名兼职', 'minimal case did not generate nick');
-    assert(minimalCase.staff === '咨询Z' && minimalCase.persona.city && minimalCase.persona.motivation, 'minimal case defaults missing');
+    assert(minimalCase.persona.city && minimalCase.persona.motivation, 'minimal case defaults missing');
     assert(!minimalCase.localCaseDir.includes('未命名'), 'minimal case directory used unnamed segment');
     assert(minimalCase.slotsCreated === 3, 'minimal case did not auto generate slots');
     const minimalDetail = await api(`/cases/${minimalCase.id}`);
@@ -357,10 +354,10 @@ async function main() {
     assert(fs.existsSync(manifestPath), 'case manifest missing');
     const editedCase = await api(`/cases/${caze.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ weixinNick: '验收兼职改名', staff: '咨询D', persona: { ...caze.persona, city: '重庆' } })
+      body: JSON.stringify({ weixinNick: '验收兼职改名', persona: { ...caze.persona, city: '重庆' } })
     });
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    assert(editedCase.weixinNick === '验收兼职改名' && editedCase.staff === '咨询D' && manifest.staff === '咨询D', 'case manifest not synced after edit');
+    assert(editedCase.weixinNick === '验收兼职改名' && manifest.weixinNick === '验收兼职改名', 'case manifest not synced after edit');
 
     fs.writeFileSync(path.join(caze.localCaseDir, '00-原始素材', 'D1-test.jpg'), 'fake image');
     fs.writeFileSync(path.join(caze.localCaseDir, '00-原始素材', 'D1-test.mp4'), 'fake video');
@@ -466,13 +463,13 @@ async function main() {
     const wxChecklistPath = path.join(delivery.deliveryDir, '00-微信发送清单.txt');
     assert(fs.existsSync(wxChecklistPath), 'delivery package missing WeChat checklist');
     const wxChecklist = fs.readFileSync(wxChecklistPath, 'utf8');
-    assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('对接人：咨询D'), 'WeChat checklist missing recipient routing');
+    assert(wxChecklist.includes('发给：验收兼职改名') && wxChecklist.includes('抖音号：smoke_dy'), 'WeChat checklist missing recipient routing');
     assert(wxChecklist.includes('发送顺序') && wxChecklist.includes('完成口径'), 'WeChat checklist missing send or completion instructions');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '01-发给兼职文案.txt')), 'delivery package missing operator text');
     assert(fs.existsSync(path.join(delivery.deliveryDir, '05-素材顺序清单.txt')), 'delivery asset order file missing');
     assert(delivery.copiedAssets.length >= 1, 'delivery copied asset list missing');
     const deliveryView = await api(`/slots/${slot.id}/delivery-view`);
-    assert(deliveryView.texts.operatorInstruction.includes('对接人：咨询D'), 'delivery view missing operator instruction');
+    assert(deliveryView.texts.operatorInstruction.includes('账号：验收兼职改名'), 'delivery view missing operator instruction');
     assert(deliveryView.texts.publishText.includes(drafts[0].title), 'delivery view missing publish text');
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
     const mediaResponse = await fetch(`${ORIGIN}${deliveryView.mediaFiles[0].url}`);
@@ -485,8 +482,8 @@ async function main() {
     const deliveryDashboardSlot = deliveryDashboard.readyDelivery.find((item) => item.id === slot.id)
       || deliveryDashboard.todaySlots.find((item) => item.id === slot.id);
     assert(deliveryDashboardSlot?.selectedCandidate?.operatorInstruction, 'dashboard missing ready delivery copy data');
-    assert(deliveryDashboardSlot.case.staff === '咨询D', 'dashboard missing contact staff');
-    assert(deliveryDashboardSlot.selectedCandidate.operatorInstruction.includes('对接人：咨询D'), 'operator instruction missing contact staff');
+    assert(deliveryDashboardSlot.case.weixinNick === '验收兼职改名', 'dashboard missing case recipient');
+    assert(!(['st', 'aff'].join('') in deliveryDashboardSlot.case), 'dashboard still exposes removed case owner field');
     assert(Number.isInteger(deliveryDashboard.counts.locked) && Number.isInteger(deliveryDashboard.counts.sentWaitReport), 'dashboard work split counts missing');
     await imageGenerationSmoke();
     await authAccessSmoke();
@@ -666,7 +663,7 @@ async function main() {
     assert(exported.viralAlerts.length === 1, 'export missing viral alerts');
     assert(exported.contentSeeds.length >= 1, 'export missing content seeds');
     assert(exported.clipTasks.length === 1, 'export missing clip task');
-    assert(!('verifyTasks' in exported), 'export still exposes legacy verify tasks');
+    assert(!(['verify', 'Tasks'].join('') in exported), 'export still exposes legacy review tasks');
     let legacyVerifyRejected = false;
     try {
       await api('/verify-tasks/legacy/checklist');

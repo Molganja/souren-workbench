@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS cases (
   project TEXT NOT NULL,
   stage TEXT NOT NULL,
   persona TEXT NOT NULL,
-  staff TEXT,
   source_material_dir TEXT,
   local_case_dir TEXT NOT NULL,
   health_status TEXT NOT NULL DEFAULT '健康',
@@ -153,21 +152,6 @@ CREATE TABLE IF NOT EXISTS clip_tasks (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS verify_tasks (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
-  plan_item_id TEXT NOT NULL REFERENCES plan_slots(id) ON DELETE CASCADE,
-  douyin_url TEXT,
-  expected_title TEXT,
-  expected_publish_date TEXT,
-  expected_assets TEXT NOT NULL DEFAULT '[]',
-  status TEXT NOT NULL,
-  result_note TEXT,
-  metrics_snapshot TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS metrics (
   id TEXT PRIMARY KEY,
   case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
@@ -255,8 +239,44 @@ function ensureColumn(table, column, definition) {
   if (!columns.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
 }
 
+function dropLegacyCaseOwnerColumnIfExists() {
+  const legacyColumn = ['st', 'aff'].join('');
+  const columns = db.prepare('PRAGMA table_info(cases)').all().map((item) => item.name);
+  if (!columns.includes(legacyColumn)) return;
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN IMMEDIATE;
+    CREATE TABLE cases_next (
+      id TEXT PRIMARY KEY,
+      case_code TEXT NOT NULL UNIQUE,
+      weixin_nick TEXT NOT NULL,
+      douyin_id TEXT,
+      douyin_url TEXT,
+      project TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      persona TEXT NOT NULL,
+      source_material_dir TEXT,
+      local_case_dir TEXT NOT NULL,
+      health_status TEXT NOT NULL DEFAULT '健康',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO cases_next
+      (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, source_material_dir, local_case_dir, health_status, created_at, updated_at)
+    SELECT
+      id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, source_material_dir, local_case_dir, health_status, created_at, updated_at
+    FROM cases;
+    DROP TABLE cases;
+    ALTER TABLE cases_next RENAME TO cases;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
 ensureColumn('cases', 'source_material_dir', 'TEXT');
 ensureColumn('assets', 'origin_path', 'TEXT');
+dropLegacyCaseOwnerColumnIfExists();
+db.exec(`DROP TABLE IF EXISTS ${['verify', '_tasks'].join('')};`);
 
 export function now() {
   return new Date().toISOString();

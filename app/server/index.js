@@ -297,7 +297,6 @@ function rowCase(row) {
     project: row.project,
     stage: row.stage,
     persona: parseJson(row.persona, {}),
-    staff: row.staff,
     sourceMaterialDir: row.source_material_dir || '',
     localCaseDir: row.local_case_dir,
     healthStatus: row.health_status,
@@ -563,7 +562,6 @@ function rowViralAlert(row) {
       weixinNick: row.weixin_nick,
       douyinId: row.douyin_id,
       douyinUrl: row.douyin_url,
-      staff: row.staff,
       project: row.project,
       stage: row.stage
     } : null,
@@ -789,7 +787,6 @@ function operatorInstructionFor(slot, caze) {
   return [
     `今天发：${slot.contentKind}`,
     `账号：${caze.weixinNick} / ${caze.douyinId || '未填抖音号'}`,
-    `对接人：${caze.staff || '未填'}`,
     `时间窗：${slot.date} ${slot.timeWindow || ''}`,
     '发布前确认图片/视频顺序，发完并确认发布/交付完成后，在系统标记“已完成”。'
   ].join('\n');
@@ -903,8 +900,8 @@ function createCaseFromBody(body = {}) {
   ensureCaseDirs(caseDir);
   run(
     `INSERT INTO cases
-    (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, source_material_dir, local_case_dir, health_status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, source_material_dir, local_case_dir, health_status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       caseCode,
@@ -914,7 +911,6 @@ function createCaseFromBody(body = {}) {
       project,
       stage,
       JSON.stringify(persona),
-      body.staff || '',
       body.sourceMaterialDir || body.source_material_dir || '',
       caseDir,
       body.healthStatus || '健康',
@@ -1095,7 +1091,6 @@ function createCaseFromLibrary(input = {}) {
     douyinUrl: input.douyinUrl || input.douyin_url || '',
     project: input.project || candidate.project || '吸脂',
     stage: input.stage || '起号期',
-    staff: input.staff || '',
     sourceMaterialDir,
     persona: {
       ...(input.persona || {}),
@@ -1411,7 +1406,6 @@ function materialIntakeText(caze, gaps = []) {
     '素材补齐说明',
     `案例：${caze.caseCode} / ${caze.weixinNick}`,
     `项目：${caze.project}`,
-    `对接人：${caze.staff || '未填'}`,
     '',
     caze.sourceMaterialDir ? '工作人员优先把挑好的原始素材放到共享路径：' : '如果有共享盘/服务器目录，先在案例里填写“共享原始素材路径”。',
     caze.sourceMaterialDir || '未填写',
@@ -1464,24 +1458,22 @@ function parseBulkCaseText(text) {
     .map((line) => {
       const parts = line.split(/,|\t/).map((item) => item.trim());
       if (parts.length <= 5 && /^https?:\/\//i.test(parts[1] || '')) {
-        const [weixinNick, douyinUrl, project, staff, sourceMaterialDir] = parts;
+        const [weixinNick, douyinUrl, project, sourceMaterialDir] = parts;
         return {
           weixinNick,
           douyinId: '',
           douyinUrl,
-          staff: staff || '',
           sourceMaterialDir: sourceMaterialDir || '',
           project: project || '吸脂',
           stage: '起号期',
           persona: randomPersona()
         };
       }
-      const [weixinNick, douyinId, douyinUrl, project, stage, city, age, occupation, tone, motivation, staff] = parts;
+      const [weixinNick, douyinId, douyinUrl, project, stage, city, age, occupation, tone, motivation] = parts;
       return {
         weixinNick,
         douyinId,
         douyinUrl,
-        staff: staff || '',
         sourceMaterialDir: '',
         project: project || '吸脂',
         stage: STAGES.includes(stage) ? stage : '起号期',
@@ -1944,7 +1936,7 @@ function joinedViralAlerts(where = 'va.status = ?', params = ['active'], limit =
   return all(
     `SELECT
       va.id, va.case_id, va.video_id, va.snapshot_id, va.level, va.reason, va.status, va.interaction_note, va.created_at, va.updated_at,
-      c.case_code, c.weixin_nick, c.douyin_id, c.douyin_url, c.staff, c.project, c.stage,
+      c.case_code, c.weixin_nick, c.douyin_id, c.douyin_url, c.project, c.stage,
       dv.douyin_video_id, dv.url AS video_url, dv.title AS video_title, dv.publish_time AS video_publish_time,
       vs.collected_at AS snapshot_collected_at, vs.plays AS snapshot_plays, vs.likes AS snapshot_likes,
       vs.comments AS snapshot_comments, vs.shares AS snapshot_shares, vs.favorites AS snapshot_favorites
@@ -2262,7 +2254,6 @@ function chromeCollectionQueue(options = {}) {
         douyinId: caze.douyinId,
         douyinUrl: caze.douyinUrl,
         project: caze.project,
-        staff: caze.staff,
         dueCollection: item.dueCollection,
         lastCollectedAt: item.lastCollectedAt,
         initialSnapshot: item.initialSnapshot,
@@ -3108,7 +3099,7 @@ app.patch('/api/cases/:id', (req, res) => {
   if (!caze) return res.status(404).json({ error: 'case not found' });
   const body = req.body || {};
   run(
-    `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, stage=?, persona=?, staff=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
+    `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, stage=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
     [
       body.weixinNick ?? caze.weixinNick,
       body.douyinId ?? caze.douyinId,
@@ -3116,7 +3107,6 @@ app.patch('/api/cases/:id', (req, res) => {
       body.project ?? caze.project,
       body.stage ?? caze.stage,
       JSON.stringify(body.persona ?? caze.persona),
-      body.staff ?? caze.staff,
       body.sourceMaterialDir ?? body.source_material_dir ?? caze.sourceMaterialDir,
       body.healthStatus ?? caze.healthStatus,
       now(),
@@ -3324,7 +3314,6 @@ function createDeliveryForSlot(slot) {
   fs.mkdirSync(deliveryDir, { recursive: true });
   fs.writeFileSync(path.join(deliveryDir, '00-微信发送清单.txt'), [
     `发给：${caze.weixinNick || '未命名兼职'}`,
-    `对接人：${caze.staff || '未填'}`,
     `抖音号：${caze.douyinId || '未填'}`,
     `案例：${caze.caseCode}`,
     `内容：${slot.date} ${slot.timeWindow || '全天'}｜${slot.contentKind}｜${slot.stage}`,
@@ -3353,7 +3342,6 @@ function createDeliveryForSlot(slot) {
     ].join('\n'));
     fs.writeFileSync(path.join(deliveryDir, '04-剪辑要求.txt'), [
       `案例：${caze.caseCode} / ${caze.weixinNick}`,
-      `对接人：${caze.staff || '未填'}`,
       `账号：${caze.douyinId || '未填抖音号'}`,
       `内容类型：${slot.contentKind}`,
       `建议比例：9:16`,
@@ -3404,12 +3392,11 @@ function createDeliveryForSlot(slot) {
     `日期：${slot.date}`,
     `时间窗：${slot.timeWindow || ''}`,
     `发给：${caze.weixinNick || '未命名兼职'}`,
-    `对接人：${caze.staff || '未填'}`,
     `账号：${caze.douyinId || '未填抖音号'}`,
     `标题：${candidate.title}`,
     '',
     '发送给兼职顺序：',
-    '0. 先看 00-微信发送清单.txt，确认收件人和对接人',
+    '0. 先看 00-微信发送清单.txt，确认收件人和账号',
     '1. 先发 01-发给兼职文案.txt',
     '2. 再发 02-抖音发布文案.txt',
     '3. 按 05-素材顺序清单.txt 的顺序发送图片或视频',
@@ -3834,8 +3821,8 @@ app.post('/api/import', (req, res) => {
     ensureCaseDirs(caseDir);
     run(
       `INSERT INTO cases
-      (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, staff, source_material_dir, local_case_dir, health_status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, case_code, weixin_nick, douyin_id, douyin_url, project, stage, persona, source_material_dir, local_case_dir, health_status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         item.id,
         item.caseCode || item.case_code || uid('code'),
@@ -3845,7 +3832,6 @@ app.post('/api/import', (req, res) => {
         item.project || '吸脂',
         item.stage || '起号期',
         JSON.stringify(item.persona || {}),
-        item.staff || '',
         item.sourceMaterialDir || item.source_material_dir || '',
         caseDir,
         item.healthStatus || item.health_status || '健康',

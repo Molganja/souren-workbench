@@ -113,7 +113,7 @@ function AccessGate({ session, onLogin }) {
       <div>
         <p className="eyebrow">局域网工作台</p>
         <h1>输入访问码</h1>
-        <p>这个页面用于同局域网电脑访问主机工作台。通过后可以处理兼职对接、复制交付内容和标记任务状态。</p>
+        <p>这个页面用于同局域网电脑访问主机工作台。通过后可以查看今日任务、复制交付内容和标记任务状态。</p>
         <form className="accessForm" onSubmit={(event) => {
           event.preventDefault();
           onLogin(accessCode);
@@ -365,7 +365,7 @@ function App() {
 }
 
 function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, canOpenLocalPaths }) {
-  const contactGroups = groupTodayByContact(data.todaySlots);
+  const accountGroups = groupTodayByAccount(data.todaySlots);
   const flowGroups = buildTodayFlow(data.todaySlots);
   const operatorMonitorActions = (data.monitorActions || []).filter((item) => item.kind !== '账号采集');
   const strategyActions = operatorMonitorActions.filter((item) => item.kind !== '爆款互动');
@@ -421,21 +421,21 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
 
       <section className="panel">
         <div className="sectionHead">
-          <h2>今日对接清单</h2>
+          <h2>今日账号清单</h2>
           <div className="headerActions">
-            <span>{contactGroups.length} 个对接人</span>
-            {contactGroups.length > 0 && (
-              <button onClick={() => onCopy(buildContactChecklist(data.today, contactGroups), '今日对接清单已复制')}>复制清单</button>
+            <span>{accountGroups.length} 个兼职/账号</span>
+            {accountGroups.length > 0 && (
+              <button onClick={() => onCopy(buildAccountChecklist(data.today, accountGroups), '今日账号清单已复制')}>复制清单</button>
             )}
             {data.todaySlots.length > 0 && (
-              <button onClick={() => onCopy(buildDailyBrief(data.today, contactGroups, flowGroups), '今日工作简报已复制')}>复制简报</button>
+              <button onClick={() => onCopy(buildDailyBrief(data.today, accountGroups, flowGroups), '今日工作简报已复制')}>复制简报</button>
             )}
           </div>
         </div>
-        {contactGroups.length === 0 ? <div className="empty">今天没有需要对接的任务</div> : (
-          <div className="contactGrid">
-            {contactGroups.map((group) => (
-              <ContactGroupCard
+        {accountGroups.length === 0 ? <div className="empty">今天没有需要处理的兼职任务</div> : (
+          <div className="accountGrid">
+            {accountGroups.map((group) => (
+              <AccountTaskCard
                 key={group.name}
                 group={group}
                 date={data.today}
@@ -492,7 +492,7 @@ function Dashboard({ data, onOpenCase, onAct, onCopy, onOpenViral, onDelivery, c
                 {group.items.slice(0, 3).map((slot) => (
                   <button key={slot.id} className="flowItem" onClick={() => onOpenCase(slot.case?.id)}>
                     <span>{slot.case?.weixinNick || '未命名兼职'}</span>
-                    <em>{slot.case?.staff || '未填对接人'} · {slot.contentKind}</em>
+                    <em>{slot.case?.weixinNick || '未命名兼职'} · {slot.contentKind}</em>
                   </button>
                 ))}
               </div>
@@ -663,9 +663,9 @@ function MonitorSection({ monitor, onOpenCase, onAct, onCopy }) {
             </div>
           </div>
           {accounts.length === 0 ? <div className="empty">新建案例时填写抖音主页后，会进入 24 小时账号数据监控</div> : (
-            <div className="contactGrid">
+            <div className="accountGrid">
               {(due.length ? due : accounts.slice(0, 8)).map((item) => (
-                <div className="contactCard" key={item.case.id}>
+                <div className="accountCard" key={item.case.id}>
                   <button className="linkButton" onClick={() => onOpenCase(item.case.id)}>{item.case.weixinNick}</button>
                   <span>{item.dueCollection ? '待采集' : '已采集'} · 粉丝 {formatNumber(item.latestSnapshot?.fans)} · 初始 {formatNumber(item.initialSnapshot?.fans)}</span>
                   <small>{item.topVideo ? `最高播放 ${formatNumber(item.topVideo.latestSnapshot?.plays)}｜${item.topVideo.title || '未命名作品'}` : `最近采集：${shortTime(item.lastCollectedAt)}`}</small>
@@ -716,7 +716,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       kind: '微信交付',
       status: slot.status,
       title: `发给 ${slot.case?.weixinNick || '未命名兼职'}`,
-      detail: `${slot.case?.staff || '未填对接人'}｜${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
+      detail: `${slot.contentKind}｜${slot.selectedCandidate?.title || slot.goal}`,
       note: '在网页交付弹窗里复制文案，下载图片或视频，通过微信发送。',
       case: slot.case,
       slot
@@ -729,7 +729,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       kind: '选候选',
       status: slot.status,
       title: `${slot.case?.weixinNick || '未命名兼职'} 等待选稿`,
-      detail: `${slot.case?.staff || '未填对接人'}｜${slot.contentKind}｜候选 ${slot.candidateCount || 0} 条`,
+      detail: `${slot.contentKind}｜候选 ${slot.candidateCount || 0} 条`,
       note: '进案例详情，从 3 条候选里选一条锁定。',
       case: slot.case,
       slot
@@ -756,7 +756,7 @@ function buildPriorityActions(data = {}, strategyActions = []) {
       kind: '生成候选',
       status: slot.status,
       title: `${slot.case?.weixinNick || '未命名兼职'} 今天缺内容`,
-      detail: `${slot.case?.staff || '未填对接人'}｜${slot.contentKind}｜${slot.goal}`,
+      detail: `${slot.contentKind}｜${slot.goal}`,
       note: '先让系统生成 3 条候选稿。',
       case: slot.case,
       slot
@@ -1205,7 +1205,7 @@ const CONTACT_STATUS_PRIORITY = {
   已完成: 10
 };
 
-function sortContactItems(items = []) {
+function sortAccountItems(items = []) {
   return [...items].sort((a, b) => {
     const byStatus = (CONTACT_STATUS_PRIORITY[b.status] || 0) - (CONTACT_STATUS_PRIORITY[a.status] || 0);
     if (byStatus) return byStatus;
@@ -1213,20 +1213,20 @@ function sortContactItems(items = []) {
   });
 }
 
-function ContactGroupCard({ group, date, onCopy, onOpenCase, onDelivery }) {
-  const items = sortContactItems(group.items);
+function AccountTaskCard({ group, date, onCopy, onOpenCase, onDelivery }) {
+  const items = sortAccountItems(group.items);
   return (
-    <div className="contactCard contactDetailCard">
-      <div className="contactCardHead">
+    <div className="accountCard accountDetailCard">
+      <div className="accountCardHead">
         <div>
           <strong>{group.name}</strong>
-          <span>{group.items.length} 条任务 · {contactStatusSummary(group)}</span>
+          <span>{group.items.length} 条任务 · {accountStatusSummary(group)}</span>
         </div>
-        <button onClick={() => onCopy(buildContactChecklist(date, [group]), `${group.name}清单已复制`)}>复制此人清单</button>
+        <button onClick={() => onCopy(buildAccountChecklist(date, [group]), `${group.name}清单已复制`)}>复制账号清单</button>
       </div>
-      <div className="contactTaskList">
+      <div className="accountTaskList">
         {items.slice(0, 10).map((slot) => (
-          <div className="contactTaskItem" key={slot.id}>
+          <div className="accountTaskItem" key={slot.id}>
             <button className="linkButton" onClick={() => slot.case?.id && onOpenCase(slot.case.id)}>{slot.case?.weixinNick || '未命名兼职'}</button>
             <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
             <em>{slot.contentKind} · {nextActionText(slot)}</em>
@@ -1239,16 +1239,21 @@ function ContactGroupCard({ group, date, onCopy, onOpenCase, onDelivery }) {
   );
 }
 
-function groupTodayByContact(slots) {
+function groupTodayByAccount(slots) {
   const groups = new Map();
   slots.forEach((slot) => {
-    const name = slot.case?.staff || '未填对接人';
-    if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push(slot);
+    const key = slot.case?.id || slot.case?.weixinNick || slot.id;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        name: slot.case?.weixinNick || '未命名兼职',
+        items: []
+      });
+    }
+    groups.get(key).items.push(slot);
   });
-  return Array.from(groups, ([name, items]) => ({
+  return Array.from(groups.values()).map(({ name, items }) => ({
     name,
-    items: sortContactItems(items),
+    items: sortAccountItems(items),
     pendingGenerate: items.filter((slot) => slot.status === '待生成').length,
     pendingChoose: items.filter((slot) => slot.status === '候选待选').length,
     locked: items.filter((slot) => slot.status === '已锁定').length,
@@ -1256,11 +1261,10 @@ function groupTodayByContact(slots) {
     readyDelivery: items.filter((slot) => slot.status === '可交付').length,
     sentWaitReport: items.filter((slot) => slot.status === '已派发').length,
     completed: items.filter((slot) => slot.status === '已完成').length
-  }))
-    .sort((a, b) => b.items.length - a.items.length);
+  })).sort((a, b) => b.items.length - a.items.length);
 }
 
-function contactStatusSummary(group) {
+function accountStatusSummary(group) {
   return [
     ['待生成', group.pendingGenerate],
     ['待选', group.pendingChoose],
@@ -1275,8 +1279,8 @@ function contactStatusSummary(group) {
     .join(' · ') || '暂无待办';
 }
 
-function buildContactChecklist(date, groups) {
-  const lines = [`${date} 今日对接清单`];
+function buildAccountChecklist(date, groups) {
+  const lines = [`${date} 今日账号清单`];
   groups.forEach((group) => {
     lines.push('', `【${group.name}】${group.items.length} 条`);
     group.items.forEach((slot, index) => {
@@ -1356,14 +1360,14 @@ function buildBeginnerSteps(data, operatorMonitorActions = []) {
   ];
 }
 
-function buildDailyBrief(date, contactGroups, flowGroups) {
+function buildDailyBrief(date, accountGroups, flowGroups) {
   const lines = [`${date} 今日工作简报`];
   lines.push('', '【链路统计】');
   flowGroups.forEach((group) => {
     lines.push(`${group.status}：${group.items.length}｜${group.action}`);
   });
-  lines.push('', '【按对接人】');
-  contactGroups.forEach((group) => {
+  lines.push('', '【按兼职/账号】');
+  accountGroups.forEach((group) => {
     lines.push(`${group.name}：${group.items.length} 条｜可交付 ${group.readyDelivery}｜等回传 ${group.sentWaitReport}｜已完成 ${group.completed}`);
     group.items.forEach((slot, index) => {
       const caze = slot.case || {};
@@ -1508,10 +1512,9 @@ function shortTime(value) {
   return String(value).replace('T', ' ').slice(0, 16);
 }
 
-function caseContactLine(caze = {}) {
+function caseAccountLine(caze = {}) {
   return [
-    caze.caseCode || caze.douyinId || '未建案例',
-    caze.staff ? `对接：${caze.staff}` : '未填对接人'
+    caze.caseCode || caze.douyinId || '未建案例'
   ].filter(Boolean).join(' · ');
 }
 
@@ -1524,7 +1527,7 @@ function ScheduleView({ data, onOpenCase, onAct, onCopy, onDelivery, canOpenLoca
   const filtered = data.slots.filter((slot) => {
     const caze = slot.case || {};
     const q = query.trim().toLowerCase();
-    const haystack = `${caze.weixinNick || ''} ${caze.caseCode || ''} ${caze.douyinId || ''} ${caze.staff || ''} ${slot.goal}`.toLowerCase();
+    const haystack = `${caze.weixinNick || ''} ${caze.caseCode || ''} ${caze.douyinId || ''} ${slot.goal}`.toLowerCase();
     return slot.date >= data.today
       && slot.date <= endDate
       && (status === '全部状态' || slot.status === status)
@@ -1556,7 +1559,7 @@ function ScheduleView({ data, onOpenCase, onAct, onCopy, onDelivery, canOpenLoca
       </section>
       <section className="panel">
         <div className="filters scheduleFilters">
-          <input placeholder="搜索账号 / 抖音号 / 案例编号 / 对接人 / 目标" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input placeholder="搜索账号 / 抖音号 / 案例编号 / 目标" value={query} onChange={(e) => setQuery(e.target.value)} />
           <select value={range} onChange={(e) => setRange(e.target.value)}>
             <option value="7">未来 7 天</option>
             <option value="14">未来 14 天</option>
@@ -1601,7 +1604,7 @@ function ScheduleRow({ slot, onOpenCase, onAct, onCopy, onDelivery, canOpenLocal
           <span className={`status ${statusClass(slot.status)}`}>{slot.status}</span>
         </div>
         <p>{slot.selectedCandidate?.title || slot.goal}</p>
-        <small>{caseContactLine(caze)} · 候选 {slot.candidateCount}</small>
+        <small>{caseAccountLine(caze)} · 候选 {slot.candidateCount}</small>
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成候选')}>生成候选</button>}
@@ -1668,9 +1671,8 @@ function TaskRow({ slot, onOpenCase, onAct, onCopy, onDelivery, canOpenLocalPath
         <p>{slot.goal}</p>
         <div className="deliveryMeta">
           <span>发给：{caze.weixinNick || '未命名兼职'}</span>
-          <span>对接：{caze.staff || '未填对接人'}</span>
         </div>
-        <small>{caseContactLine(caze)} · {slot.stage}</small>
+        <small>{caseAccountLine(caze)} · {slot.stage}</small>
       </div>
       <div className="rowActions">
         {slot.status === '待生成' && <button onClick={() => onAct(() => request(`/slots/${slot.id}/generate-candidates`, { method: 'POST' }), '已生成 3 条候选')}>生成候选</button>}
@@ -1707,7 +1709,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
   const [libraryLoading, setLibraryLoading] = useState(false);
   const filtered = cases.filter((item) => {
     const q = query.trim().toLowerCase();
-    const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.staff || ''} ${item.project} ${personaText(item.persona)}`.toLowerCase();
+    const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.project} ${personaText(item.persona)}`.toLowerCase();
     const matchQuery = !q || haystack.includes(q);
     const matchHealth = healthFilter === '全部状态' || item.healthStatus === healthFilter;
     return matchQuery && matchHealth;
@@ -1745,7 +1747,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
           />
         )}
         <div className="filters">
-          <input placeholder="搜索微信昵称 / 抖音号 / 对接人 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input placeholder="搜索微信昵称 / 抖音号 / 案例编号 / 项目 / 人设" value={query} onChange={(e) => setQuery(e.target.value)} />
           <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
             {healthOptions.map((item) => <option key={item}>{item}</option>)}
           </select>
@@ -1758,7 +1760,7 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct, canOpenLocalPaths 
                 <button className="caseTileMain" onClick={() => onOpenCase(item.id)}>
                   <strong>{item.weixinNick}</strong>
                   <span>{item.caseCode} · {item.project}</span>
-                  <em>{item.douyinId || '未填抖音号'} · {item.staff ? `对接：${item.staff}` : '未填对接人'} · {item.healthStatus}</em>
+                  <em>{item.douyinId || '未填抖音号'} · {item.healthStatus}</em>
                 </button>
                 <button className="dangerButton" onClick={() => deleteCase(item, onAct)}>删除</button>
               </div>
@@ -1824,8 +1826,6 @@ function registerLibraryCase(item, onAct, onDone) {
   if (!weixinNick || !weixinNick.trim()) return;
   const douyinUrl = window.prompt('抖音主页/作品链接（可以先空着，后面编辑案例补）', '');
   if (douyinUrl === null) return;
-  const staff = window.prompt('对接咨询/负责人（可以先空着）', '');
-  if (staff === null) return;
   onAct(async () => {
     const result = await request('/case-library/register', {
       method: 'POST',
@@ -1833,7 +1833,6 @@ function registerLibraryCase(item, onAct, onDone) {
         sourceMaterialDir: item.sourceMaterialDir,
         weixinNick: weixinNick.trim(),
         douyinUrl: douyinUrl.trim(),
-        staff: staff.trim(),
         project: item.project,
         generateSlots: true,
         days: 14
@@ -1868,7 +1867,7 @@ function CaseDetail({ detail, onAct, onCopy, onBack, onDelivery, canOpenLocalPat
         <div>
           <p className="eyebrow">{caze.caseCode}</p>
           <h1>{caze.weixinNick}</h1>
-          <p>{caze.project} · {caze.staff ? `对接：${caze.staff}` : '未填对接人'} · {personaText(caze.persona)}</p>
+          <p>{caze.project} · {personaText(caze.persona)}</p>
           {healthReasons.length > 0 && <p className="healthLine">当前提示：{healthReasons.join(' / ')}</p>}
           {healthActions.length > 0 && <p className="healthLine">建议动作：{healthActions.join(' / ')}</p>}
           <p className="path">共享原始素材：{caze.sourceMaterialDir || '未填写'}</p>
@@ -2199,7 +2198,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, canOpenLocalPaths }) {
       <div className="deliveryHeader">
         <div>
           <strong>发给：{view.case?.weixinNick || '未命名兼职'}</strong>
-          <span>对接：{view.case?.staff || '未填对接人'}｜账号：{view.case?.douyinId || '未填抖音号'}｜{view.slot.contentKind}</span>
+          <span>账号：{view.case?.douyinId || '未填抖音号'}｜{view.slot.contentKind}</span>
         </div>
         <span className={`status ${statusClass(view.slot.status)}`}>{view.slot.status}</span>
       </div>
@@ -2625,7 +2624,7 @@ function networkSetupText(config) {
     '3. 把下面任意一个网址发给同一局域网内的工作人员：',
     ...(lanUrls.length ? lanUrls : ['当前未检测到局域网地址，请确认已经设置 SOUREN_HOST=0.0.0.0 并重启。']),
     '',
-    '工作人员只需要打开网址、输入访问码，然后处理对接、复制交付内容和标记状态。'
+    '工作人员只需要打开网址、输入访问码，然后查看今日任务、复制交付内容和标记状态。'
   ].join('\n');
 }
 
@@ -2664,7 +2663,6 @@ function CaseForm({ initial, onClose, onSubmit }) {
     project: initial?.project || '吸脂',
     sourceMaterialDir: initial?.sourceMaterialDir || '',
     stage: initial?.stage || '起号期',
-    staff: initial?.staff || '',
     persona: {
       city: initial?.persona?.city || defaults?.persona.city || '',
       age: initial?.persona?.age || defaults?.persona.age || '',
@@ -2685,7 +2683,7 @@ function CaseForm({ initial, onClose, onSubmit }) {
   }
   return (
     <Modal title={initial ? '编辑案例' : '新建案例'} onClose={onClose}>
-      {isCreate && <div className="hintBox">新建时先填兼职微信昵称、抖音主页/作品链接、项目、对接咨询和共享原始素材路径。人设默认随机生成，用来先建目录、排期和交付链路，后面需要再细改。</div>}
+      {isCreate && <div className="hintBox">新建时先填兼职微信昵称、抖音主页/作品链接、项目和共享原始素材路径。人设默认随机生成，用来先建目录、排期和交付链路，后面需要再细改。</div>}
       {isCreate && (
         <div className="generatedPreview">
           <strong>{form.weixinNick}</strong>
@@ -2696,7 +2694,6 @@ function CaseForm({ initial, onClose, onSubmit }) {
       <div className="formGrid">
         <label>兼职微信昵称<input value={form.weixinNick} onChange={(e) => update('weixinNick', e.target.value)} /></label>
         <label>抖音主页/作品链接<input value={form.douyinUrl} onChange={(e) => update('douyinUrl', e.target.value)} /></label>
-        <label>对接咨询/负责人<input placeholder="例如：咨询A / 小王" value={form.staff} onChange={(e) => update('staff', e.target.value)} /></label>
         <label className="wide">项目<input value={form.project} onChange={(e) => update('project', e.target.value)} placeholder="例如：吸脂 / 复诊 / 其他项目" /></label>
         <label className="wide">共享原始素材路径<input value={form.sourceMaterialDir} onChange={(e) => update('sourceMaterialDir', e.target.value)} placeholder="工作人员在共享盘/服务器里放素材的目录路径" /></label>
         {(!isCreate || showAdvanced) && (
@@ -2725,14 +2722,14 @@ function CaseForm({ initial, onClose, onSubmit }) {
 }
 
 function BulkCaseForm({ onClose, onSubmit }) {
-  const [text, setText] = useState('小林,https://www.douyin.com/user/example1,吸脂,咨询A,/Volumes/共享素材/小林\n小陈,https://www.douyin.com/user/example2,复诊,咨询B,/Volumes/共享素材/小陈');
+  const [text, setText] = useState('小林,https://www.douyin.com/user/example1,吸脂,/Volumes/共享素材/小林\n小陈,https://www.douyin.com/user/example2,复诊,/Volumes/共享素材/小陈');
   const [generateSlots, setGenerateSlots] = useState(true);
   const [days, setDays] = useState(7);
   return (
     <Modal title="批量导入兼职/账号" onClose={onClose}>
       <div className="hintBox">
         每行一个账号，支持逗号或 Tab 分隔。字段顺序：
-        微信昵称, 抖音主页链接, 项目, 对接咨询/负责人（可选）, 共享原始素材路径（可选）。旧格式仍可导入。
+        微信昵称, 抖音主页链接, 项目, 共享原始素材路径（可选）。
       </div>
       <div className="formGrid">
         <label className="wide">导入内容<textarea rows="10" value={text} onChange={(e) => setText(e.target.value)} /></label>

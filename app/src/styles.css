@@ -237,7 +237,7 @@ button.activeSmall {
   color: var(--muted);
 }
 
-.taskList, .slotList, .assetList, .templateList, .contactGrid, .flowGrid {
+.taskList, .slotList, .assetList, .templateList, .accountGrid, .flowGrid {
   display: grid;
   gap: 10px;
 }
@@ -272,7 +272,7 @@ button.activeSmall {
   width: fit-content;
 }
 
-.contactGrid {
+.accountGrid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
@@ -314,7 +314,7 @@ button.activeSmall {
   line-height: 1.5;
 }
 
-.contactCard {
+.accountCard {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -323,49 +323,49 @@ button.activeSmall {
   gap: 6px;
 }
 
-.contactCard span {
+.accountCard span {
   color: var(--muted);
   font-size: 13px;
 }
 
-.contactCard small {
+.accountCard small {
   color: var(--ink);
   line-height: 1.5;
 }
 
-.contactCard > .button {
+.accountCard > .button {
   justify-self: start;
 }
 
-.contactDetailCard {
+.accountDetailCard {
   align-content: start;
 }
 
-.contactCardHead {
+.accountCardHead {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
 }
 
-.contactCardHead > div {
+.accountCardHead > div {
   display: grid;
   gap: 5px;
   min-width: 0;
 }
 
-.contactCardHead button {
+.accountCardHead button {
   min-height: 30px;
   padding: 5px 8px;
 }
 
-.contactTaskList {
+.accountTaskList {
   display: grid;
   gap: 7px;
   margin-top: 4px;
 }
 
-.contactTaskItem {
+.accountTaskItem {
   border-top: 1px solid var(--line);
   padding-top: 7px;
   display: grid;
@@ -374,18 +374,18 @@ button.activeSmall {
   align-items: center;
 }
 
-.contactTaskItem .status {
+.accountTaskItem .status {
   justify-self: end;
 }
 
-.contactTaskItem em {
+.accountTaskItem em {
   color: var(--muted);
   font-style: normal;
   font-size: 12px;
   line-height: 1.45;
 }
 
-.contactTaskItem > button:not(.linkButton) {
+.accountTaskItem > button:not(.linkButton) {
   min-height: 28px;
   padding: 4px 8px;
 }
