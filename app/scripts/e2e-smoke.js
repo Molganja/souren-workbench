@@ -576,6 +576,13 @@ async function main() {
       lockedRejected = /409/.test(error.message) || /锁定/.test(error.message);
     }
     assert(lockedRejected, 'locked slot allowed candidate regeneration');
+    let detachedClipRejected = false;
+    try {
+      await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, title: '无排期剪辑任务' }) });
+    } catch (error) {
+      detachedClipRejected = /具体排期/.test(error.message);
+    }
+    assert(detachedClipRejected, 'clip task without a plan slot was allowed');
     const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
     const repeatedClip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收重复剪辑任务' }) });
     assert(repeatedClip.id === clip.id && repeatedClip.alreadyExisting === true, 'duplicate clip task was created for the same slot');

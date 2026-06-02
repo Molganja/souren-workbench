@@ -1368,7 +1368,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, canOpenLocalPaths }) {
         <div className="panel">
           <div className="sectionHead">
             <h2>剪辑任务</h2>
-            <button onClick={() => onAct(() => request('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, title: `${caze.weixinNick}临时剪辑任务` }) }), '剪辑任务已创建')}>新建剪辑任务</button>
+            <span>来自具体排期</span>
           </div>
           {clipTasks.length === 0 ? <div className="empty">暂无剪辑任务</div> : (
             <div className="assetList">

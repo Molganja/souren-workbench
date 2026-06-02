@@ -95,6 +95,9 @@ else fail('交付后仍可能重生成交付或改候选');
 if (serverSource.includes('alreadyExisting') && serverSource.includes('SELECT * FROM clip_tasks WHERE plan_slot_id = ?') && mainSource.includes('existingClipTask') && mainSource.includes('剪辑任务已建')) ok('同一排期不会重复创建剪辑任务');
 else fail('同一排期仍可能重复创建剪辑任务');
 
+if (serverSource.includes('剪辑任务必须绑定具体排期') && mainSource.includes('来自具体排期') && !mainSource.includes('新建剪辑任务') && !mainSource.includes('临时剪辑任务')) ok('剪辑任务只能从具体排期创建');
+else fail('剪辑任务仍存在临时建单入口');
+
 const dataDir = path.join(ROOT_DIR, 'data');
 const materialDir = path.join(ROOT_DIR, '素材库', '真实案例');
 fs.mkdirSync(dataDir, { recursive: true });

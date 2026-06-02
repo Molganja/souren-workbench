@@ -3958,13 +3958,12 @@ app.post('/api/clip-tasks', (req, res) => {
   const body = req.body || {};
   const caze = caseById(body.caseId);
   if (!caze) return res.status(404).json({ error: 'case not found' });
-  const slot = body.planSlotId ? slotById(body.planSlotId) : null;
-  if (body.planSlotId && !slot) return res.status(404).json({ error: 'slot not found' });
+  if (!body.planSlotId) return res.status(400).json({ error: '剪辑任务必须绑定具体排期' });
+  const slot = slotById(body.planSlotId);
+  if (!slot) return res.status(404).json({ error: 'slot not found' });
   if (slot && slot.caseId !== caze.id) return res.status(400).json({ error: 'slot does not belong to this case' });
-  if (slot) {
-    const existing = rowClipTask(get('SELECT * FROM clip_tasks WHERE plan_slot_id = ? ORDER BY created_at ASC LIMIT 1', [slot.id]));
-    if (existing) return res.json({ ...existing, alreadyExisting: true });
-  }
+  const existing = rowClipTask(get('SELECT * FROM clip_tasks WHERE plan_slot_id = ? ORDER BY created_at ASC LIMIT 1', [slot.id]));
+  if (existing) return res.json({ ...existing, alreadyExisting: true });
   const selected = slot?.selectedCandidateId ? rowCandidate(get('SELECT * FROM candidate_drafts WHERE id = ?', [slot.selectedCandidateId])) : null;
   const title = body.title || selected?.title || `${caze.weixinNick}剪辑任务`;
   const outputDir = path.join(caze.localCaseDir, '02-生成补充', '剪辑任务', safeSegment(title));
@@ -4001,7 +4000,7 @@ app.post('/api/clip-tasks', (req, res) => {
     [
       id,
       caze.id,
-      body.planSlotId || null,
+      body.planSlotId,
       title,
       brief,
       outputDir,
