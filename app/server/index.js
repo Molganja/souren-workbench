@@ -1112,6 +1112,24 @@ function requireQueueHeadForCaseMaterial(req, caseId, action = '处理') {
   throw queueGuardError(`这个账号的素材动作不是今日操作队列队首，不能越过前面的任务${action}`);
 }
 
+function slotStatusForCreate(input = {}) {
+  const status = String(input.status || '待生成').trim();
+  if (!PLAN_SLOT_STATUSES.includes(status)) {
+    const error = new Error(`非法槽位状态：${status || '空值'}`);
+    error.status = 400;
+    throw error;
+  }
+  return status;
+}
+
+function rejectManualSlotStatusOverride(req, input = {}) {
+  if (queueGuardBypassed(req)) return;
+  if (!Object.prototype.hasOwnProperty.call(input, 'status') || !input.status || input.status === '待生成') return;
+  const error = new Error('新建排期只能进入待生成队列，不能直接创建已锁定、可交付、已派发或已完成任务');
+  error.status = 400;
+  throw error;
+}
+
 function createSlotForCase(caze, input = {}) {
   const contentKind = CONTENT_KINDS.includes(input.contentKind) ? input.contentKind : '日常养号';
   const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
@@ -1128,7 +1146,7 @@ function createSlotForCase(caze, input = {}) {
       contentKind,
       input.goal || inferGoal(contentKind, stage),
       stage,
-      input.status || '待生成',
+      slotStatusForCreate(input),
       now(),
       now()
     ]
@@ -4686,10 +4704,15 @@ app.post('/api/cases/:id/sync-source-materials', (req, res) => {
 });
 
 app.post('/api/cases/:id/slots', (req, res) => {
-  const caze = caseById(req.params.id);
-  if (!caze) return res.status(404).json({ error: 'case not found' });
-  const body = req.body || {};
-  res.json(createSlotForCase(caze, body));
+  try {
+    const caze = caseById(req.params.id);
+    if (!caze) return res.status(404).json({ error: 'case not found' });
+    const body = req.body || {};
+    rejectManualSlotStatusOverride(req, body);
+    res.json(createSlotForCase(caze, body));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.post('/api/slots/:id/generate-candidates', async (req, res) => {

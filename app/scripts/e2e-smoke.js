@@ -1294,6 +1294,16 @@ async function main() {
       assert(preparedSlot.status === '待生成' && !preparedSlot.deliveryDir, 'dashboard prepare today jumped past the queue head');
     }
 
+    const forbiddenSlotGoal = '直接创建已派发排期验收';
+    const forbiddenSlotResponse = await fetch(`${BASE}/cases/${caze.id}/slots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: '2026-06-01', contentKind: '素人种草', stage: '起号期', goal: forbiddenSlotGoal, status: '已派发' })
+    });
+    assert(forbiddenSlotResponse.status === 400, 'manual slot creation allowed direct sent status');
+    const afterForbiddenSlotCreate = await api(`/cases/${caze.id}`);
+    assert(!afterForbiddenSlotCreate.slots.some((item) => item.goal === forbiddenSlotGoal), 'manual slot status override inserted a slot');
+
     const manualSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
       body: JSON.stringify({ date: '2026-06-01', contentKind: '素人种草', stage: '起号期', goal: '手动槽位验收' })

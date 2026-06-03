@@ -267,6 +267,9 @@ else fail('后台生成或交付接口仍可能越过队首批量处理');
 if (mainSource.includes('activeQueueMatchesSlot') && mainSource.includes('activeQueueMatchesClip') && mainSource.includes('activeQueueMatchesAlert') && mainSource.includes('排到今日队列队首后处理') && mainSource.includes('这条不是今日操作队列的当前任务') && mainSource.includes("copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot") && serverSource.includes('requireQueueHeadForSlot') && serverSource.includes('requireQueueHeadForAlert') && serverSource.includes('requireQueueHeadForClipTask') && serverSource.includes('requireQueueHeadForMonitorAction') && smokeSource.includes('non-head slot was allowed to generate candidates') && smokeSource.includes('non-head slot was allowed to generate delivery') && smokeSource.includes('non-head monitor action was allowed to create strategy slot')) ok('二级页面和后端接口都不能绕过今日队首执行交付、剪辑、爆款互动和账号策略动作');
 else fail('排期规划、案例详情或后端接口仍可能绕过今日队首处理任务');
 
+if (serverSource.includes('function rejectManualSlotStatusOverride') && serverSource.includes('新建排期只能进入待生成队列') && serverSource.includes('function slotStatusForCreate') && smokeSource.includes('manual slot creation allowed direct sent status') && smokeSource.includes('manual slot status override inserted a slot')) ok('公开排期新建接口不能直接创建已派发或已完成任务');
+else fail('公开排期新建接口仍可能绕过候选、交付和收件确认直接造后段状态');
+
 if (mainSource.includes('activeQueueMatchesCaseMaterial') && mainSource.includes('canRunMaterialActions') && mainSource.includes('素材动作排到今日队列队首后处理') && !mainSource.includes('>同步共享素材</button>\n          <button onClick') && serverSource.includes('requireQueueHeadForCaseMaterial') && smokeSource.includes('non-head material sync was allowed') && smokeSource.includes('non-head material scan was allowed')) ok('案例详情素材同步和扫描也受队首限制');
 else fail('案例详情仍可能绕过今日队首执行素材同步或扫描');
 
