@@ -1591,19 +1591,29 @@ async function main() {
     assert(deliveryView.mediaFiles.length >= 1 && deliveryView.mediaFiles[0].url.startsWith('/files/'), 'delivery view missing downloadable media');
     assert(Array.isArray(deliveryView.handoffDone) && deliveryView.handoffDone.length === 0, 'new delivery should start with empty persisted handoff progress');
     const deliveryHandoffKeys = handoffDoneForDeliveryView(deliveryView);
+    let directHandoffArrayRejected = false;
+    try {
+      await api(`/slots/${slot.id}/handoff`, {
+        method: 'PATCH',
+        body: JSON.stringify({ handoffDone: [deliveryHandoffKeys[0]] })
+      });
+    } catch (error) {
+      directHandoffArrayRejected = /逐项确认/.test(error.message);
+    }
+    assert(directHandoffArrayRejected, 'handoff accepted direct progress array');
     let handoffOutOfOrderRejected = false;
     try {
       await api(`/slots/${slot.id}/handoff`, {
         method: 'PATCH',
-        body: JSON.stringify({ handoffDone: [deliveryHandoffKeys[1]] })
+        body: JSON.stringify({ step: deliveryHandoffKeys[1] })
       });
     } catch (error) {
       handoffOutOfOrderRejected = /按发送顺序/.test(error.message);
     }
-    assert(handoffOutOfOrderRejected, 'handoff progress allowed saving a later step before recipient confirmation');
+    assert(handoffOutOfOrderRejected, 'handoff accepted a non-next step');
     const partialHandoff = await api(`/slots/${slot.id}/handoff`, {
       method: 'PATCH',
-      body: JSON.stringify({ handoffDone: [deliveryHandoffKeys[0]] })
+      body: JSON.stringify({ step: deliveryHandoffKeys[0] })
     });
     assert(partialHandoff.handoffDone.length === 1 && partialHandoff.handoffDone[0] === deliveryHandoffKeys[0], 'handoff progress did not persist the first step');
     const reopenedPartialDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
@@ -1615,7 +1625,7 @@ async function main() {
         body: JSON.stringify({ handoffDone: [] })
       });
     } catch (error) {
-      handoffRollbackRejected = /不能回退/.test(error.message);
+      handoffRollbackRejected = /逐项确认/.test(error.message);
     }
     assert(handoffRollbackRejected, 'handoff progress allowed clearing already completed steps');
     const afterRollbackAttemptView = await api(`/slots/${slot.id}/delivery-view`);
@@ -1839,13 +1849,16 @@ async function main() {
         body: JSON.stringify({ handoffDone: handoffDoneForDeliveryView(deliveryView).reverse() })
       });
     } catch (error) {
-      dispatchOutOfOrderProgressRejected = /按发送顺序/.test(error.message);
+      dispatchOutOfOrderProgressRejected = /逐项确认/.test(error.message);
     }
     assert(dispatchOutOfOrderProgressRejected, 'handoff progress allowed out-of-order checklist');
-    const fullHandoff = await api(`/slots/${slot.id}/handoff`, {
-      method: 'PATCH',
-      body: JSON.stringify({ handoffDone: deliveryHandoffKeys })
-    });
+    let fullHandoff = partialHandoff;
+    for (const key of deliveryHandoffKeys.slice(1)) {
+      fullHandoff = await api(`/slots/${slot.id}/handoff`, {
+        method: 'PATCH',
+        body: JSON.stringify({ step: key })
+      });
+    }
     assert(fullHandoff.handoffDone.length === deliveryHandoffKeys.length, 'full handoff progress did not persist before dispatch');
     const reopenedFullDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(reopenedFullDeliveryView.handoffDone.length === deliveryHandoffKeys.length, 'reopened delivery view did not keep all handoff steps');
@@ -1856,7 +1869,7 @@ async function main() {
         body: JSON.stringify({ handoffDone: [deliveryHandoffKeys[0]] })
       });
     } catch (error) {
-      staleHandoffRollbackRejected = /不能回退/.test(error.message);
+      staleHandoffRollbackRejected = /逐项确认/.test(error.message);
     }
     assert(staleHandoffRollbackRejected, 'stale handoff request allowed rolling back completed steps');
     const afterStaleRollbackView = await api(`/slots/${slot.id}/delivery-view`);

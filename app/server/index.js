@@ -5305,10 +5305,35 @@ app.patch('/api/slots/:id/handoff', (req, res) => {
     return res.status(error.status || 500).json({ error: error.message });
   }
   const view = deliveryViewForSlot(slot);
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'handoffDone') || Object.prototype.hasOwnProperty.call(req.body || {}, 'deliveryChecklist')) {
+    return res.status(400).json({ error: '交付步骤只能按当前下一步逐项确认，不能一次提交完整清单' });
+  }
+  const step = String(req.body?.step || '').trim();
+  if (!step) {
+    return res.status(400).json({ error: '必须提交当前交付步骤' });
+  }
   const current = Array.isArray(slot.handoffDone) ? slot.handoffDone : [];
-  const incoming = Array.isArray(req.body?.handoffDone)
-    ? req.body.handoffDone
-    : (req.body?.step ? [...current, req.body.step] : current);
+  const currentGuard = deliveryHandoffProgressGuard(slot, current, view);
+  if (!currentGuard.ok) {
+    return res.status(409).json({ error: `交付步骤不能保存：${currentGuard.missing.map((item) => item.label).join('、')}` });
+  }
+  const requiredKeys = new Set((currentGuard.required || []).map((item) => item.key));
+  if (!requiredKeys.has(step)) {
+    return res.status(400).json({ error: '交付步骤不在当前交付清单里' });
+  }
+  if ((currentGuard.completedKeys || []).includes(step)) {
+    return res.json({
+      slot: slotById(slot.id),
+      handoffDone: currentGuard.completedKeys,
+      required: currentGuard.required,
+      missing: currentGuard.missing
+    });
+  }
+  const nextStep = (currentGuard.required || []).find((item) => !(currentGuard.completedKeys || []).includes(item.key));
+  if (!nextStep || nextStep.key !== step) {
+    return res.status(409).json({ error: `交付步骤必须按发送顺序操作，先完成「${nextStep?.label || '第一步'}」` });
+  }
+  const incoming = [...(currentGuard.completedKeys || []), step];
   const guard = deliveryHandoffProgressGuard(slot, incoming, view);
   if (!guard.ok) {
     return res.status(409).json({ error: `交付步骤不能保存：${guard.missing.map((item) => item.label).join('、')}` });

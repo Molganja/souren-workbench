@@ -1829,7 +1829,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
     try {
       const result = await request(`/slots/${view.slot.id}/handoff`, {
         method: 'PATCH',
-        body: JSON.stringify({ handoffDone: Array.from(next) })
+        body: JSON.stringify({ step: key })
       });
       setHandoffDone(new Set(result.handoffDone || Array.from(next)));
       if (result.slot) {
