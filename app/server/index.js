@@ -1426,9 +1426,15 @@ function createCaseFromBody(body = {}) {
   return createdCase;
 }
 
+function caseResumeConfirmText(caze = {}) {
+  return `恢复 ${caze.weixinNick || caze.caseCode || '这个账号'}`;
+}
+
 function assertCaseResumeConfirmed(input = {}, caze = {}) {
-  if (input.resumeConfirmed === true) return;
-  const err = new Error(`恢复账号前必须确认「${caze.weixinNick || '这个兼职'}」已经重新回复并愿意继续配合`);
+  const expected = caseResumeConfirmText(caze);
+  const actual = String(input.resumeConfirmText || '').trim();
+  if (actual === expected) return;
+  const err = new Error(`恢复账号前必须输入「${expected}」，确认「${caze.weixinNick || '这个兼职'}」已经重新回复并愿意继续配合`);
   err.status = 409;
   throw err;
 }

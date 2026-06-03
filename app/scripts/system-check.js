@@ -461,11 +461,16 @@ else fail('暂停账号的爆款提醒仍可能进入今日队列');
 if (
   serverSource.includes('/api/cases/:id/resume')
   && serverSource.includes('function assertCaseResumeConfirmed')
-  && serverSource.includes('resumeConfirmed === true')
+  && serverSource.includes('function caseResumeConfirmText')
+  && serverSource.includes('resumeConfirmText')
+  && !serverSource.includes('resumeConfirmed === true')
   && serverSource.includes('已取消')
   && mainSource.includes('ResumeAccountModal')
-  && mainSource.includes('已收到兼职回复，确认这个账号继续配合')
+  && mainSource.includes('const resumePhrase = `恢复 ${item.weixinNick')
+  && mainSource.includes('body: JSON.stringify({ resumeConfirmText: confirmText })')
   && smokeSource.includes('resume without reply confirmation should be blocked')
+  && smokeSource.includes('resume accepted a forged boolean confirmation')
+  && smokeSource.includes('resume accepted the wrong confirmation text')
   && serverSource.includes('function rejectCaseHealthStatusOverride')
   && smokeSource.includes('case edit health status override was allowed')
 ) ok('失联暂停账号必须确认兼职回复后才能恢复');

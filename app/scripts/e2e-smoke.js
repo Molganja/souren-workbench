@@ -52,6 +52,10 @@ function caseDeleteConfirmText(caze = {}) {
   return `删除 ${caze.weixinNick || caze.caseCode || '这个案例'}`;
 }
 
+function caseResumeConfirmText(caze = {}) {
+  return `恢复 ${caze.weixinNick || caze.caseCode || '这个账号'}`;
+}
+
 async function deleteCase(caze, base = BASE) {
   return api(`/cases/${caze.id}`, {
     method: 'DELETE',
@@ -1221,10 +1225,22 @@ async function main() {
       headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER }
     });
     assert(resumeWithoutConfirm.status === 409, 'resume without reply confirmation should be blocked');
+    const resumeBooleanConfirm = await fetch(`${BASE}/cases/${lostCase.id}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER },
+      body: JSON.stringify({ resumeConfirmed: true })
+    });
+    assert(resumeBooleanConfirm.status === 409, 'resume accepted a forged boolean confirmation');
+    const resumeWrongText = await fetch(`${BASE}/cases/${lostCase.id}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER },
+      body: JSON.stringify({ resumeConfirmText: '恢复 错误账号' })
+    });
+    assert(resumeWrongText.status === 409, 'resume accepted the wrong confirmation text');
     const stillPausedLost = await api(`/cases/${lostCase.id}`);
     assert(stillPausedLost.case.healthStatus === '失联暂停', 'unconfirmed resume changed paused account status');
     assert(!stillPausedLost.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'unconfirmed resume created new schedule');
-    const resumedLost = await api(`/cases/${lostCase.id}/resume`, { method: 'POST', body: JSON.stringify({ resumeConfirmed: true }) });
+    const resumedLost = await api(`/cases/${lostCase.id}/resume`, { method: 'POST', body: JSON.stringify({ resumeConfirmText: caseResumeConfirmText(lostCase) }) });
     assert(resumedLost.case.healthStatus === '健康', 'resume did not restore case health');
     assert(resumedLost.slotsCreated >= 1, 'resume did not create new schedule');
     assert(resumedLost.collectionQueue?.registeredCount === 1 && resumedLost.collectionQueue.runs[0]?.caseId === lostCase.id, 'resume did not immediately queue Chrome collection');

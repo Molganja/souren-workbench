@@ -1243,10 +1243,12 @@ function deleteCase(item, confirmText, onAct, onDone) {
 }
 
 function ResumeAccountModal({ item, onClose, onResume }) {
-  const [confirmed, setConfirmed] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const resumePhrase = `恢复 ${item.weixinNick || item.caseCode || '这个账号'}`;
+  const ready = confirmText.trim() === resumePhrase;
   return (
     <Modal title="恢复账号" onClose={onClose}>
-      <div className="hintBox">只有确认这个兼职已经重新回复，并且愿意继续按要求发布时，才恢复账号。恢复后系统会补近期排期并重新进入采集。</div>
+      <div className="hintBox">只有确认这个兼职已经重新回复，并且愿意继续按要求发布时，才恢复账号。恢复后系统会取消旧派发、补近期排期并重新进入采集。</div>
       <div className="templateList">
         <div className="templateRow">
           <strong>微信昵称</strong>
@@ -1257,23 +1259,20 @@ function ResumeAccountModal({ item, onClose, onResume }) {
           <span>{item.healthStatus}</span>
         </div>
       </div>
-      <label className="checkRow">
-        <input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
-        <span>已收到兼职回复，确认这个账号继续配合</span>
-      </label>
+      <label className="wide">确认恢复<input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder={`输入：${resumePhrase}`} /></label>
       <div className="modalActions">
         <button onClick={onClose}>取消</button>
-        <button className="primary" disabled={!confirmed} onClick={() => onResume()}>确认恢复</button>
+        <button className="primary" disabled={!ready} onClick={() => onResume(confirmText.trim())}>确认恢复</button>
       </div>
     </Modal>
   );
 }
 
-function resumeCase(item, onAct, onDone) {
+function resumeCase(item, confirmText, onAct, onDone) {
   onAct(async () => {
     const result = await request(`/cases/${item.id}/resume`, {
       method: 'POST',
-      body: JSON.stringify({ resumeConfirmed: true })
+      body: JSON.stringify({ resumeConfirmText: confirmText })
     });
     onDone?.();
     return result;
@@ -1334,7 +1333,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueue
         <ResumeAccountModal
           item={caze}
           onClose={() => setResumeOpen(false)}
-          onResume={() => resumeCase(caze, onAct, () => setResumeOpen(false))}
+          onResume={(confirmText) => resumeCase(caze, confirmText, onAct, () => setResumeOpen(false))}
         />
       )}
       {editOpen && (
