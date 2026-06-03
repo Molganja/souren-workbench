@@ -3,4 +3,7 @@ data/
 app/node_modules/
 app/dist/
 app/.env
+deploy/nas/souren.nas.env
+logs/
+souren-runtime/
 .DS_Store

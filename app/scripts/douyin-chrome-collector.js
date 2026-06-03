@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
 const DEFAULT_BASE = process.env.SOUREN_API_BASE || 'http://127.0.0.1:5174/api';
+const DEFAULT_ACCESS_CODE = process.env.SOUREN_API_ACCESS_CODE || process.env.SOUREN_ACCESS_CODE || '';
 const execFileAsync = promisify(execFile);
 
 function argValue(name, fallback = '') {
@@ -159,9 +160,13 @@ async function readChromePage(url, waitMs = 6000) {
   }
 }
 
-async function api(base, pathname, options = {}) {
+async function api(base, pathname, options = {}, accessCode = '') {
   const res = await fetch(`${base}${pathname}`, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessCode ? { 'X-Souren-Access': accessCode } : {}),
+      ...(options.headers || {})
+    },
     ...options
   });
   const text = await res.text();
@@ -184,6 +189,7 @@ function payloadForTarget(target, parsed, page) {
 
 export async function runCollector(options = {}) {
   const base = String(options.base || argValue('--base', DEFAULT_BASE)).replace(/\/$/, '');
+  const accessCode = String(options.accessCode ?? argValue('--access-code', DEFAULT_ACCESS_CODE)).trim();
   const limit = Number(options.limit ?? argValue('--limit', '10')) || 10;
   const waitMs = Number(options.waitMs ?? argValue('--wait-ms', '6000')) || 6000;
   const includeFresh = options.includeFresh ?? hasFlag('--include-fresh');
@@ -194,8 +200,8 @@ export async function runCollector(options = {}) {
     ? await api(base, '/douyin-monitor/chrome-queue', {
       method: 'POST',
       body: JSON.stringify({ limit, includeFresh })
-    })
-    : await api(base, `/douyin-monitor/chrome-queue?limit=${limit}${includeFresh ? '&includeFresh=1' : ''}`);
+    }, accessCode)
+    : await api(base, `/douyin-monitor/chrome-queue?limit=${limit}${includeFresh ? '&includeFresh=1' : ''}`, {}, accessCode);
   const results = [];
   for (const target of queue.targets || []) {
     try {
@@ -218,7 +224,7 @@ export async function runCollector(options = {}) {
       const ingest = await api(base, '/douyin-monitor/ingest', {
         method: 'POST',
         body: JSON.stringify(payload)
-      });
+      }, accessCode);
       results.push({
         caseId: target.caseId,
         weixinNick: target.weixinNick,

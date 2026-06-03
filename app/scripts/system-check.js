@@ -50,6 +50,18 @@ const packageSource = fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8'
 const envExampleSource = fs.readFileSync(path.join(APP_DIR, '.env.example'), 'utf8');
 const smokeSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'e2e-smoke.js'), 'utf8');
 const collectorSource = fs.readFileSync(path.join(APP_DIR, 'scripts', 'douyin-chrome-collector.js'), 'utf8');
+const dockerfileSource = fs.existsSync(path.join(APP_DIR, 'Dockerfile'))
+  ? fs.readFileSync(path.join(APP_DIR, 'Dockerfile'), 'utf8')
+  : '';
+const nasComposeSource = fs.existsSync(path.join(ROOT_DIR, 'docker-compose.nas.yml'))
+  ? fs.readFileSync(path.join(ROOT_DIR, 'docker-compose.nas.yml'), 'utf8')
+  : '';
+const nasEnvExampleSource = fs.existsSync(path.join(ROOT_DIR, 'deploy', 'nas', 'souren.nas.env.example'))
+  ? fs.readFileSync(path.join(ROOT_DIR, 'deploy', 'nas', 'souren.nas.env.example'), 'utf8')
+  : '';
+const macNasCollectorSource = fs.existsSync(path.join(ROOT_DIR, 'deploy', 'mac', 'run-douyin-collector-to-nas.command'))
+  ? fs.readFileSync(path.join(ROOT_DIR, 'deploy', 'mac', 'run-douyin-collector-to-nas.command'), 'utf8')
+  : '';
 const rootReadmeSource = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
 const appReadmeSource = fs.readFileSync(path.join(APP_DIR, 'README.md'), 'utf8');
 const readmeSource = [
@@ -568,10 +580,27 @@ if (
   && collectorSource.includes('Google Chrome')
   && collectorSource.includes('/douyin-monitor/chrome-queue')
   && collectorSource.includes('/douyin-monitor/ingest')
+  && collectorSource.includes('SOUREN_API_ACCESS_CODE')
+  && collectorSource.includes('X-Souren-Access')
   && collectorSource.includes('页面没有解析到粉丝、作品或互动数据，未写回')
   && collectorSource.includes('OK Douyin Chrome collector self-test')
 ) ok('主机侧 Chrome 抖音采集执行器已接入，并带自测和不伪造数据保护');
 else fail('缺少可运行的主机侧 Chrome 抖音采集执行器，或执行器可能伪造采集数据');
+
+if (
+  dockerfileSource.includes('FROM node:24')
+  && dockerfileSource.includes('npm ci --omit=dev')
+  && dockerfileSource.includes('npm run build')
+  && dockerfileSource.includes('HEALTHCHECK')
+  && nasComposeSource.includes('5174:5174')
+  && nasComposeSource.includes('./souren-runtime:/data')
+  && nasEnvExampleSource.includes('SOUREN_ROOT_DIR=/data')
+  && nasEnvExampleSource.includes('DOUYIN_COLLECTOR_AUTO_RUN=0')
+  && nasEnvExampleSource.includes('DOUYIN_COLLECTION_CHECK_INTERVAL_MS=0')
+  && macNasCollectorSource.includes('SOUREN_API_BASE:-http://192.168.1.70:5174/api')
+  && macNasCollectorSource.includes('--access-code')
+) ok('NAS 部署包支持 24 小时主系统和 Mac 采集写回');
+else fail('NAS 部署包缺少 Docker、持久化数据、关闭 NAS Chrome 采集或 Mac 回写配置');
 
 if (
   envExampleSource.includes('SOUREN_CASE_LIBRARY_ROOT=')

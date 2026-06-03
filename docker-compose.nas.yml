@@ -1,0 +1,13 @@
+services:
+  souren:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: souren-workbench
+    restart: unless-stopped
+    env_file:
+      - ./deploy/nas/souren.nas.env
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./souren-runtime:/data
