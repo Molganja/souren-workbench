@@ -311,6 +311,19 @@ if (mainSource.includes('素材标记排到今日队列队首后处理') && main
 else fail('案例详情仍可能绕过今日队首执行素材标记、缺口建图或图片审核');
 
 if (
+  serverSource.includes("MATERIAL_REVIEW_STATUSES = ['可用', '待处理', '需处理', '不可用']")
+  && serverSource.includes('CASE_ASSET_USAGES')
+  && serverSource.includes('SHARED_ASSET_CATEGORIES')
+  && serverSource.includes('案例素材来源由同步或生成记录，不接受手动改写')
+  && serverSource.includes('通用素材来源由扫描记录，不接受手动改写')
+  && smokeSource.includes('case asset accepted an invalid review status')
+  && smokeSource.includes('case asset accepted a manual source override')
+  && smokeSource.includes('shared asset accepted an invalid review status')
+  && smokeSource.includes('shared asset accepted a manual source override')
+) ok('素材校准只接受固定用途和状态，来源不能手填改写');
+else fail('素材校准仍可能写入非法状态、用途或手填来源，导致素材池失真');
+
+if (
   !mainSource.includes('重 roll') &&
   !mainSource.includes('标记待审核') &&
   !mainSource.includes('标记通过') &&

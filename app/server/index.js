@@ -129,6 +129,10 @@ const REVIEWABLE_IMAGE_STATUSES = ['review', 'approved', 'rejected'];
 const IMAGE_GENERATION_STATUSES = ['waiting_key', 'draft', 'timeout'];
 const OPEN_COLLECTION_STATUSES = ['waiting_chrome'];
 const VIRAL_ALERT_STATUSES = ['active', 'handled'];
+const MATERIAL_REVIEW_STATUSES = ['可用', '待处理', '需处理', '不可用'];
+const CASE_ASSET_USAGES = ['案例人物', '案例过程', '案例对比', '案例场景', '日常素材', '案例视频', '案例文案', '案例素材'];
+const SHARED_ASSET_CATEGORIES = ['医院素材', '套图素材', '生活场景', '文字卡素材', '备用素材'];
+const SHARED_ASSET_USAGES = ['合成背景', '套图参考', '通用配图', '文字卡', '通用视频'];
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
@@ -574,6 +578,19 @@ function normalizeContentSeedInput(input = {}, existing = null) {
     tags,
     baseWeight: Math.round(baseWeight)
   };
+}
+
+function materialPatchError(message, field) {
+  const error = new Error(message);
+  error.status = 400;
+  error.field = field;
+  return error;
+}
+
+function assertAllowedPatchValue(input, key, allowed, message) {
+  if (!Object.prototype.hasOwnProperty.call(input, key)) return;
+  const value = String(input[key] || '').trim();
+  if (!allowed.includes(value)) throw materialPatchError(message, key);
 }
 
 function rowImageTask(row) {
@@ -4752,20 +4769,28 @@ app.post('/api/shared-assets/scan', (_req, res) => {
 });
 
 app.patch('/api/shared-assets/:id', (req, res) => {
-  const asset = rowSharedAsset(get('SELECT * FROM shared_assets WHERE id = ?', [req.params.id]));
-  if (!asset) return res.status(404).json({ error: 'shared asset not found' });
-  const body = req.body || {};
-  run(
-    'UPDATE shared_assets SET category = ?, source = ?, usage = ?, review_status = ? WHERE id = ?',
-    [
-      body.category ?? asset.category,
-      body.source ?? asset.source,
-      body.usage ?? asset.usage,
-      body.reviewStatus ?? asset.reviewStatus,
-      asset.id
-    ]
-  );
-  res.json(rowSharedAsset(get('SELECT * FROM shared_assets WHERE id = ?', [asset.id])));
+  try {
+    const asset = rowSharedAsset(get('SELECT * FROM shared_assets WHERE id = ?', [req.params.id]));
+    if (!asset) return res.status(404).json({ error: 'shared asset not found' });
+    const body = req.body || {};
+    if (Object.prototype.hasOwnProperty.call(body, 'source')) throw materialPatchError('通用素材来源由扫描记录，不接受手动改写', 'source');
+    assertAllowedPatchValue(body, 'category', SHARED_ASSET_CATEGORIES, '通用素材分类只能从固定校准项选择');
+    assertAllowedPatchValue(body, 'usage', SHARED_ASSET_USAGES, '通用素材用途只能从固定校准项选择');
+    assertAllowedPatchValue(body, 'reviewStatus', MATERIAL_REVIEW_STATUSES, '通用素材状态只能从固定校准项选择');
+    run(
+      'UPDATE shared_assets SET category = ?, source = ?, usage = ?, review_status = ? WHERE id = ?',
+      [
+        body.category ?? asset.category,
+        asset.source,
+        body.usage ?? asset.usage,
+        body.reviewStatus ?? asset.reviewStatus,
+        asset.id
+      ]
+    );
+    res.json(rowSharedAsset(get('SELECT * FROM shared_assets WHERE id = ?', [asset.id])));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message, field: error.field });
+  }
 });
 
 app.get('/api/cases/:id/material-intake-note', (req, res) => {
@@ -5725,11 +5750,15 @@ app.patch('/api/assets/:id', (req, res) => {
     if (!asset) return res.status(404).json({ error: 'asset not found' });
     requireQueueHeadForCaseMaterial(req, asset.caseId, '标记素材');
     const body = req.body || {};
+    if (Object.prototype.hasOwnProperty.call(body, 'stage')) throw materialPatchError('案例素材阶段由扫描分类记录，不接受手动改写', 'stage');
+    if (Object.prototype.hasOwnProperty.call(body, 'source')) throw materialPatchError('案例素材来源由同步或生成记录，不接受手动改写', 'source');
+    assertAllowedPatchValue(body, 'usage', CASE_ASSET_USAGES, '案例素材用途只能从固定校准项选择');
+    assertAllowedPatchValue(body, 'reviewStatus', MATERIAL_REVIEW_STATUSES, '案例素材状态只能从固定校准项选择');
     run(
       'UPDATE assets SET stage = ?, source = ?, usage = ?, review_status = ? WHERE id = ?',
       [
-        body.stage ?? asset.stage,
-        body.source ?? asset.source,
+        asset.stage,
+        asset.source,
         body.usage ?? asset.usage,
         body.reviewStatus ?? asset.reviewStatus,
         asset.id

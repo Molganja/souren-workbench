@@ -1273,6 +1273,23 @@ async function main() {
     assert(nonHeadAssetPatch.status === 409, 'non-head asset patch was allowed');
     const afterBlockedAssetPatch = await api(`/cases/${caze.id}`);
     assert(afterBlockedAssetPatch.assets.find((item) => item.id === scan.assets[0].id)?.reviewStatus !== '可用', 'non-head asset patch changed review status');
+    let invalidAssetStatusRejected = false;
+    try {
+      await api(`/assets/${scan.assets[0].id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: '隐藏状态' }) });
+    } catch (error) {
+      invalidAssetStatusRejected = /案例素材状态/.test(error.message);
+    }
+    assert(invalidAssetStatusRejected, 'case asset accepted an invalid review status');
+    let manualAssetSourceRejected = false;
+    try {
+      await api(`/assets/${scan.assets[0].id}`, { method: 'PATCH', body: JSON.stringify({ source: '手填来源' }) });
+    } catch (error) {
+      manualAssetSourceRejected = /来源/.test(error.message);
+    }
+    assert(manualAssetSourceRejected, 'case asset accepted a manual source override');
+    const afterInvalidAssetPatch = await api(`/cases/${caze.id}`);
+    const unchangedAsset = afterInvalidAssetPatch.assets.find((item) => item.id === scan.assets[0].id);
+    assert(unchangedAsset?.source !== '手填来源' && unchangedAsset?.reviewStatus !== '隐藏状态', 'invalid case asset patch changed metadata');
     await api(`/assets/${scan.assets[0].id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: '可用' }) });
     const withGaps = await api(`/cases/${caze.id}`);
     assert(Array.isArray(withGaps.materialGaps) && withGaps.materialGaps.length > 0, 'material gaps missing');
@@ -1374,6 +1391,28 @@ async function main() {
     const sharedAssetList = await api('/shared-assets');
     const sharedAsset = sharedAssetList.find((asset) => asset.path.endsWith('医院环境.jpg'));
     assert(sharedAsset?.url?.startsWith('/shared-files/') && sharedAsset.reviewStatus === '可用', 'shared material list missing url or status');
+    let invalidSharedAssetStatusRejected = false;
+    try {
+      await api(`/shared-assets/${sharedAsset.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reviewStatus: '隐藏状态' })
+      });
+    } catch (error) {
+      invalidSharedAssetStatusRejected = /通用素材状态/.test(error.message);
+    }
+    assert(invalidSharedAssetStatusRejected, 'shared asset accepted an invalid review status');
+    let manualSharedAssetSourceRejected = false;
+    try {
+      await api(`/shared-assets/${sharedAsset.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ source: '手填来源' })
+      });
+    } catch (error) {
+      manualSharedAssetSourceRejected = /来源/.test(error.message);
+    }
+    assert(manualSharedAssetSourceRejected, 'shared asset accepted a manual source override');
+    const afterInvalidSharedAssetPatch = (await api('/shared-assets')).find((asset) => asset.id === sharedAsset.id);
+    assert(afterInvalidSharedAssetPatch?.source !== '手填来源' && afterInvalidSharedAssetPatch?.reviewStatus !== '隐藏状态', 'invalid shared asset patch changed metadata');
     const patchedSharedAsset = await api(`/shared-assets/${sharedAsset.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ category: '套图素材', usage: '套图参考', reviewStatus: '待处理' })
