@@ -292,6 +292,15 @@ else fail('后台生成或交付接口仍可能越过队首批量处理');
 if (mainSource.includes('activeQueueMatchesSlot') && mainSource.includes('activeQueueMatchesClip') && mainSource.includes('activeQueueMatchesAlert') && mainSource.includes('排到今日队列队首后处理') && mainSource.includes('这条不是今日操作队列的当前任务') && mainSource.includes("copyAllowed = view.slot.status === '可交付' && isActiveQueueSlot") && serverSource.includes('requireQueueHeadForSlot') && serverSource.includes('requireQueueHeadForAlert') && serverSource.includes('requireQueueHeadForClipTask') && serverSource.includes('requireQueueHeadForMonitorAction') && smokeSource.includes('non-head slot was allowed to generate candidates') && smokeSource.includes('non-head slot was allowed to generate delivery') && smokeSource.includes('non-head monitor action was allowed to create strategy slot')) ok('二级页面和后端接口都不能绕过今日队首执行交付、剪辑、爆款互动和账号策略动作');
 else fail('排期规划、案例详情或后端接口仍可能绕过今日队首处理任务');
 
+if (
+  serverSource.includes("VIRAL_ALERT_STATUSES = ['active', 'handled']")
+  && serverSource.includes('爆款提醒状态只能是待互动或已处理')
+  && serverSource.includes('爆款提醒只能从待互动标记为已处理')
+  && smokeSource.includes('viral alert accepted an invalid status')
+  && smokeSource.includes('invalid viral alert status hid an active alert')
+) ok('爆款提醒状态机固定，不能用非法状态无痕跳过互动任务');
+else fail('爆款提醒仍可能被非法状态隐藏，导致互动任务漏处理');
+
 if (serverSource.includes('function rejectManualSlotStatusOverride') && serverSource.includes('新建排期只能进入待生成队列') && serverSource.includes('function slotStatusForCreate') && smokeSource.includes('manual slot creation allowed direct sent status') && smokeSource.includes('manual slot status override inserted a slot')) ok('公开排期新建接口不能直接创建已派发或已完成任务');
 else fail('公开排期新建接口仍可能绕过候选、交付和收件确认直接造后段状态');
 

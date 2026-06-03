@@ -1996,6 +1996,18 @@ async function main() {
       body: JSON.stringify({ caseId: minimalCase.id, kind: '增长承接' })
     });
     assert(growthSlot.created === true && growthSlot.slot.contentKind === '素人种草', 'growth monitor action did not create carry slot');
+    let invalidViralAlertStatusRejected = false;
+    try {
+      await api(`/viral-alerts/${ingested.viralAlerts[0].id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'ignored', interactionNote: '试图无痕跳过爆款互动' })
+      });
+    } catch (error) {
+      invalidViralAlertStatusRejected = /爆款提醒状态/.test(error.message);
+    }
+    assert(invalidViralAlertStatusRejected, 'viral alert accepted an invalid status');
+    const afterInvalidViralAlertPatch = await api('/dashboard');
+    assert(afterInvalidViralAlertPatch.viralAlerts.some((item) => item.id === ingested.viralAlerts[0].id), 'invalid viral alert status hid an active alert');
     await api(`/viral-alerts/${ingested.viralAlerts[0].id}`, {
       method: 'PATCH',
       body: JSON.stringify({ status: 'handled', interactionNote: '烟测已安排互动' })

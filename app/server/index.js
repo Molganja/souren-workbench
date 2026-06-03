@@ -128,6 +128,7 @@ const ALLOWED_IMAGE_STATUSES = ['waiting_key', 'draft', 'generating', 'review', 
 const REVIEWABLE_IMAGE_STATUSES = ['review', 'approved', 'rejected'];
 const IMAGE_GENERATION_STATUSES = ['waiting_key', 'draft', 'timeout'];
 const OPEN_COLLECTION_STATUSES = ['waiting_chrome'];
+const VIRAL_ALERT_STATUSES = ['active', 'handled'];
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
   draft: '待生成',
@@ -4416,15 +4417,23 @@ app.patch('/api/viral-alerts/:id', (req, res) => {
   const alert = rowViralAlert(get('SELECT * FROM viral_alerts WHERE id = ?', [req.params.id]));
   if (!alert) return res.status(404).json({ error: 'viral alert not found' });
   const body = req.body || {};
+  const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status');
+  const nextStatus = hasStatus ? String(body.status || '').trim() : alert.status;
+  if (!VIRAL_ALERT_STATUSES.includes(nextStatus)) {
+    return res.status(400).json({ error: '爆款提醒状态只能是待互动或已处理' });
+  }
+  if (hasStatus && nextStatus !== alert.status && !(alert.status === 'active' && nextStatus === 'handled')) {
+    return res.status(409).json({ error: '爆款提醒只能从待互动标记为已处理，不能手动恢复或跳状态' });
+  }
   try {
-    if ((body.status || alert.status) === 'handled') requireQueueHeadForAlert(req, alert, '标记互动');
+    if (hasStatus && nextStatus === 'handled' && alert.status !== 'handled') requireQueueHeadForAlert(req, alert, '标记互动');
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message });
   }
   run(
     'UPDATE viral_alerts SET status = ?, interaction_note = ?, updated_at = ? WHERE id = ?',
     [
-      body.status || alert.status,
+      nextStatus,
       body.interactionNote ?? body.interaction_note ?? alert.interactionNote,
       now(),
       alert.id
