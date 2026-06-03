@@ -1899,7 +1899,16 @@ async function main() {
       completionWithoutReplyRejected = /完成回复/.test(error.message);
     }
     assert(completionWithoutReplyRejected, 'sent slot completed without explicit reply confirmation');
-    await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成', completionConfirmed: true }) });
+    let forgedCompletionReplyRejected = false;
+    try {
+      await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成', completionConfirmed: true }) });
+    } catch (error) {
+      forgedCompletionReplyRejected = /不能夹在完成请求/.test(error.message);
+    }
+    assert(forgedCompletionReplyRejected, 'sent slot completed with forged reply confirmation');
+    const replyConfirmedSlot = await api(`/slots/${slot.id}/completion-confirmed`, { method: 'POST' });
+    assert(replyConfirmedSlot.completionConfirmedAt, 'slot reply confirmation did not persist before completion');
+    await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
     const repeatGuideSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
       body: JSON.stringify({ date: '2026-06-10', contentKind: '日常养号', stage: '起号期', goal: '兼职须知不重复验收' })

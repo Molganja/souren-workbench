@@ -446,6 +446,7 @@ function rowSlot(row) {
     selectedCandidateId: row.selected_candidate_id,
     deliveryDir: row.delivery_dir,
     handoffDone: parseJson(row.handoff_done, []),
+    completionConfirmedAt: row.completion_confirmed_at || null,
     operatorNote: row.operator_note || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -4881,6 +4882,9 @@ app.patch('/api/slots/:id/status', (req, res) => {
   if (!PLAN_SLOT_STATUSES.includes(status)) {
     return res.status(400).json({ error: `非法槽位状态：${status || '空值'}` });
   }
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'completionConfirmed')) {
+    return res.status(400).json({ error: '完成回复确认必须先保存到流程里，不能夹在完成请求里' });
+  }
   if (!canPatchSlotStatus(slot, status)) {
     return res.status(409).json({ error: '这个排期已经进入交付链路，不能直接改成这个状态' });
   }
@@ -4892,7 +4896,7 @@ app.patch('/api/slots/:id/status', (req, res) => {
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message });
   }
-  if (status === '已完成' && slot.status === '已派发' && req.body?.completionConfirmed !== true) {
+  if (status === '已完成' && slot.status === '已派发' && !slot.completionConfirmedAt) {
     return res.status(409).json({ error: '收到兼职或剪辑人员完成回复后，才能标记已完成' });
   }
   const operatorNote = String(req.body?.operatorNote || '').trim();
@@ -4911,12 +4915,24 @@ app.patch('/api/slots/:id/status', (req, res) => {
     }
   }
   if (status === '已派发') {
-    run('UPDATE plan_slots SET status = ?, handoff_done = ?, operator_note = ?, updated_at = ? WHERE id = ?', [status, JSON.stringify(handoffGuard.completedKeys || []), '', now(), slot.id]);
+    run('UPDATE plan_slots SET status = ?, handoff_done = ?, completion_confirmed_at = ?, operator_note = ?, updated_at = ? WHERE id = ?', [status, JSON.stringify(handoffGuard.completedKeys || []), null, '', now(), slot.id]);
   } else if (status === '异常') {
     run('UPDATE plan_slots SET status = ?, operator_note = ?, updated_at = ? WHERE id = ?', [status, operatorNote, now(), slot.id]);
   } else {
     run('UPDATE plan_slots SET status = ?, operator_note = ?, updated_at = ? WHERE id = ?', [status, '', now(), slot.id]);
   }
+  res.json(slotById(slot.id));
+});
+
+app.post('/api/slots/:id/completion-confirmed', (req, res) => {
+  const slot = slotById(req.params.id);
+  if (!slot) return res.status(404).json({ error: 'slot not found' });
+  if (slot.status === '已完成') return res.json(slot);
+  if (slot.status !== '已派发') {
+    return res.status(409).json({ error: '只有已派发任务才能确认收到完成回复' });
+  }
+  const confirmedAt = slot.completionConfirmedAt || now();
+  run('UPDATE plan_slots SET completion_confirmed_at = ?, updated_at = ? WHERE id = ?', [confirmedAt, now(), slot.id]);
   res.json(slotById(slot.id));
 });
 

@@ -675,11 +675,18 @@ if (
   && mainSource.includes("view.slot.status === '已派发'")
   && mainSource.includes('completionConfirmed')
   && mainSource.includes('已收到对方完成回复')
-  && serverSource.includes('completionConfirmed')
+  && mainSource.includes('/slots/${view.slot.id}/completion-confirmed')
+  && !mainSource.includes('completionConfirmed: true')
+  && serverSource.includes("app.post('/api/slots/:id/completion-confirmed'")
+  && serverSource.includes('completion_confirmed_at')
+  && serverSource.includes('不能夹在完成请求里')
   && serverSource.includes('收到兼职或剪辑人员完成回复后')
+  && dbSource.includes('completion_confirmed_at TEXT')
   && readmeSource.includes('已收到对方完成回复')
   && sopSource.includes('已收到对方完成回复')
   && smokeSource.includes('sent slot completed without explicit reply confirmation')
+  && smokeSource.includes('sent slot completed with forged reply confirmation')
+  && smokeSource.includes('slot reply confirmation did not persist before completion')
 ) ok('完成确认只保留在交付弹窗内，且必须确认收到完成回复');
 else fail('列表页仍可能直接完成任务，或未确认收到回复就能完成');
 

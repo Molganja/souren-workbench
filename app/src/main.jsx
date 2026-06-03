@@ -1780,6 +1780,7 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
         if (alive) {
           setView(data);
           setHandoffDone(new Set(data.handoffDone || []));
+          setCompletionConfirmed(Boolean(data.slot?.completionConfirmedAt));
         }
       })
       .catch((err) => {
@@ -1844,6 +1845,12 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
       setHandoffError(`这一步没有保存：${err.message}`);
     }
   };
+  const markCompletionConfirmed = () => onAct(async () => {
+    const result = await request(`/slots/${view.slot.id}/completion-confirmed`, { method: 'POST' });
+    setCompletionConfirmed(true);
+    setView((current) => current ? { ...current, slot: result } : current);
+    return result;
+  }, '已确认收到完成回复');
   const handoffReady = copyAllowed && !missingMedia && missingHandoffSteps.length === 0;
   const handoffGuardText = handoffReady
     ? '本条交付动作已完成，可以标记已派发。'
@@ -1961,11 +1968,13 @@ function DeliveryModal({ slot, onClose, onAct, onCopy, activeQueueItem }) {
         {completionAllowed && (
           <>
             <label className={`completionConfirm ${completionConfirmed ? 'confirmed' : ''}`}>
-              <input type="checkbox" checked={completionConfirmed} onChange={(event) => setCompletionConfirmed(event.target.checked)} />
+              <input type="checkbox" checked={completionConfirmed} disabled={completionConfirmed} onChange={() => {
+                if (!completionConfirmed) markCompletionConfirmed();
+              }} />
               <span>已收到对方完成回复</span>
             </label>
             <button className="primary" disabled={!completionConfirmed} onClick={() => onAct(async () => {
-              await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成', completionConfirmed: true }) });
+              await request(`/slots/${view.slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
               onClose();
             }, '已标记完成')}>标记完成</button>
           </>
