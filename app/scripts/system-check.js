@@ -563,6 +563,8 @@ if (
   dbSource.includes('handoff_done TEXT')
   && serverSource.includes("app.patch('/api/slots/:id/handoff'")
   && serverSource.includes('deliveryHandoffProgressGuard')
+  && serverSource.includes('deliveryHandoffRegressionGuard')
+  && serverSource.includes('交付步骤不能回退')
   && serverSource.includes('deliveryHandoffGuard(slot, slot.handoffDone, deliveryView)')
   && !serverSource.includes('req.body?.handoffDone || req.body?.deliveryChecklist')
   && mainSource.includes('setHandoffDone(new Set(data.handoffDone || []))')
@@ -570,9 +572,11 @@ if (
   && readmeSource.includes('关窗重开仍从上次位置继续')
   && sopSource.includes('关窗重开仍从上次位置继续')
   && smokeSource.includes('delivery view did not restore persisted handoff progress after reopening')
+  && smokeSource.includes('handoff progress allowed clearing already completed steps')
+  && smokeSource.includes('stale handoff request allowed rolling back completed steps')
   && smokeSource.includes('ready delivery allowed dispatch with forged request handoff checklist')
   && smokeSource.includes('sent delivery did not keep persisted handoff history')
-) ok('交付步骤进度会落库，关窗重开不需要重复复制或下载');
+) ok('交付步骤进度会落库且不能回退，关窗重开不需要重复复制或下载');
 else fail('交付步骤仍只存在前端状态，关窗重开可能导致重复发送');
 
 if (

@@ -1288,6 +1288,18 @@ async function main() {
     assert(partialHandoff.handoffDone.length === 1 && partialHandoff.handoffDone[0] === deliveryHandoffKeys[0], 'handoff progress did not persist the first step');
     const reopenedPartialDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(reopenedPartialDeliveryView.handoffDone.length === 1 && reopenedPartialDeliveryView.handoffDone[0] === deliveryHandoffKeys[0], 'delivery view did not restore persisted handoff progress after reopening');
+    let handoffRollbackRejected = false;
+    try {
+      await api(`/slots/${slot.id}/handoff`, {
+        method: 'PATCH',
+        body: JSON.stringify({ handoffDone: [] })
+      });
+    } catch (error) {
+      handoffRollbackRejected = /不能回退/.test(error.message);
+    }
+    assert(handoffRollbackRejected, 'handoff progress allowed clearing already completed steps');
+    const afterRollbackAttemptView = await api(`/slots/${slot.id}/delivery-view`);
+    assert(afterRollbackAttemptView.handoffDone.length === 1 && afterRollbackAttemptView.handoffDone[0] === deliveryHandoffKeys[0], 'handoff rollback changed persisted progress');
 
     const staleMediaSlot = await api(`/cases/${caze.id}/slots`, {
       method: 'POST',
@@ -1517,6 +1529,18 @@ async function main() {
     assert(fullHandoff.handoffDone.length === deliveryHandoffKeys.length, 'full handoff progress did not persist before dispatch');
     const reopenedFullDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(reopenedFullDeliveryView.handoffDone.length === deliveryHandoffKeys.length, 'reopened delivery view did not keep all handoff steps');
+    let staleHandoffRollbackRejected = false;
+    try {
+      await api(`/slots/${slot.id}/handoff`, {
+        method: 'PATCH',
+        body: JSON.stringify({ handoffDone: [deliveryHandoffKeys[0]] })
+      });
+    } catch (error) {
+      staleHandoffRollbackRejected = /不能回退/.test(error.message);
+    }
+    assert(staleHandoffRollbackRejected, 'stale handoff request allowed rolling back completed steps');
+    const afterStaleRollbackView = await api(`/slots/${slot.id}/delivery-view`);
+    assert(afterStaleRollbackView.handoffDone.length === deliveryHandoffKeys.length, 'stale handoff rollback changed persisted progress');
     await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已派发' }) });
     const sentDeliveryView = await api(`/slots/${slot.id}/delivery-view`);
     assert(sentDeliveryView.freelancerGuideAlreadySent === true, 'sent delivery should mark freelancer guide covered');

@@ -4979,6 +4979,21 @@ function deliveryHandoffProgressGuard(slot, completed = [], deliveryView = null)
   return { ok: true, required: normalized.required, completedKeys: normalized.completedKeys, missing };
 }
 
+function deliveryHandoffRegressionGuard(slot, nextCompleted = [], deliveryView = null) {
+  const view = deliveryView || deliveryViewForSlot(slot);
+  const normalizedCurrent = normalizeDeliveryHandoff(view, slot?.handoffDone || []);
+  const currentKeys = normalizedCurrent.sequenceOk ? normalizedCurrent.completedKeys : [];
+  const nextSet = new Set((Array.isArray(nextCompleted) ? nextCompleted : []).map(String));
+  const removed = currentKeys.filter((key) => !nextSet.has(key));
+  if (!removed.length) return { ok: true };
+  const labelsByKey = new Map((normalizedCurrent.required || []).map((item) => [item.key, item.label]));
+  return {
+    ok: false,
+    removed,
+    labels: removed.map((key) => labelsByKey.get(key) || key)
+  };
+}
+
 function deliveryHandoffGuard(slot, completed = [], deliveryView = null) {
   const progress = deliveryHandoffProgressGuard(slot, completed, deliveryView);
   if (!progress.ok) return progress;
@@ -5103,6 +5118,10 @@ app.patch('/api/slots/:id/handoff', (req, res) => {
   const guard = deliveryHandoffProgressGuard(slot, incoming, view);
   if (!guard.ok) {
     return res.status(409).json({ error: `交付步骤不能保存：${guard.missing.map((item) => item.label).join('、')}` });
+  }
+  const regression = deliveryHandoffRegressionGuard(slot, guard.completedKeys, view);
+  if (!regression.ok) {
+    return res.status(409).json({ error: `交付步骤不能回退，避免重复发送：${regression.labels.join('、')}` });
   }
   run('UPDATE plan_slots SET handoff_done = ?, updated_at = ? WHERE id = ?', [JSON.stringify(guard.completedKeys), now(), slot.id]);
   res.json({
