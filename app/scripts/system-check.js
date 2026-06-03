@@ -703,7 +703,21 @@ else fail('剪辑任务仍有直接查看标记的旧口径');
 if (serverSource.includes('剪辑任务必须绑定具体排期') && mainSource.includes('来自具体排期') && !mainSource.includes('新建剪辑任务') && !mainSource.includes('临时剪辑任务')) ok('剪辑任务只能从具体排期创建');
 else fail('剪辑任务仍存在临时建单入口');
 
-if (serverSource.includes('图片任务必须有明确用途') && mainSource.includes('来自素材缺口') && !mainSource.includes('新建图片任务') && !serverSource.includes("slot?.contentKind || '日常养号'")) ok('图片任务只能从素材缺口或明确用途创建');
+if (
+  serverSource.includes('图片任务必须有明确用途')
+  && serverSource.includes('rejectImageTaskOverrideFields')
+  && serverSource.includes('图片任务提示词由系统按素材缺口生成')
+  && mainSource.includes('来自素材缺口')
+  && !mainSource.includes('新建图片任务')
+  && !mainSource.includes('prompt: `为')
+  && !serverSource.includes("slot?.contentKind || '日常养号'")
+  && !serverSource.includes('body.prompt || imagePromptFor')
+  && !serverSource.includes('body.prompt ?? task.prompt')
+  && !serverSource.includes('Array.isArray(body.sourceMaterials)')
+  && smokeSource.includes('image task accepted a custom prompt or source materials')
+  && smokeSource.includes('image task allowed patching the system prompt')
+  && smokeSource.includes('image task allowed patching the source purpose')
+) ok('图片任务只能从素材缺口或明确用途创建，提示词和参考素材由系统生成');
 else fail('图片任务仍存在泛化入口或默认用途');
 
 const oldDeletedDirMarker = '_' + 'deleted';

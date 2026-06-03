@@ -139,14 +139,14 @@ async function imageGenerationSmoke() {
     }, imageBase);
     const task = await api('/image-tasks', {
       method: 'POST',
-      body: JSON.stringify({ caseId: caze.id, purpose: '封面图', prompt: '图片生成接口验收提示词' })
+      body: JSON.stringify({ caseId: caze.id, purpose: '封面图' })
     }, imageBase);
     assert(task.status === 'draft', 'image task should be draft when image API is ready');
     const generated = await api(`/image-tasks/${task.id}/generate`, { method: 'POST' }, imageBase);
     assert(generated.task.status === 'review', 'generated image task not moved to review');
     assert(generated.files.length === 1 && fs.existsSync(generated.files[0]), 'generated image file missing');
     assert(generated.assets.some((asset) => asset?.source === 'AI生成'), 'generated image asset not inserted');
-    assert(receivedBody.includes('图片生成接口验收提示词') && receivedBody.includes('fake-image-model'), 'image API did not receive prompt or model');
+    assert(receivedBody.includes('图片用途：封面图') && receivedBody.includes('fake-image-model'), 'image API did not receive system prompt or model');
   } finally {
     server.kill('SIGTERM');
     imageServer.close();
@@ -1098,14 +1098,44 @@ async function main() {
       missingImagePurposeRejected = /明确用途/.test(error.message);
     }
     assert(missingImagePurposeRejected, 'image task without explicit purpose was allowed');
+    let customImagePromptRejected = false;
+    try {
+      await api('/image-tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          caseId: caze.id,
+          purpose: withGaps.materialGaps[0].label,
+          prompt: '临时写一个自由发挥图片提示词',
+          sourceMaterials: [{ path: '/tmp/manual.jpg', role: '手填参考' }]
+        })
+      });
+    } catch (error) {
+      customImagePromptRejected = /系统按素材缺口生成/.test(error.message);
+    }
+    assert(customImagePromptRejected, 'image task accepted a custom prompt or source materials');
     const gapImage = await api('/image-tasks', {
       method: 'POST',
-      body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label, prompt: `补${withGaps.materialGaps[0].label}` })
+      body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label })
     });
     assert(gapImage.purpose === withGaps.materialGaps[0].label, 'gap image task failed');
+    assert(gapImage.prompt.includes(`图片用途：${withGaps.materialGaps[0].label}`), 'gap image task did not use the system prompt');
     assert(fs.existsSync(path.join(gapImage.outputDir, `${gapImage.id}-图片任务说明.txt`)), 'image task brief missing');
     const gapImagePrompt = await api(`/image-tasks/${gapImage.id}/prompt`);
     assert(gapImagePrompt.text.includes('正向提示词：') && gapImagePrompt.text.includes('反向提示词：'), 'image prompt copy text missing');
+    let imagePromptPatchRejected = false;
+    try {
+      await api(`/image-tasks/${gapImage.id}`, { method: 'PATCH', body: JSON.stringify({ prompt: '把图片提示词改成临时版本' }) });
+    } catch (error) {
+      imagePromptPatchRejected = /系统按素材缺口生成/.test(error.message);
+    }
+    assert(imagePromptPatchRejected, 'image task allowed patching the system prompt');
+    let imagePurposePatchRejected = false;
+    try {
+      await api(`/image-tasks/${gapImage.id}`, { method: 'PATCH', body: JSON.stringify({ purpose: '临时用途' }) });
+    } catch (error) {
+      imagePurposePatchRejected = /用途来自素材缺口/.test(error.message);
+    }
+    assert(imagePurposePatchRejected, 'image task allowed patching the source purpose');
     const imageDashboard = await api('/dashboard');
     assert(imageDashboard.counts.imageTasks >= 1 && imageDashboard.counts.imageWaitingKey >= 1, 'dashboard image task counts missing');
     assert(imageDashboard.imageTasks.some((item) => item.id === gapImage.id && item.case?.id === caze.id), 'dashboard image task list missing case task');

@@ -1417,8 +1417,7 @@ function CaseDetail({ detail, onAct, onBack, onDelivery, onClipTask, activeQueue
                         method: 'POST',
                         body: JSON.stringify({
                           caseId: caze.id,
-                          purpose: gap.label,
-                          prompt: `为${personaText(caze.persona)}生成/整理一张用于「${gap.label}」的${caze.project}内容辅助图，适合抖音图文发布，画面自然，手机拍摄质感。`
+                          purpose: gap.label
                         })
                       }), '已按素材缺口创建图片任务')}>创建图片任务</button>
                     </div>

@@ -5132,8 +5132,19 @@ app.patch('/api/slots/:id/handoff', (req, res) => {
   });
 });
 
+function rejectImageTaskOverrideFields(input = {}) {
+  const blocked = ['prompt', 'negativePrompt', 'sourceMaterials'].find((key) => Object.prototype.hasOwnProperty.call(input, key));
+  if (!blocked) return null;
+  const error = new Error('图片任务提示词由系统按素材缺口生成，不接受临时改写');
+  error.status = 400;
+  error.field = blocked;
+  return error;
+}
+
 app.post('/api/image-tasks', (req, res) => {
   const body = req.body || {};
+  const overrideError = rejectImageTaskOverrideFields(body);
+  if (overrideError) return res.status(overrideError.status).json({ error: overrideError.message, field: overrideError.field });
   const caze = caseById(body.caseId);
   if (!caze) return res.status(404).json({ error: 'case not found' });
   const slot = body.planSlotId ? slotById(body.planSlotId) : null;
@@ -5143,9 +5154,9 @@ app.post('/api/image-tasks', (req, res) => {
   if (!purpose) return res.status(400).json({ error: '图片任务必须有明确用途' });
   const outputDir = path.join(caze.localCaseDir, '02-生成补充', safeSegment(purpose));
   fs.mkdirSync(outputDir, { recursive: true });
-  const sourceMaterials = Array.isArray(body.sourceMaterials) ? body.sourceMaterials : imageSourceMaterialsFor(caze, slot, purpose);
-  const prompt = body.prompt || imagePromptFor(caze, slot, purpose, sourceMaterials);
-  const negativePrompt = body.negativePrompt || '过度精修，夸张效果，水印，低清晰度，错误文字，变形肢体，不符合账号人设的场景';
+  const sourceMaterials = imageSourceMaterialsFor(caze, slot, purpose);
+  const prompt = imagePromptFor(caze, slot, purpose, sourceMaterials);
+  const negativePrompt = '过度精修，夸张效果，水印，低清晰度，错误文字，变形肢体，不符合账号人设的场景';
   const status = imageSettings().ready ? 'draft' : 'waiting_key';
   const id = uid('image');
   run(
@@ -5175,12 +5186,17 @@ app.patch('/api/image-tasks/:id', (req, res) => {
   const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
   if (!task) return res.status(404).json({ error: 'image task not found' });
   const body = req.body || {};
+  const overrideError = rejectImageTaskOverrideFields(body);
+  if (overrideError) return res.status(overrideError.status).json({ error: overrideError.message, field: overrideError.field });
+  if (Object.prototype.hasOwnProperty.call(body, 'purpose')) {
+    return res.status(400).json({ error: '图片任务用途来自素材缺口，不接受临时改写', field: 'purpose' });
+  }
   run(
     `UPDATE image_tasks SET purpose = ?, prompt = ?, negative_prompt = ?, status = ?, updated_at = ? WHERE id = ?`,
     [
-      body.purpose ?? task.purpose,
-      body.prompt ?? task.prompt,
-      body.negativePrompt ?? task.negativePrompt,
+      task.purpose,
+      task.prompt,
+      task.negativePrompt,
       body.status ?? task.status,
       now(),
       task.id
