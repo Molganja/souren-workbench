@@ -529,6 +529,21 @@ async function main() {
     assert(missingBulkProjectRejected, 'bulk import allowed a row with missing project');
     const afterMissingBulkProject = await api('/cases');
     assert(afterMissingBulkProject.length === 0, 'bulk import created a case before rejecting missing project');
+    const forbiddenHealthCreateDir = makeSharedSourceDir(ROOT_DIR, '禁止新建改状态');
+    const forbiddenHealthCreateResponse = await fetch(`${BASE}/cases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        weixinNick: '禁止新建改状态',
+        douyinUrl: 'https://www.douyin.com/user/forbidden-health-create',
+        project: '吸脂',
+        sourceMaterialDir: forbiddenHealthCreateDir,
+        healthStatus: '失联暂停'
+      })
+    });
+    assert(forbiddenHealthCreateResponse.status === 400, 'case create health status override was allowed');
+    const afterForbiddenHealthCreate = await api('/cases');
+    assert(afterForbiddenHealthCreate.length === 0, 'case create health status override inserted a case');
 
     const bulkLinDir = makeSharedSourceDir(ROOT_DIR, '批量小林');
     const bulkChenDir = makeSharedSourceDir(ROOT_DIR, '批量小陈');
@@ -1103,6 +1118,14 @@ async function main() {
     assert(!lostAfterPrune.slots.some((item) => item.date >= lostDashboard.today && item.status === '待生成'), 'lost account future pending slots were not pruned');
     const lostChromeQueue = await api('/douyin-monitor/chrome-queue?includeFresh=1&limit=200');
     assert(!lostChromeQueue.targets.some((item) => item.caseId === lostCase.id), 'lost account appeared in chrome collection queue');
+    const editHealthResponse = await fetch(`${BASE}/cases/${lostCase.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ healthStatus: '健康' })
+    });
+    assert(editHealthResponse.status === 400, 'case edit health status override was allowed');
+    const afterEditHealthAttempt = await api(`/cases/${lostCase.id}`);
+    assert(afterEditHealthAttempt.case.healthStatus === '失联暂停', 'case edit health status override changed paused account');
     const resumeWithoutConfirm = await fetch(`${BASE}/cases/${lostCase.id}/resume`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...E2E_SETUP_HEADER }
@@ -1739,10 +1762,13 @@ async function main() {
     const monitorQueuedAgain = await api('/douyin-monitor/run', { method: 'POST', body: JSON.stringify({ source: 'smoke-manual-repeat' }) });
     assert(monitorQueuedAgain.createdCount === 0 && monitorQueuedAgain.skippedQueuedCount >= monitorQueued.createdCount, 'monitor run duplicated already waiting Chrome collection tasks');
     assert(monitorQueuedAgain.monitor.totals.waitingChrome === monitorQueued.monitor.totals.waitingChrome, 'duplicate monitor run changed waiting Chrome count');
-    const pauseCleanup = await api(`/cases/${pauseCleanupCase.id}`, { method: 'PATCH', body: JSON.stringify({ healthStatus: '失联暂停' }) });
-    assert(pauseCleanup.pauseMaintenance?.canceledSlotCount > 0, 'pause did not cancel open schedule slots');
-    assert(pauseCleanup.pauseMaintenance?.canceledCollectionCount > 0, 'pause did not cancel waiting chrome collection run');
+    await api(`/cases/${pauseCleanupCase.id}/slots`, {
+      method: 'POST',
+      body: JSON.stringify({ date: '2026-05-28', contentKind: '日常养号', stage: '起号期', goal: '自动暂停清理验收', status: '已派发' })
+    });
+    await api('/dashboard');
     const pauseCleanupDetail = await api(`/cases/${pauseCleanupCase.id}`);
+    assert(pauseCleanupDetail.case.healthStatus === '失联暂停', 'auto pause cleanup did not pause account');
     assert(!pauseCleanupDetail.slots.some((item) => ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'].includes(item.status)), 'paused account still has active operator slots');
     const chromeQueue = await api('/douyin-monitor/chrome-queue');
     assert(chromeQueue.count >= 2, 'chrome collection queue missing due accounts');

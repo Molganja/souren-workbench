@@ -1285,6 +1285,19 @@ function caseCodeForCreate(inputCaseCode, date) {
   return caseCode;
 }
 
+function hasCaseHealthStatusOverride(input = {}) {
+  return Object.prototype.hasOwnProperty.call(input, 'healthStatus')
+    || Object.prototype.hasOwnProperty.call(input, 'health_status');
+}
+
+function rejectCaseHealthStatusOverride(req, input = {}) {
+  if (queueGuardBypassed(req)) return;
+  if (!hasCaseHealthStatusOverride(input)) return;
+  const error = new Error('账号状态由系统暂停和确认恢复流程维护，不能在新建或编辑资料时直接修改');
+  error.status = 400;
+  throw error;
+}
+
 function createCaseFromBody(body = {}) {
   const id = uid('case');
   const created = now();
@@ -4444,6 +4457,7 @@ app.get('/api/cases', (_req, res) => {
 app.post('/api/cases', (req, res) => {
   try {
     const body = req.body || {};
+    rejectCaseHealthStatusOverride(req, body);
     const created = createCaseFromBody(body);
     const sync = syncCaseSourceMaterials(created);
     const slots = generateSlotsForCase(created, { days: 14 });
@@ -4458,6 +4472,7 @@ app.post('/api/cases/bulk', (req, res) => {
   try {
     const body = req.body || {};
     const rows = Array.isArray(body.cases) ? body.cases : parseBulkCaseText(body.text);
+    rows.forEach((row) => rejectCaseHealthStatusOverride(req, row));
     res.json(createBulkCases(rows));
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });
@@ -4469,6 +4484,7 @@ app.patch('/api/cases/:id', (req, res) => {
     const caze = caseById(req.params.id);
     if (!caze) return res.status(404).json({ error: 'case not found' });
     const body = req.body || {};
+    rejectCaseHealthStatusOverride(req, body);
     const nextWeixinNick = String(body.weixinNick ?? body.weixin_nick ?? caze.weixinNick ?? '').trim();
     if (!nextWeixinNick) return res.status(400).json({ error: '必须填写兼职微信昵称' });
     const nextDouyinUrl = body.douyinUrl !== undefined || body.douyin_url !== undefined
@@ -4482,7 +4498,6 @@ app.patch('/api/cases/:id', (req, res) => {
       : caze.sourceMaterialDir;
     const existingSourceCase = get('SELECT id, weixin_nick FROM cases WHERE source_material_dir = ? AND id != ?', [nextSourceMaterialDir, caze.id]);
     if (existingSourceCase) return res.status(409).json({ error: `共享原始素材路径已经登记到「${existingSourceCase.weixin_nick}」` });
-    const nextHealthStatus = body.healthStatus ?? caze.healthStatus;
     run(
       `UPDATE cases SET weixin_nick=?, douyin_id=?, douyin_url=?, project=?, persona=?, source_material_dir=?, health_status=?, updated_at=? WHERE id=?`,
       [
@@ -4492,7 +4507,7 @@ app.patch('/api/cases/:id', (req, res) => {
         nextProject,
         JSON.stringify(caze.persona || {}),
         nextSourceMaterialDir,
-        nextHealthStatus,
+        caze.healthStatus,
         now(),
         req.params.id
       ]
@@ -4637,6 +4652,7 @@ app.get('/api/case-library', (_req, res) => {
 
 app.post('/api/case-library/register', (req, res) => {
   try {
+    rejectCaseHealthStatusOverride(req, req.body || {});
     res.json(createCaseFromLibrary(req.body || {}));
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message });

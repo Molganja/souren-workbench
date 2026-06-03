@@ -419,6 +419,8 @@ if (
   && mainSource.includes('ResumeAccountModal')
   && mainSource.includes('已收到兼职回复，确认这个账号继续配合')
   && smokeSource.includes('resume without reply confirmation should be blocked')
+  && serverSource.includes('function rejectCaseHealthStatusOverride')
+  && smokeSource.includes('case edit health status override was allowed')
 ) ok('失联暂停账号必须确认兼职回复后才能恢复');
 else fail('失联暂停账号恢复仍可能一键误恢复，或缺少确认验收');
 
@@ -780,7 +782,7 @@ if (
 ) ok('编辑案例前端也只保留微信、抖音、项目和共享素材路径');
 else fail('编辑案例仍暴露城市、年龄、职业、语气或动机等内部人设字段');
 
-if (serverSource.includes('必须填写兼职微信昵称') && serverSource.includes('必须填写有效的抖音主页或作品链接') && serverSource.includes('必须填写项目') && serverSource.includes('必须填写共享原始素材路径') && serverSource.includes('共享原始素材路径不存在或不是目录') && serverSource.includes('normalizeDouyinUrl') && serverSource.includes('douyinIdFromUrl(douyinUrl)') && serverSource.includes('normalizeSourceMaterialDir') && smokeSource.includes('case create allowed missing project') && !serverSource.includes('body.weixinNick || `${persona.city}') && !serverSource.includes('input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick')) ok('后端不再随机生成兼职微信名，也不允许缺少抖音链接、项目或共享素材路径');
+if (serverSource.includes('必须填写兼职微信昵称') && serverSource.includes('必须填写有效的抖音主页或作品链接') && serverSource.includes('必须填写项目') && serverSource.includes('必须填写共享原始素材路径') && serverSource.includes('共享原始素材路径不存在或不是目录') && serverSource.includes('normalizeDouyinUrl') && serverSource.includes('douyinIdFromUrl(douyinUrl)') && serverSource.includes('normalizeSourceMaterialDir') && smokeSource.includes('case create allowed missing project') && smokeSource.includes('case create health status override was allowed') && !serverSource.includes('body.weixinNick || `${persona.city}') && !serverSource.includes('input.weixinNick || input.weixin_nick || candidate.suggestedWeixinNick')) ok('后端不再随机生成兼职微信名，也不允许缺少抖音链接、项目或共享素材路径');
 else fail('后端仍可能随机生成兼职微信名或允许缺少抖音链接/共享素材路径');
 
 if (serverSource.includes("const sync = syncCaseSourceMaterials(created)") && serverSource.includes('res.json({ ...created, sync, slotsCreated: slots.length, collectionQueue })') && smokeSource.includes('case create did not automatically sync shared source material') && smokeSource.includes('case create allowed missing shared source directory') && mainSource.includes('案例已创建：同步素材')) ok('普通新建案例会校验共享目录并自动同步一次素材');
