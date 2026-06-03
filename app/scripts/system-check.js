@@ -736,6 +736,9 @@ const oldDeletedDirMarker = '_' + 'deleted';
 if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && serverSource.includes('assertCaseDeleteConfirmed(req, caze)') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地素材副本也会同步删除')) ok('删除案例会在确认后同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');
 
+if (serverSource.includes('function nextCaseCode') && serverSource.includes('function caseCodeForCreate') && !serverSource.includes("all('SELECT id FROM cases').length + 1") && smokeSource.includes('case code generation reused an existing code after delete')) ok('删除账号后新建账号不会复用已存在案例编号');
+else fail('案例编号仍可能在删除后按现有数量生成并撞号');
+
 if (
   mainSource.includes('新建时只填四项')
   && mainSource.includes('caseFormMissingRequired')

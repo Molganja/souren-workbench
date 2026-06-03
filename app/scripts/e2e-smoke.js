@@ -572,6 +572,46 @@ async function main() {
     const afterDelete = await api('/cases');
     assert(afterDelete.length === 1 && afterDelete[0].id === bulk.cases[0].id, 'case delete failed');
 
+    const gapCaseADir = makeSharedSourceDir(ROOT_DIR, '删后编号A');
+    const gapCaseBDir = makeSharedSourceDir(ROOT_DIR, '删后编号B');
+    const gapCaseCDir = makeSharedSourceDir(ROOT_DIR, '删后编号C');
+    fs.writeFileSync(path.join(gapCaseADir, '编号A-D1.jpg'), 'fake gap case a material');
+    fs.writeFileSync(path.join(gapCaseBDir, '编号B-D1.jpg'), 'fake gap case b material');
+    fs.writeFileSync(path.join(gapCaseCDir, '编号C-D1.jpg'), 'fake gap case c material');
+    const gapCaseA = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '删后编号A',
+        douyinUrl: 'https://www.douyin.com/user/case-code-gap-a',
+        project: '吸脂',
+        sourceMaterialDir: gapCaseADir
+      })
+    });
+    const gapCaseB = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '删后编号B',
+        douyinUrl: 'https://www.douyin.com/user/case-code-gap-b',
+        project: '吸脂',
+        sourceMaterialDir: gapCaseBDir
+      })
+    });
+    await deleteCase(gapCaseA);
+    const gapCaseC = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '删后编号C',
+        douyinUrl: 'https://www.douyin.com/user/case-code-gap-c',
+        project: '吸脂',
+        sourceMaterialDir: gapCaseCDir
+      })
+    });
+    const gapCaseBSeq = Number(gapCaseB.caseCode.split('-').pop());
+    const gapCaseCSeq = Number(gapCaseC.caseCode.split('-').pop());
+    assert(gapCaseC.caseCode !== gapCaseB.caseCode && gapCaseCSeq > gapCaseBSeq, 'case code generation reused an existing code after delete');
+    await deleteCase(gapCaseB);
+    await deleteCase(gapCaseC);
+
     const legacyDir = makeSharedSourceDir(ROOT_DIR, '历史缺资料账号');
     fs.writeFileSync(path.join(legacyDir, '历史-D1.jpg'), 'fake legacy material');
     const legacyCase = await api('/cases', {

@@ -1245,6 +1245,28 @@ function normalizeSourceMaterialDir(value) {
   return resolved;
 }
 
+function nextCaseCode(date) {
+  const prefix = `XZ-${date}-`;
+  const rows = all('SELECT case_code FROM cases WHERE case_code LIKE ?', [`${prefix}%`]);
+  const maxSeq = rows.reduce((max, row) => {
+    const match = String(row.case_code || '').match(new RegExp(`^${prefix}(\\d+)$`));
+    if (!match) return max;
+    const seq = Number(match[1]);
+    return Number.isFinite(seq) ? Math.max(max, seq) : max;
+  }, 0);
+  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+}
+
+function caseCodeForCreate(inputCaseCode, date) {
+  const caseCode = String(inputCaseCode || '').trim() || nextCaseCode(date);
+  if (get('SELECT id FROM cases WHERE case_code = ?', [caseCode])) {
+    const err = new Error(`案例编号 ${caseCode} 已存在，系统会自动生成新编号，不要手动复用旧编号`);
+    err.status = 409;
+    throw err;
+  }
+  return caseCode;
+}
+
 function createCaseFromBody(body = {}) {
   const id = uid('case');
   const created = now();
@@ -1257,8 +1279,7 @@ function createCaseFromBody(body = {}) {
   const stage = '起号期';
   const persona = randomPersona(body.persona || {});
   const date = created.slice(0, 10).replaceAll('-', '');
-  const seq = all('SELECT id FROM cases').length + 1;
-  const caseCode = body.caseCode || `XZ-${date}-${String(seq).padStart(3, '0')}`;
+  const caseCode = caseCodeForCreate(body.caseCode, date);
   const weixinNick = String(body.weixinNick || body.weixin_nick || '').trim();
   if (!weixinNick) {
     const err = new Error('必须填写兼职微信昵称');
