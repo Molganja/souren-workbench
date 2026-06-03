@@ -151,6 +151,21 @@ if (
 else fail('删除案例仍可能只在前端确认，或后端缺少明确删除确认');
 
 if (
+  serverSource.includes('function isStartupDemoCase')
+  && serverSource.includes("nick.startsWith('测试')")
+  && serverSource.includes('/api/maintenance/startup-demo-cases')
+  && serverSource.includes('assertStartupDemoCleanupConfirmed')
+  && serverSource.includes('清理测试账号')
+  && serverSource.includes('localControlOnly(req, res)')
+  && mainSource.includes('StartupDemoCleanupModal')
+  && mainSource.includes('检测到 {demoCases.length} 个测试/demo账号')
+  && mainSource.includes("request('/maintenance/startup-demo-cases/delete'")
+  && smokeSource.includes('startup demo cleanup did not isolate demo account')
+  && smokeSource.includes('startup demo cleanup removed a real account')
+) ok('启动前测试/demo账号清理有本机和确认保护');
+else fail('测试/demo账号清理缺少本机限制、确认短语或真实账号保护');
+
+if (
   mainSource.includes('今日操作队列') &&
   mainSource.includes('后续账号预览') &&
   mainSource.includes('accountOverviewDetails') &&

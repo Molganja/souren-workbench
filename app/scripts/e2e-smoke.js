@@ -12,6 +12,7 @@ const TEST_LAN_FAIL_PORT = 5191;
 const TEST_IMAGE_KEY_ONLY_PORT = 5192;
 const TEST_PLACEHOLDER_PORT = 5193;
 const TEST_LAN_CONFIG_PORT = 5194;
+const TEST_STARTUP_CLEANUP_PORT = 5195;
 const ORIGIN = `http://127.0.0.1:${TEST_PORT}`;
 const BASE = `${ORIGIN}/api`;
 const E2E_SETUP_HEADER = { 'X-Souren-E2E-Setup': '1' };
@@ -24,6 +25,7 @@ const AUTH_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-auth');
 const LAN_FAIL_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-lan-fail');
 const PLACEHOLDER_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-placeholder');
 const LAN_CONFIG_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-lan-config');
+const STARTUP_CLEANUP_ROOT_DIR = path.join(REAL_ROOT_DIR, '.tmp-e2e-startup-cleanup');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -290,6 +292,8 @@ async function lanAccessConfigSmoke() {
       PORT: String(TEST_LAN_CONFIG_PORT),
       SOUREN_ROOT_DIR: LAN_CONFIG_ROOT_DIR,
       SOUREN_ENV_PATH: envPath,
+      SOUREN_HOST: '127.0.0.1',
+      SOUREN_ACCESS_CODE: '',
       SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1'
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -316,6 +320,75 @@ async function lanAccessConfigSmoke() {
     server.kill('SIGTERM');
     await sleep(300);
     fs.rmSync(LAN_CONFIG_ROOT_DIR, { recursive: true, force: true });
+  }
+}
+
+async function startupDemoCleanupSmoke() {
+  fs.rmSync(STARTUP_CLEANUP_ROOT_DIR, { recursive: true, force: true });
+  fs.mkdirSync(STARTUP_CLEANUP_ROOT_DIR, { recursive: true });
+  const cleanupBase = `http://127.0.0.1:${TEST_STARTUP_CLEANUP_PORT}/api`;
+  const server = spawn(process.execPath, ['--no-warnings', 'server/index.js'], {
+    cwd: APP_DIR,
+    env: {
+      ...process.env,
+      PORT: String(TEST_STARTUP_CLEANUP_PORT),
+      SOUREN_ROOT_DIR: STARTUP_CLEANUP_ROOT_DIR,
+      SOUREN_HOST: '127.0.0.1',
+      SOUREN_ACCESS_CODE: '',
+      SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
+      DOUYIN_COLLECTOR_AUTO_RUN: '0'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  server.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  try {
+    await waitForServer(server, cleanupBase);
+    const demoDir = makeSharedSourceDir(STARTUP_CLEANUP_ROOT_DIR, '测试清理兼职');
+    const realDir = makeSharedSourceDir(STARTUP_CLEANUP_ROOT_DIR, '长沙美业顾问22');
+    const demoCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '测试清理兼职',
+        douyinUrl: 'https://www.douyin.com/user/demo_cleanup',
+        project: '吸脂',
+        sourceMaterialDir: demoDir
+      })
+    }, cleanupBase);
+    const realCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '长沙美业顾问22',
+        douyinUrl: 'https://www.douyin.com/user/real-cleanup-smoke',
+        project: '吸脂',
+        sourceMaterialDir: realDir
+      })
+    }, cleanupBase);
+    const summary = await api('/maintenance/startup-demo-cases', {}, cleanupBase);
+    assert(summary.count === 1 && summary.cases[0].id === demoCase.id && summary.confirmText === '清理测试账号', 'startup demo cleanup did not isolate demo account');
+    let wrongCleanupRejected = false;
+    try {
+      await api('/maintenance/startup-demo-cases/delete', {
+        method: 'POST',
+        body: JSON.stringify({ confirmText: '删除测试账号' })
+      }, cleanupBase);
+    } catch (error) {
+      wrongCleanupRejected = /清理测试账号/.test(error.message);
+    }
+    assert(wrongCleanupRejected, 'startup demo cleanup accepted wrong confirmation text');
+    const cleanup = await api('/maintenance/startup-demo-cases/delete', {
+      method: 'POST',
+      body: JSON.stringify({ confirmText: '清理测试账号' })
+    }, cleanupBase);
+    assert(cleanup.deletedCount === 1 && cleanup.removed[0].id === demoCase.id, 'startup demo cleanup deleted wrong count');
+    const remaining = await api('/cases', {}, cleanupBase);
+    assert(remaining.length === 1 && remaining[0].id === realCase.id, 'startup demo cleanup removed a real account');
+    assert(!fs.existsSync(demoCase.localCaseDir), 'startup demo cleanup did not remove demo material directory');
+    assert(fs.existsSync(realCase.localCaseDir), 'startup demo cleanup removed real material directory');
+  } finally {
+    server.kill('SIGTERM');
+    await sleep(300);
+    fs.rmSync(STARTUP_CLEANUP_ROOT_DIR, { recursive: true, force: true });
   }
 }
 
@@ -1808,6 +1881,7 @@ async function main() {
     await authAccessSmoke();
     await lanFailClosedSmoke();
     await lanAccessConfigSmoke();
+    await startupDemoCleanupSmoke();
     await placeholderDouyinCollectionSmoke();
 
     const videoCase = await api('/cases', {

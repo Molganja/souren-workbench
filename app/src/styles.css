@@ -1129,6 +1129,38 @@ button:disabled:hover,
   font-size: 12px;
 }
 
+.caseGap {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.caseTileActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.cleanupHint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cleanupHint > div {
+  display: grid;
+  gap: 4px;
+}
+
+.cleanupHint strong {
+  color: var(--ink);
+}
+
+.cleanupHint span {
+  color: var(--muted);
+}
+
 .dangerButton {
   justify-self: start;
   color: var(--red);

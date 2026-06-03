@@ -1689,6 +1689,47 @@ function assertCaseDeleteConfirmed(req, caze) {
   throw err;
 }
 
+function isStartupDemoCase(caze = {}) {
+  const nick = String(caze.weixinNick || '').trim();
+  const douyin = String(caze.douyinUrl || '').trim().toLowerCase();
+  return nick.startsWith('测试') || /\/user\/demo_/.test(douyin) || /demo_\d+/.test(douyin);
+}
+
+function startupDemoCases() {
+  return all('SELECT * FROM cases ORDER BY created_at DESC')
+    .map(rowCase)
+    .filter(isStartupDemoCase)
+    .map((caze) => ({
+      id: caze.id,
+      caseCode: caze.caseCode,
+      weixinNick: caze.weixinNick,
+      douyinUrl: caze.douyinUrl,
+      project: caze.project,
+      localCaseDir: caze.localCaseDir
+    }));
+}
+
+function assertStartupDemoCleanupConfirmed(req) {
+  const actual = String(req.body?.confirmText || '').trim();
+  if (actual === '清理测试账号') return;
+  const err = new Error('清理测试账号前必须输入「清理测试账号」');
+  err.status = 409;
+  throw err;
+}
+
+function deleteStartupDemoCases() {
+  const targets = startupDemoCases();
+  const removed = targets.map((caze) => {
+    const { removedDir } = removeCaseDirectory(caze);
+    run('DELETE FROM cases WHERE id = ?', [caze.id]);
+    return { ...caze, removedDir };
+  });
+  return {
+    deletedCount: removed.length,
+    removed
+  };
+}
+
 function imagePromptFor(caze, slot, purpose, sourceMaterials = []) {
   const p = caze.persona || {};
   return [
@@ -4601,6 +4642,26 @@ app.get('/api/schedule', (_req, res) => {
 
 app.get('/api/cases', (_req, res) => {
   res.json(all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase));
+});
+
+app.get('/api/maintenance/startup-demo-cases', (req, res) => {
+  if (!localControlOnly(req, res)) return;
+  const cases = startupDemoCases();
+  res.json({
+    count: cases.length,
+    confirmText: '清理测试账号',
+    cases
+  });
+});
+
+app.post('/api/maintenance/startup-demo-cases/delete', (req, res) => {
+  if (!localControlOnly(req, res)) return;
+  try {
+    assertStartupDemoCleanupConfirmed(req);
+    res.json(deleteStartupDemoCases());
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.post('/api/cases', (req, res) => {

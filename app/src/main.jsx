@@ -213,6 +213,15 @@ function App() {
     showToast(message);
   }
 
+  function navigate(nextView) {
+    if (nextView !== 'case') {
+      setSelectedCaseId(null);
+      setCaseDetail(null);
+      setCaseEditRequest(null);
+    }
+    setView(nextView);
+  }
+
   async function openCase(id, options = {}) {
     setSelectedCaseId(id);
     setView('case');
@@ -223,12 +232,12 @@ function App() {
 
   const nav = (
     <div className="nav">
-      <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>今日中控台</button>
-      <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>排期规划</button>
-      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}>数据复盘</button>
-      <button className={view === 'cases' ? 'active' : ''} onClick={() => setView('cases')}>案例库</button>
-      <button className={view === 'viral' ? 'active' : ''} onClick={() => setView('viral')}>爆款链接</button>
-      <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>运行状态</button>
+      <button className={view === 'dashboard' ? 'active' : ''} onClick={() => navigate('dashboard')}>今日中控台</button>
+      <button className={view === 'schedule' ? 'active' : ''} onClick={() => navigate('schedule')}>排期规划</button>
+      <button className={view === 'review' ? 'active' : ''} onClick={() => navigate('review')}>数据复盘</button>
+      <button className={view === 'cases' ? 'active' : ''} onClick={() => navigate('cases')}>案例库</button>
+      <button className={view === 'viral' ? 'active' : ''} onClick={() => navigate('viral')}>爆款链接</button>
+      <button className={view === 'settings' ? 'active' : ''} onClick={() => navigate('settings')}>运行状态</button>
     </div>
   );
   const canUseWorkbench = session ? (!session.authRequired || session.authenticated) : false;
@@ -267,8 +276,7 @@ function App() {
             detail={caseDetail}
             onAct={act}
             onBack={() => {
-              setCaseEditRequest(null);
-              setView('cases');
+              navigate('cases');
             }}
             onDelivery={setDeliverySlotOpen}
             onClipTask={setClipTaskOpen}
@@ -1065,6 +1073,8 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [registerCandidate, setRegisterCandidate] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [startupDemo, setStartupDemo] = useState(null);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   const filtered = cases.filter((item) => {
     const q = query.trim().toLowerCase();
     const haystack = `${item.weixinNick} ${item.caseCode} ${item.douyinId} ${item.douyinUrl} ${item.project} ${personaText(item.persona)}`.toLowerCase();
@@ -1082,6 +1092,17 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
       setLibraryLoading(false);
     }
   }
+  async function loadStartupDemo() {
+    try {
+      setStartupDemo(await request('/maintenance/startup-demo-cases'));
+    } catch {
+      setStartupDemo(null);
+    }
+  }
+  useEffect(() => {
+    loadStartupDemo();
+  }, [cases.length]);
+  const demoCases = startupDemo?.cases || [];
   return (
     <div className="stack">
       <section className="panel">
@@ -1103,6 +1124,15 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
             onAct={onAct}
           />
         )}
+        {demoCases.length > 0 && (
+          <div className="hintBox cleanupHint">
+            <div>
+              <strong>检测到 {demoCases.length} 个测试/demo账号</strong>
+              <span>这些账号会占住今日队列；清理只匹配微信昵称以“测试”开头或抖音链接包含 demo_ 的案例。</span>
+            </div>
+            <button className="dangerButton" onClick={() => setCleanupOpen(true)}>清理测试账号</button>
+          </div>
+        )}
         <div className="filters">
           <input placeholder="搜索微信昵称 / 抖音链接 / 案例编号 / 项目" value={query} onChange={(e) => setQuery(e.target.value)} />
           <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
@@ -1118,8 +1148,12 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
                   <strong>{item.weixinNick}</strong>
                   <span>{item.caseCode} · {item.project}</span>
                   <em>{douyinDisplay(item)} · {item.healthStatus}</em>
+                  {caseMissingFields(item).length > 0 && <small className="caseGap">缺资料：{caseMissingFields(item).join(' / ')}</small>}
                 </button>
-                <button className="dangerButton" onClick={() => setDeleteTarget(item)}>删除</button>
+                <div className="caseTileActions">
+                  {caseMissingFields(item).length > 0 && <button onClick={() => onOpenCase(item.id, { edit: true })}>补资料</button>}
+                  <button className="dangerButton" onClick={() => setDeleteTarget(item)}>删除</button>
+                </div>
               </div>
             ))}
           </div>
@@ -1141,9 +1175,28 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
             onDelete={(confirmText) => deleteCase(deleteTarget, confirmText, onAct, () => setDeleteTarget(null))}
           />
         )}
+        {cleanupOpen && (
+          <StartupDemoCleanupModal
+            summary={startupDemo}
+            onClose={() => setCleanupOpen(false)}
+            onSubmit={(confirmText) => cleanupStartupDemoCases(confirmText, onAct, async () => {
+              setCleanupOpen(false);
+              await loadStartupDemo();
+            })}
+          />
+        )}
       </section>
     </div>
   );
+}
+
+function caseMissingFields(item = {}) {
+  const missing = [];
+  if (!String(item.weixinNick || '').trim()) missing.push('微信昵称');
+  if (!String(item.douyinUrl || '').trim()) missing.push('抖音链接');
+  if (!String(item.project || '').trim()) missing.push('项目');
+  if (!String(item.sourceMaterialDir || '').trim()) missing.push('共享素材路径');
+  return missing;
 }
 
 function CaseLibraryPanel({ library, loading, onReload, onRegister, onOpenCase }) {
@@ -1281,6 +1334,45 @@ function deleteCase(item, confirmText, onAct, onDone) {
     onDone?.();
     return result;
   }, (result) => result.removedDir ? '案例已删除，本地素材副本已同步删除' : '案例已删除，本地素材副本原本不存在');
+}
+
+function StartupDemoCleanupModal({ summary = {}, onClose, onSubmit }) {
+  const [confirmText, setConfirmText] = useState('');
+  const cases = summary.cases || [];
+  const phrase = summary.confirmText || '清理测试账号';
+  const ready = confirmText.trim() === phrase;
+  return (
+    <Modal title="清理测试账号" onClose={onClose}>
+      <div className="hintBox dangerHint">只会删除微信昵称以“测试”开头或抖音链接包含 demo_ 的案例；真实账号不会被这个入口自动选中。请输入「{phrase}」确认。</div>
+      <div className="templateList">
+        {cases.map((item) => (
+          <div className="templateRow" key={item.id}>
+            <strong>{item.weixinNick}</strong>
+            <span>{item.caseCode} · {item.project}</span>
+            <small>{item.douyinUrl || '未填抖音链接'}</small>
+          </div>
+        ))}
+      </div>
+      <div className="formGrid">
+        <label className="wide">确认清理<input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} placeholder={`输入：${phrase}`} /></label>
+      </div>
+      <div className="modalActions">
+        <button onClick={onClose}>取消</button>
+        <button className="dangerButton" disabled={!ready} onClick={() => onSubmit(confirmText.trim())}>确认清理</button>
+      </div>
+    </Modal>
+  );
+}
+
+function cleanupStartupDemoCases(confirmText, onAct, onDone) {
+  onAct(async () => {
+    const result = await request('/maintenance/startup-demo-cases/delete', {
+      method: 'POST',
+      body: JSON.stringify({ confirmText })
+    });
+    await onDone?.();
+    return result;
+  }, (result) => `已清理测试账号 ${result.deletedCount || 0} 个`);
 }
 
 function ResumeAccountModal({ item, onClose, onResume }) {
