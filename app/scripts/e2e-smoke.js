@@ -429,6 +429,19 @@ async function main() {
     }
     assert(blankViralRejected, 'blank viral link created a template');
 
+    const forbiddenViralAnalysisCreateResponse = await fetch(`${BASE}/viral-templates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sourceLink: 'https://www.douyin.com/video/forbidden-analysis-create',
+        rawText: '临时手填爆款正文',
+        hotStructure: '临时手填结构'
+      })
+    });
+    assert(forbiddenViralAnalysisCreateResponse.status === 400, 'viral template create accepted manual analysis fields');
+    const afterForbiddenViralCreate = await api('/viral-templates');
+    assert(!afterForbiddenViralCreate.some((item) => item.sourceLink === 'https://www.douyin.com/video/forbidden-analysis-create'), 'manual analysis create inserted a viral template');
+
     const viral = await api('/viral-templates', {
       method: 'POST',
       body: JSON.stringify({
@@ -458,6 +471,19 @@ async function main() {
       body: JSON.stringify({ sourceLink: 'https://www.douyin.com/video/link-only-smoke' })
     });
     assert(linkOnlyViral.rawText.includes('待分析') && linkOnlyViral.category === '待分析', 'link-only viral template not marked pending analysis');
+    const forbiddenViralAnalysisPatchResponse = await fetch(`${BASE}/viral-templates/${linkOnlyViral.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rawText: '临时补一点正文',
+        category: '情绪',
+        hotStructure: '临时结构'
+      })
+    });
+    assert(forbiddenViralAnalysisPatchResponse.status === 400, 'viral template patch accepted manual analysis fields');
+    const afterForbiddenViralPatch = await api('/viral-templates');
+    const stillPendingViral = afterForbiddenViralPatch.find((item) => item.id === linkOnlyViral.id);
+    assert(stillPendingViral?.rawText?.includes('待分析') && stillPendingViral.category === '待分析', 'manual analysis patch changed pending viral template');
     const viralAnalysisTask = await api(`/viral-templates/${linkOnlyViral.id}/analysis-task`);
     assert(viralAnalysisTask.text.includes('https://www.douyin.com/video/link-only-smoke') && viralAnalysisTask.text.includes('/analysis-result'), 'viral analysis task text missing writeback endpoint');
     const viralDashboard = await api('/dashboard');

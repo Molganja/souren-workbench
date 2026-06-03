@@ -1892,6 +1892,28 @@ function normalizeViralAnalysisResult(body = {}) {
   };
 }
 
+function rejectViralAnalysisFieldOverride(req, input = {}) {
+  if (queueGuardBypassed(req)) return null;
+  const blocked = [
+    'rawText',
+    'raw_text',
+    'category',
+    'hotStructure',
+    'hot_structure',
+    'suitablePersonas',
+    'suitable_personas',
+    'forbiddenPersonas',
+    'forbidden_personas',
+    'rewritePolicy',
+    'rewrite_policy'
+  ].find((key) => Object.prototype.hasOwnProperty.call(input, key));
+  if (!blocked) return null;
+  const error = new Error('爆款分析字段只能由后台分析结果完整写回，工作人员只粘贴爆款链接');
+  error.status = 400;
+  error.field = blocked;
+  return error;
+}
+
 function viralAnalysisTaskText(viral) {
   return [
     '爆款链接分析任务',
@@ -5481,6 +5503,8 @@ app.delete('/api/content-seeds/:id', (req, res) => {
 
 app.post('/api/viral-templates', (req, res) => {
   const body = req.body || {};
+  const overrideError = rejectViralAnalysisFieldOverride(req, body);
+  if (overrideError) return res.status(overrideError.status).json({ error: overrideError.message, field: overrideError.field });
   const sourceLink = String(body.sourceLink || '').trim();
   const rawText = String(body.rawText || '').trim();
   const hotStructure = String(body.hotStructure || '').trim();
@@ -5518,6 +5542,8 @@ app.patch('/api/viral-templates/:id', (req, res) => {
   const viral = rowViral(get('SELECT * FROM viral_templates WHERE id = ?', [req.params.id]));
   if (!viral) return res.status(404).json({ error: 'viral template not found' });
   const body = req.body || {};
+  const overrideError = rejectViralAnalysisFieldOverride(req, body);
+  if (overrideError) return res.status(overrideError.status).json({ error: overrideError.message, field: overrideError.field });
   run(
     `UPDATE viral_templates
     SET title = ?, raw_text = ?, source_link = ?, category = ?, hot_structure = ?, suitable_personas = ?, forbidden_personas = ?, rewrite_policy = ?, updated_at = ?

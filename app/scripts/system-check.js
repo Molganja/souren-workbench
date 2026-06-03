@@ -86,8 +86,17 @@ const leakedViralAnalysisFields = viralAnalysisFields.filter((label) => mainSour
 if (!mainSource.includes('onEdit={(item)') && !mainSource.includes('editingViral') && !leakedViralAnalysisFields.length && mainSource.includes('等待系统分析')) ok('爆款链接前台只收链接，不要求工作人员填写分析字段');
 else fail(`爆款链接前台仍暴露分析字段：${leakedViralAnalysisFields.join('、') || '编辑入口'}`);
 
-if (serverSource.includes('/api/viral-templates/:id/analysis-result') && serverSource.includes('normalizeViralAnalysisResult') && serverSource.includes('爆款分析结果缺少') && smokeSource.includes('viral analysis result accepted incomplete payload') && smokeSource.includes('/analysis-result')) ok('爆款链接有后台分析写回接口，且不接受半分析结果');
-else fail('爆款链接缺少专用分析写回接口，或未验证半分析结果会被拒绝');
+if (
+  serverSource.includes('/api/viral-templates/:id/analysis-result')
+  && serverSource.includes('normalizeViralAnalysisResult')
+  && serverSource.includes('rejectViralAnalysisFieldOverride')
+  && serverSource.includes('爆款分析结果缺少')
+  && smokeSource.includes('viral analysis result accepted incomplete payload')
+  && smokeSource.includes('viral template create accepted manual analysis fields')
+  && smokeSource.includes('viral template patch accepted manual analysis fields')
+  && smokeSource.includes('/analysis-result')
+) ok('爆款链接有后台分析写回接口，且普通入口不能手填半分析结果');
+else fail('爆款链接缺少专用分析写回接口，或普通入口仍可能手填半分析结果');
 
 if (
   serverSource.includes("app.get('/api/agent-work'")
