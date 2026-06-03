@@ -113,6 +113,7 @@ async function imageGenerationSmoke() {
       PORT: String(TEST_IMAGE_APP_PORT),
       SOUREN_ROOT_DIR: IMAGE_ROOT_DIR,
       SOUREN_GITHUB_SYNC_CHECK_DISABLED: '1',
+      SOUREN_E2E_QUEUE_BYPASS: '1',
       IMAGE_API_KEY: 'fake-image-key',
       IMAGE_API_URL: `http://127.0.0.1:${TEST_IMAGE_PORT}/images/generate`,
       IMAGE_MODEL: 'fake-image-model',
@@ -708,9 +709,36 @@ async function main() {
     const createdCaseDetail = await api(`/cases/${caze.id}`);
     assert(createdCaseDetail.assets.some((asset) => asset.path === syncedAssetPath && asset.originPath === path.join(sharedSourceDir, '共享-D1.jpg') && asset.source === '共享导入' && asset.usage === '案例过程'), 'synced source material metadata missing');
     fs.writeFileSync(path.join(sharedSourceDir, '共享-对比.jpg'), 'fake unsynced shared case image');
+    const materialGuardSourceDir = path.join(ROOT_DIR, '共享素材-素材队首守门');
+    fs.mkdirSync(materialGuardSourceDir, { recursive: true });
+    const materialGuardCase = await api('/cases', {
+      method: 'POST',
+      body: JSON.stringify({
+        weixinNick: '素材队首守门兼职',
+        douyinUrl: 'https://www.douyin.com/user/MS4wLjABAAAA_material_guard',
+        project: '吸脂',
+        sourceMaterialDir: materialGuardSourceDir,
+        persona: { city: '成都', occupation: '上班族' }
+      })
+    });
+    fs.rmSync(materialGuardSourceDir, { recursive: true, force: true });
     const beforeSyncDashboard = await api('/dashboard');
     const pendingSync = beforeSyncDashboard.materialSync.find((item) => item.case?.id === caze.id);
+    const blockingMaterialSync = beforeSyncDashboard.materialSync.find((item) => item.case?.id === materialGuardCase.id && item.status === '目录不可用');
     assert(beforeSyncDashboard.counts.materialSync >= 1 && pendingSync?.unsyncedCount === 1, 'dashboard missing pending shared material sync');
+    const queueHeadMaterialCaseId = beforeSyncDashboard.queueHead?.materialSync?.caseId || beforeSyncDashboard.queueHead?.materialSync?.case?.id;
+    const queueHeadSlotCaseId = ['素材阻塞', '异常'].includes(beforeSyncDashboard.queueHead?.slot?.status)
+      ? beforeSyncDashboard.queueHead?.slot?.caseId || beforeSyncDashboard.queueHead?.slot?.case?.id
+      : null;
+    assert(blockingMaterialSync, 'material queue guard setup missing another material action');
+    assert(String(queueHeadMaterialCaseId || '') !== String(caze.id) && String(queueHeadSlotCaseId || '') !== String(caze.id), 'material queue guard setup left target case as queue head');
+    const nonHeadSyncResponse = await fetch(`${BASE}/cases/${caze.id}/sync-source-materials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    assert(nonHeadSyncResponse.status === 409, 'non-head material sync was allowed');
+    const afterBlockedSync = await api('/dashboard');
+    assert(afterBlockedSync.materialSync.some((item) => item.case?.id === caze.id && item.unsyncedCount === 1), 'non-head material sync changed material queue');
     const syncedAgain = await api(`/cases/${caze.id}/sync-source-materials`, { method: 'POST' });
     assert(syncedAgain.copied === 1 && syncedAgain.inserted === 1, 'second source material sync did not copy new file');
     const afterSyncDashboard = await api('/dashboard');
@@ -1074,8 +1102,24 @@ async function main() {
 
     fs.writeFileSync(path.join(caze.localCaseDir, '00-原始素材', 'D1-test.jpg'), 'fake image');
     fs.writeFileSync(path.join(caze.localCaseDir, '00-原始素材', 'D1-test.mp4'), 'fake video');
+    const beforeBlockedScan = await api(`/cases/${caze.id}`);
+    const nonHeadScanResponse = await fetch(`${BASE}/cases/${caze.id}/scan-assets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    assert(nonHeadScanResponse.status === 409, 'non-head material scan was allowed');
+    const afterBlockedScan = await api(`/cases/${caze.id}`);
+    assert(afterBlockedScan.assets.length === beforeBlockedScan.assets.length, 'non-head material scan inserted assets');
     const scan = await api(`/cases/${caze.id}/scan-assets`, { method: 'POST' });
     assert(scan.inserted === 2, 'asset scan did not insert two files');
+    const nonHeadAssetPatch = await fetch(`${BASE}/assets/${scan.assets[0].id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewStatus: '可用' })
+    });
+    assert(nonHeadAssetPatch.status === 409, 'non-head asset patch was allowed');
+    const afterBlockedAssetPatch = await api(`/cases/${caze.id}`);
+    assert(afterBlockedAssetPatch.assets.find((item) => item.id === scan.assets[0].id)?.reviewStatus !== '可用', 'non-head asset patch changed review status');
     await api(`/assets/${scan.assets[0].id}`, { method: 'PATCH', body: JSON.stringify({ reviewStatus: '可用' }) });
     const withGaps = await api(`/cases/${caze.id}`);
     assert(Array.isArray(withGaps.materialGaps) && withGaps.materialGaps.length > 0, 'material gaps missing');
@@ -1113,6 +1157,15 @@ async function main() {
       customImagePromptRejected = /系统按素材缺口生成/.test(error.message);
     }
     assert(customImagePromptRejected, 'image task accepted a custom prompt or source materials');
+    const nonHeadImageCreateResponse = await fetch(`${BASE}/image-tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: caze.id, purpose: '非队首缺口建图验收' })
+    });
+    const nonHeadImageCreateBody = await nonHeadImageCreateResponse.json();
+    assert(nonHeadImageCreateResponse.status === 409 && /素材动作不是今日操作队列队首/.test(nonHeadImageCreateBody.error), 'non-head image task was allowed to create');
+    const afterBlockedImageCreate = await api(`/cases/${caze.id}`);
+    assert(!afterBlockedImageCreate.imageTasks.some((item) => item.purpose === '非队首缺口建图验收'), 'non-head image task create inserted a task');
     const gapImage = await api('/image-tasks', {
       method: 'POST',
       body: JSON.stringify({ caseId: caze.id, purpose: withGaps.materialGaps[0].label })
@@ -1120,6 +1173,24 @@ async function main() {
     assert(gapImage.purpose === withGaps.materialGaps[0].label, 'gap image task failed');
     assert(gapImage.prompt.includes(`图片用途：${withGaps.materialGaps[0].label}`), 'gap image task did not use the system prompt');
     assert(fs.existsSync(path.join(gapImage.outputDir, `${gapImage.id}-图片任务说明.txt`)), 'image task brief missing');
+    const nonHeadImageReviewResponse = await fetch(`${BASE}/image-tasks/${gapImage.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'approved' })
+    });
+    const nonHeadImageReviewBody = await nonHeadImageReviewResponse.json();
+    assert(nonHeadImageReviewResponse.status === 409 && /素材动作不是今日操作队列队首/.test(nonHeadImageReviewBody.error), 'non-head image task was allowed to review');
+    const afterBlockedImageReview = await api(`/cases/${caze.id}`);
+    assert(afterBlockedImageReview.imageTasks.find((item) => item.id === gapImage.id)?.status === gapImage.status, 'non-head image task review changed status');
+    const nonHeadImageGenerateResponse = await fetch(`${BASE}/image-tasks/${gapImage.id}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const nonHeadImageGenerateBody = await nonHeadImageGenerateResponse.json();
+    assert(nonHeadImageGenerateResponse.status === 409 && /素材动作不是今日操作队列队首/.test(nonHeadImageGenerateBody.error), 'non-head image task was allowed to generate');
+    const materialGuardDb = new DatabaseSync(path.join(ROOT_DIR, 'data', 'souren.sqlite'));
+    materialGuardDb.prepare('UPDATE cases SET health_status = ? WHERE id = ?').run('失联暂停', materialGuardCase.id);
+    materialGuardDb.close();
     const gapImagePrompt = await api(`/image-tasks/${gapImage.id}/prompt`);
     assert(gapImagePrompt.text.includes('正向提示词：') && gapImagePrompt.text.includes('反向提示词：'), 'image prompt copy text missing');
     let imagePromptPatchRejected = false;
@@ -1899,7 +1970,8 @@ async function main() {
     assert(largeQueueDashboard.priorityActions.filter((item) => item.kind === '微信交付').length >= 35, 'backend priority queue omitted delivery items beyond old page limit');
 
     const review = await api('/review');
-    assert(review.totals.cases === 4, 'review case total invalid');
+    const reviewCases = await api('/cases');
+    assert(review.totals.cases === reviewCases.length, 'review case total invalid');
     assert(review.totals.accountSnapshots === 3, 'review account snapshot total invalid');
     assert(review.totals.videoSnapshots === 2, 'review video snapshot total invalid');
     assert(review.contentKindStats.some((item) => item.kind === '爆款提权' && item.total >= 1), 'review content kind stats missing');

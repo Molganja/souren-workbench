@@ -1096,6 +1096,22 @@ function requireQueueHeadForClipTask(req, task, action = '处理') {
   throw queueGuardError(`这条剪辑任务不是今日操作队列队首，不能越过前面的任务${action}`);
 }
 
+function caseMaterialIsDashboardQueueHead(caseId) {
+  if (!caseId) return false;
+  const expected = String(caseId);
+  const queueHead = dashboardQueueHead(dashboard());
+  const materialCaseId = queueHead?.materialSync?.caseId || queueHead?.materialSync?.case?.id;
+  if (materialCaseId && String(materialCaseId) === expected) return true;
+  const slotCaseId = queueHead?.slot?.caseId || queueHead?.slot?.case?.id;
+  return Boolean(slotCaseId && String(slotCaseId) === expected && ['素材阻塞', '异常'].includes(queueHead?.slot?.status));
+}
+
+function requireQueueHeadForCaseMaterial(req, caseId, action = '处理') {
+  if (queueGuardBypassed(req)) return;
+  if (caseMaterialIsDashboardQueueHead(caseId)) return;
+  throw queueGuardError(`这个账号的素材动作不是今日操作队列队首，不能越过前面的任务${action}`);
+}
+
 function createSlotForCase(caze, input = {}) {
   const contentKind = CONTENT_KINDS.includes(input.contentKind) ? input.contentKind : '日常养号';
   const stage = STAGES.includes(input.stage) ? input.stage : caze.stage;
@@ -4622,16 +4638,22 @@ app.get('/api/cases/:id/material-intake-note', (req, res) => {
 });
 
 app.post('/api/cases/:id/scan-assets', (req, res) => {
-  const caze = caseById(req.params.id);
-  if (!caze) return res.status(404).json({ error: 'case not found' });
-  const inserted = scanCaseAssets(caze);
-  res.json({ inserted, assets: all('SELECT * FROM assets WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowAsset) });
+  try {
+    const caze = caseById(req.params.id);
+    if (!caze) return res.status(404).json({ error: 'case not found' });
+    requireQueueHeadForCaseMaterial(req, caze.id, '扫描素材');
+    const inserted = scanCaseAssets(caze);
+    res.json({ inserted, assets: all('SELECT * FROM assets WHERE case_id = ? ORDER BY created_at DESC', [caze.id]).map(rowAsset) });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.post('/api/cases/:id/sync-source-materials', (req, res) => {
   try {
     const caze = caseById(req.params.id);
     if (!caze) return res.status(404).json({ error: 'case not found' });
+    requireQueueHeadForCaseMaterial(req, caze.id, '同步素材');
     const result = syncCaseSourceMaterials(caze);
     res.json({
       ...result,
@@ -5145,71 +5167,81 @@ function rejectImageTaskOverrideFields(input = {}) {
 }
 
 app.post('/api/image-tasks', (req, res) => {
-  const body = req.body || {};
-  const overrideError = rejectImageTaskOverrideFields(body);
-  if (overrideError) return res.status(overrideError.status).json({ error: overrideError.message, field: overrideError.field });
-  const caze = caseById(body.caseId);
-  if (!caze) return res.status(404).json({ error: 'case not found' });
-  const slot = body.planSlotId ? slotById(body.planSlotId) : null;
-  if (body.planSlotId && !slot) return res.status(404).json({ error: 'slot not found' });
-  if (slot && slot.caseId !== caze.id) return res.status(400).json({ error: 'slot does not belong to this case' });
-  const purpose = String(body.purpose || slot?.contentKind || '').trim();
-  if (!purpose) return res.status(400).json({ error: '图片任务必须有明确用途' });
-  const outputDir = path.join(caze.localCaseDir, '02-生成补充', safeSegment(purpose));
-  fs.mkdirSync(outputDir, { recursive: true });
-  const sourceMaterials = imageSourceMaterialsFor(caze, slot, purpose);
-  const prompt = imagePromptFor(caze, slot, purpose, sourceMaterials);
-  const negativePrompt = '过度精修，夸张效果，水印，低清晰度，错误文字，变形肢体，不符合账号人设的场景';
-  const status = imageSettings().ready ? 'draft' : 'waiting_key';
-  const id = uid('image');
-  run(
-    `INSERT INTO image_tasks
-    (id, case_id, plan_slot_id, purpose, prompt, negative_prompt, source_materials, output_dir, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      caze.id,
-      body.planSlotId || null,
-      purpose,
-      prompt,
-      negativePrompt,
-      JSON.stringify(sourceMaterials),
-      outputDir,
-      status,
-      now(),
-      now()
-    ]
-  );
-  const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [id]));
-  writeImageTaskBrief(task);
-  res.json(task);
+  try {
+    const body = req.body || {};
+    const overrideError = rejectImageTaskOverrideFields(body);
+    if (overrideError) return res.status(overrideError.status).json({ error: overrideError.message, field: overrideError.field });
+    const caze = caseById(body.caseId);
+    if (!caze) return res.status(404).json({ error: 'case not found' });
+    requireQueueHeadForCaseMaterial(req, caze.id, '创建缺口图片任务');
+    const slot = body.planSlotId ? slotById(body.planSlotId) : null;
+    if (body.planSlotId && !slot) return res.status(404).json({ error: 'slot not found' });
+    if (slot && slot.caseId !== caze.id) return res.status(400).json({ error: 'slot does not belong to this case' });
+    const purpose = String(body.purpose || slot?.contentKind || '').trim();
+    if (!purpose) return res.status(400).json({ error: '图片任务必须有明确用途' });
+    const outputDir = path.join(caze.localCaseDir, '02-生成补充', safeSegment(purpose));
+    fs.mkdirSync(outputDir, { recursive: true });
+    const sourceMaterials = imageSourceMaterialsFor(caze, slot, purpose);
+    const prompt = imagePromptFor(caze, slot, purpose, sourceMaterials);
+    const negativePrompt = '过度精修，夸张效果，水印，低清晰度，错误文字，变形肢体，不符合账号人设的场景';
+    const status = imageSettings().ready ? 'draft' : 'waiting_key';
+    const id = uid('image');
+    run(
+      `INSERT INTO image_tasks
+      (id, case_id, plan_slot_id, purpose, prompt, negative_prompt, source_materials, output_dir, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        caze.id,
+        body.planSlotId || null,
+        purpose,
+        prompt,
+        negativePrompt,
+        JSON.stringify(sourceMaterials),
+        outputDir,
+        status,
+        now(),
+        now()
+      ]
+    );
+    const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [id]));
+    writeImageTaskBrief(task);
+    res.json(task);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.patch('/api/image-tasks/:id', (req, res) => {
-  const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
-  if (!task) return res.status(404).json({ error: 'image task not found' });
-  const body = req.body || {};
-  const overrideError = rejectImageTaskOverrideFields(body);
-  if (overrideError) return res.status(overrideError.status).json({ error: overrideError.message, field: overrideError.field });
-  if (Object.prototype.hasOwnProperty.call(body, 'purpose')) {
-    return res.status(400).json({ error: '图片任务用途来自素材缺口，不接受临时改写', field: 'purpose' });
+  try {
+    const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
+    if (!task) return res.status(404).json({ error: 'image task not found' });
+    requireQueueHeadForCaseMaterial(req, task.caseId, '审核图片任务');
+    const body = req.body || {};
+    const overrideError = rejectImageTaskOverrideFields(body);
+    if (overrideError) return res.status(overrideError.status).json({ error: overrideError.message, field: overrideError.field });
+    if (Object.prototype.hasOwnProperty.call(body, 'purpose')) {
+      return res.status(400).json({ error: '图片任务用途来自素材缺口，不接受临时改写', field: 'purpose' });
+    }
+    const nextStatus = body.status ?? task.status;
+    if (!ALLOWED_IMAGE_STATUSES.includes(nextStatus) || !REVIEWABLE_IMAGE_STATUSES.includes(nextStatus)) {
+      return res.status(400).json({ error: '图片任务只允许标记为待检查、可用或不用' });
+    }
+    run(
+      `UPDATE image_tasks SET purpose = ?, prompt = ?, negative_prompt = ?, status = ?, updated_at = ? WHERE id = ?`,
+      [
+        task.purpose,
+        task.prompt,
+        task.negativePrompt,
+        nextStatus,
+        now(),
+        task.id
+      ]
+    );
+    res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id])));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
   }
-  const nextStatus = body.status ?? task.status;
-  if (!ALLOWED_IMAGE_STATUSES.includes(nextStatus) || !REVIEWABLE_IMAGE_STATUSES.includes(nextStatus)) {
-    return res.status(400).json({ error: '图片任务只允许标记为待检查、可用或不用' });
-  }
-  run(
-    `UPDATE image_tasks SET purpose = ?, prompt = ?, negative_prompt = ?, status = ?, updated_at = ? WHERE id = ?`,
-    [
-      task.purpose,
-      task.prompt,
-      task.negativePrompt,
-      nextStatus,
-      now(),
-      task.id
-    ]
-  );
-  res.json(rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [task.id])));
 });
 
 app.get('/api/image-tasks/:id/prompt', (req, res) => {
@@ -5221,6 +5253,11 @@ app.get('/api/image-tasks/:id/prompt', (req, res) => {
 app.post('/api/image-tasks/:id/generate', async (req, res) => {
   const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
   if (!task) return res.status(404).json({ error: 'image task not found' });
+  try {
+    requireQueueHeadForCaseMaterial(req, task.caseId, '生成图片');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
   if (!IMAGE_GENERATION_STATUSES.includes(task.status)) {
     return res.status(409).json({ error: '图片任务已经进入检查或收尾状态，不能重新生成' });
   }
@@ -5524,20 +5561,25 @@ app.post('/api/viral-templates/:id/bulk-generate', (req, res) => {
 });
 
 app.patch('/api/assets/:id', (req, res) => {
-  const asset = rowAsset(get('SELECT * FROM assets WHERE id = ?', [req.params.id]));
-  if (!asset) return res.status(404).json({ error: 'asset not found' });
-  const body = req.body || {};
-  run(
-    'UPDATE assets SET stage = ?, source = ?, usage = ?, review_status = ? WHERE id = ?',
-    [
-      body.stage ?? asset.stage,
-      body.source ?? asset.source,
-      body.usage ?? asset.usage,
-      body.reviewStatus ?? asset.reviewStatus,
-      asset.id
-    ]
-  );
-  res.json(rowAsset(get('SELECT * FROM assets WHERE id = ?', [asset.id])));
+  try {
+    const asset = rowAsset(get('SELECT * FROM assets WHERE id = ?', [req.params.id]));
+    if (!asset) return res.status(404).json({ error: 'asset not found' });
+    requireQueueHeadForCaseMaterial(req, asset.caseId, '标记素材');
+    const body = req.body || {};
+    run(
+      'UPDATE assets SET stage = ?, source = ?, usage = ?, review_status = ? WHERE id = ?',
+      [
+        body.stage ?? asset.stage,
+        body.source ?? asset.source,
+        body.usage ?? asset.usage,
+        body.reviewStatus ?? asset.reviewStatus,
+        asset.id
+      ]
+    );
+    res.json(rowAsset(get('SELECT * FROM assets WHERE id = ?', [asset.id])));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'api not found' }));
