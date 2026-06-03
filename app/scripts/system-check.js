@@ -720,6 +720,18 @@ if (
 ) ok('图片任务只能从素材缺口或明确用途创建，提示词和参考素材由系统生成');
 else fail('图片任务仍存在泛化入口或默认用途');
 
+if (
+  serverSource.includes('ALLOWED_IMAGE_STATUSES')
+  && serverSource.includes('REVIEWABLE_IMAGE_STATUSES')
+  && serverSource.includes('IMAGE_GENERATION_STATUSES')
+  && serverSource.includes('图片任务只允许标记为待检查、可用或不用')
+  && serverSource.includes('图片任务已经进入检查或收尾状态，不能重新生成')
+  && smokeSource.includes('image task accepted an unknown status')
+  && smokeSource.includes('approved image task was allowed to regenerate')
+  && smokeSource.includes('regenerate attempt changed approved image task status')
+) ok('图片任务状态机固定，不能写未知状态或收尾后重生成');
+else fail('图片任务仍可能被写入未知状态或收尾后重复生成');
+
 const oldDeletedDirMarker = '_' + 'deleted';
 if (serverSource.includes('fs.rmSync(target, { recursive: true, force: true })') && serverSource.includes('assertCaseDeleteConfirmed(req, caze)') && !serverSource.includes('DELETED_CASE_ROOT') && !serverSource.includes(oldDeletedDirMarker) && mainSource.includes('本地素材副本也会同步删除')) ok('删除案例会在确认后同步删除本地案例目录');
 else fail('删除案例仍会保留本地目录');

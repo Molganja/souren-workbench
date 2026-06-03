@@ -1790,7 +1790,24 @@ async function main() {
     assert(detachedImageRejected, 'detached image task without purpose was allowed');
     const imageTask = await api('/image-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, purpose: '封面图' }) });
     assert(imageTask.status === 'waiting_key' || imageTask.status === 'draft', 'image task status invalid');
-    await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
+    let invalidImageStatusRejected = false;
+    try {
+      await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'hidden_done' }) });
+    } catch (error) {
+      invalidImageStatusRejected = /待检查、可用或不用/.test(error.message);
+    }
+    assert(invalidImageStatusRejected, 'image task accepted an unknown status');
+    const approvedImageTask = await api(`/image-tasks/${imageTask.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
+    assert(approvedImageTask.status === 'approved', 'image task did not accept approved status');
+    let approvedImageRegenerateRejected = false;
+    try {
+      await api(`/image-tasks/${imageTask.id}/generate`, { method: 'POST' });
+    } catch (error) {
+      approvedImageRegenerateRejected = /不能重新生成/.test(error.message);
+    }
+    assert(approvedImageRegenerateRejected, 'approved image task was allowed to regenerate');
+    const afterApprovedGenerateAttempt = await api(`/cases/${caze.id}`);
+    assert(afterApprovedGenerateAttempt.imageTasks.find((item) => item.id === imageTask.id)?.status === 'approved', 'regenerate attempt changed approved image task status');
 
     const pausedViralCase = await api('/cases', {
       method: 'POST',

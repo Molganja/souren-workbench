@@ -119,6 +119,9 @@ const TEXT_EXT = new Set(['.txt', '.md', '.docx']);
 const OPEN_IMAGE_STATUSES = ['waiting_key', 'draft', 'review', 'timeout'];
 const OPEN_CLIP_STATUSES = ['waiting_edit', 'draft'];
 const ALLOWED_CLIP_STATUSES = ['waiting_edit', 'draft', 'completed'];
+const ALLOWED_IMAGE_STATUSES = ['waiting_key', 'draft', 'generating', 'review', 'approved', 'rejected', 'timeout'];
+const REVIEWABLE_IMAGE_STATUSES = ['review', 'approved', 'rejected'];
+const IMAGE_GENERATION_STATUSES = ['waiting_key', 'draft', 'timeout'];
 const OPEN_COLLECTION_STATUSES = ['waiting_chrome'];
 const STATUS_LABELS = {
   waiting_key: '待接入图片接口',
@@ -5191,13 +5194,17 @@ app.patch('/api/image-tasks/:id', (req, res) => {
   if (Object.prototype.hasOwnProperty.call(body, 'purpose')) {
     return res.status(400).json({ error: '图片任务用途来自素材缺口，不接受临时改写', field: 'purpose' });
   }
+  const nextStatus = body.status ?? task.status;
+  if (!ALLOWED_IMAGE_STATUSES.includes(nextStatus) || !REVIEWABLE_IMAGE_STATUSES.includes(nextStatus)) {
+    return res.status(400).json({ error: '图片任务只允许标记为待检查、可用或不用' });
+  }
   run(
     `UPDATE image_tasks SET purpose = ?, prompt = ?, negative_prompt = ?, status = ?, updated_at = ? WHERE id = ?`,
     [
       task.purpose,
       task.prompt,
       task.negativePrompt,
-      body.status ?? task.status,
+      nextStatus,
       now(),
       task.id
     ]
@@ -5214,6 +5221,9 @@ app.get('/api/image-tasks/:id/prompt', (req, res) => {
 app.post('/api/image-tasks/:id/generate', async (req, res) => {
   const task = rowImageTask(get('SELECT * FROM image_tasks WHERE id = ?', [req.params.id]));
   if (!task) return res.status(404).json({ error: 'image task not found' });
+  if (!IMAGE_GENERATION_STATUSES.includes(task.status)) {
+    return res.status(409).json({ error: '图片任务已经进入检查或收尾状态，不能重新生成' });
+  }
   try {
     res.json(await generateImageFiles(task));
   } catch (error) {
