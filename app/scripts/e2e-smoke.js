@@ -1400,7 +1400,24 @@ async function main() {
       customClipBriefRejected = /固定剪辑配方/.test(error.message);
     }
     assert(customClipBriefRejected, 'clip task accepted a custom brief instead of the fixed recipe');
+    let clipCreateStatusRejected = false;
+    try {
+      await api('/clip-tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          caseId: caze.id,
+          planSlotId: slot.id,
+          title: '直接完成剪辑任务',
+          status: 'completed',
+          recipeConfirmed: true
+        })
+      });
+    } catch (error) {
+      clipCreateStatusRejected = /不能手动指定状态/.test(error.message);
+    }
+    assert(clipCreateStatusRejected, 'clip task creation accepted a manual status');
     const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
+    assert(clip.status === 'waiting_edit', 'clip task did not start as waiting edit');
     const repeatedClip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收重复剪辑任务' }) });
     assert(repeatedClip.id === clip.id && repeatedClip.alreadyExisting === true, 'duplicate clip task was created for the same slot');
     assert(clip.brief.includes('固定剪辑配方'), 'clip task response missing fixed edit recipe');

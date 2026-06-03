@@ -698,12 +698,16 @@ if (
   !mainSource.includes("patchClipStatus('rejected')") &&
   serverSource.includes('完成剪辑前必须先确认已看完固定剪辑配方') &&
   serverSource.includes("OPEN_CLIP_STATUSES = ['waiting_edit', 'draft']") &&
+  serverSource.includes('剪辑任务创建后只能进入待剪辑，不能手动指定状态') &&
   serverSource.includes('剪辑任务只需要标记已完成') &&
   serverSource.includes('不接受临时剪辑要求') &&
+  !serverSource.includes("body.status || 'waiting_edit'") &&
   !serverSource.includes('body.brief ?') &&
   !serverSource.includes('body.brief ?? task.brief') &&
   dbSource.includes("WHERE status IN ('review', 'rejected')") &&
   smokeSource.includes('clip task accepted a custom brief instead of the fixed recipe') &&
+  smokeSource.includes('clip task creation accepted a manual status') &&
+  smokeSource.includes('clip task did not start as waiting edit') &&
   smokeSource.includes('clip task allowed patching the fixed recipe brief') &&
   smokeSource.includes('clipCompletedWithoutRecipeRejected') &&
   smokeSource.includes('clip task allowed a waiting-confirm status') &&

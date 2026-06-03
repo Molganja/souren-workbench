@@ -5356,6 +5356,7 @@ app.post('/api/clip-tasks', (req, res) => {
   if (!caze) return res.status(404).json({ error: 'case not found' });
   if (!body.planSlotId) return res.status(400).json({ error: '剪辑任务必须绑定具体排期' });
   if (Object.prototype.hasOwnProperty.call(body, 'brief')) return res.status(400).json({ error: '剪辑任务使用固定剪辑配方，不接受临时剪辑要求' });
+  if (Object.prototype.hasOwnProperty.call(body, 'status')) return res.status(400).json({ error: '剪辑任务创建后只能进入待剪辑，不能手动指定状态' });
   const slot = slotById(body.planSlotId);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   if (slot && slot.caseId !== caze.id) return res.status(400).json({ error: 'slot does not belong to this case' });
@@ -5402,7 +5403,7 @@ app.post('/api/clip-tasks', (req, res) => {
       body.planSlotId,
       title,
       brief,
-      body.status || 'waiting_edit',
+      'waiting_edit',
       now(),
       now()
     ]
