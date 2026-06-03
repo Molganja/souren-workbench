@@ -681,11 +681,16 @@ if (
   serverSource.includes('完成剪辑前必须先确认已看完固定剪辑配方') &&
   serverSource.includes("OPEN_CLIP_STATUSES = ['waiting_edit', 'draft']") &&
   serverSource.includes('剪辑任务只需要标记已完成') &&
+  serverSource.includes('不接受临时剪辑要求') &&
+  !serverSource.includes('body.brief ?') &&
+  !serverSource.includes('body.brief ?? task.brief') &&
   dbSource.includes("WHERE status IN ('review', 'rejected')") &&
+  smokeSource.includes('clip task accepted a custom brief instead of the fixed recipe') &&
+  smokeSource.includes('clip task allowed patching the fixed recipe brief') &&
   smokeSource.includes('clipCompletedWithoutRecipeRejected') &&
   smokeSource.includes('clip task allowed a waiting-confirm status') &&
   smokeSource.includes('clip task allowed a rework status instead of staying pending')
-) ok('剪辑任务必须先查看完整固定配方才能标记完成，且不再制造中间确认状态');
+) ok('剪辑任务只使用固定配方，不能塞临时说明，且看完配方后才能完成');
 else fail('剪辑任务仍可能不看配方直接标记完成');
 
 if ((mainSource.includes('先打开完整剪辑要求并确认看完配方') || serverSource.includes('先打开完整剪辑要求并确认看完配方')) && readmeSource.includes('打开完整要求并确认看完配方') && !readmeSource.includes('可在首页查看并标记状态')) ok('剪辑任务前台和文档不再保留直接标记旧口径');

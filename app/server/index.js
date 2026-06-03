@@ -5191,6 +5191,7 @@ app.post('/api/clip-tasks', (req, res) => {
   const caze = caseById(body.caseId);
   if (!caze) return res.status(404).json({ error: 'case not found' });
   if (!body.planSlotId) return res.status(400).json({ error: '剪辑任务必须绑定具体排期' });
+  if (Object.prototype.hasOwnProperty.call(body, 'brief')) return res.status(400).json({ error: '剪辑任务使用固定剪辑配方，不接受临时剪辑要求' });
   const slot = slotById(body.planSlotId);
   if (!slot) return res.status(404).json({ error: 'slot not found' });
   if (slot && slot.caseId !== caze.id) return res.status(400).json({ error: 'slot does not belong to this case' });
@@ -5225,7 +5226,7 @@ app.post('/api/clip-tasks', (req, res) => {
     '',
     '交付要求：剪完或安排发布后，在系统标记「已完成」；不需要上传成片或把文件放回目录。'
   ].join('\n');
-  const brief = body.brief ? `${String(body.brief).trim()}\n\n${editRecipe}` : generatedBrief;
+  const brief = generatedBrief;
   const id = uid('clip');
   run(
     `INSERT INTO clip_tasks
@@ -5249,6 +5250,7 @@ app.patch('/api/clip-tasks/:id', (req, res) => {
   const task = rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [req.params.id]));
   if (!task) return res.status(404).json({ error: 'clip task not found' });
   const body = req.body || {};
+  if (Object.prototype.hasOwnProperty.call(body, 'brief')) return res.status(400).json({ error: '剪辑任务使用固定剪辑配方，不接受临时剪辑要求' });
   const nextStatus = body.status ?? task.status;
   if (!ALLOWED_CLIP_STATUSES.includes(nextStatus)) {
     return res.status(400).json({ error: '剪辑任务只需要标记已完成；未完成时保持待剪辑，不再设置中间确认状态。' });
@@ -5265,7 +5267,7 @@ app.patch('/api/clip-tasks/:id', (req, res) => {
     `UPDATE clip_tasks SET title = ?, brief = ?, status = ?, updated_at = ? WHERE id = ?`,
     [
       body.title ?? task.title,
-      body.brief ?? task.brief,
+      task.brief,
       nextStatus,
       now(),
       task.id

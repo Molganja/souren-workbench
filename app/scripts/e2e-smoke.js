@@ -1185,6 +1185,21 @@ async function main() {
       detachedClipRejected = /具体排期/.test(error.message);
     }
     assert(detachedClipRejected, 'clip task without a plan slot was allowed');
+    let customClipBriefRejected = false;
+    try {
+      await api('/clip-tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          caseId: caze.id,
+          planSlotId: slot.id,
+          title: '临时剪辑说明验收',
+          brief: '临时加一段自由发挥剪辑要求'
+        })
+      });
+    } catch (error) {
+      customClipBriefRejected = /固定剪辑配方/.test(error.message);
+    }
+    assert(customClipBriefRejected, 'clip task accepted a custom brief instead of the fixed recipe');
     const clip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收剪辑任务' }) });
     const repeatedClip = await api('/clip-tasks', { method: 'POST', body: JSON.stringify({ caseId: caze.id, planSlotId: slot.id, title: '验收重复剪辑任务' }) });
     assert(repeatedClip.id === clip.id && repeatedClip.alreadyExisting === true, 'duplicate clip task was created for the same slot');
@@ -1211,6 +1226,13 @@ async function main() {
       clipRejectedStatusRejected = /只需要标记已完成/.test(error.message);
     }
     assert(clipRejectedStatusRejected, 'clip task allowed a rework status instead of staying pending');
+    let clipBriefPatchRejected = false;
+    try {
+      await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ brief: '把结构改成自由剪辑' }) });
+    } catch (error) {
+      clipBriefPatchRejected = /固定剪辑配方/.test(error.message);
+    }
+    assert(clipBriefPatchRejected, 'clip task allowed patching the fixed recipe brief');
     let clipCompletedWithoutRecipeRejected = false;
     try {
       await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) });
