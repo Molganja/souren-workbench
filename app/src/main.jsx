@@ -1141,21 +1141,24 @@ function CasesView({ cases, onOpenCase, onNew, onBulk, onAct }) {
           <span>{filtered.length} / {cases.length}</span>
         </div>
         {cases.length === 0 ? <div className="empty">还没有案例</div> : filtered.length === 0 ? <div className="empty">没有匹配的案例</div> : (
-          <div className="caseGrid">
-            {filtered.map((item) => (
-              <div key={item.id} className="caseTile caseTileBox">
-                <button className="caseTileMain" onClick={() => onOpenCase(item.id)}>
-                  <strong>{item.weixinNick}</strong>
-                  <span>{item.caseCode} · {item.project}</span>
-                  <em>{douyinDisplay(item)} · {item.healthStatus}</em>
-                  {caseMissingFields(item).length > 0 && <small className="caseGap">缺资料：{caseMissingFields(item).join(' / ')}</small>}
-                </button>
-                <div className="caseTileActions">
-                  {caseMissingFields(item).length > 0 && <button onClick={() => onOpenCase(item.id, { edit: true })}>补资料</button>}
-                  <button className="dangerButton" onClick={() => setDeleteTarget(item)}>删除</button>
+          <div className="caseGrid caseLibraryGrid">
+            {filtered.map((item) => {
+              const missing = caseMissingFields(item);
+              return (
+                <div key={item.id} className="caseTile caseTileBox caseLibraryTile">
+                  <button className="caseTileMain" onClick={() => onOpenCase(item.id)}>
+                    <strong>{item.weixinNick}</strong>
+                    <span>{item.caseCode} · {item.project}</span>
+                    <em>{douyinDisplay(item)} · {item.healthStatus}</em>
+                    {missing.length > 0 && <small className="caseGap">缺资料：{missing.join(' / ')}</small>}
+                  </button>
+                  <div className="caseTileActions">
+                    {missing.length > 0 && <button onClick={() => onOpenCase(item.id, { edit: true })}>补资料</button>}
+                    <button className="dangerButton" onClick={() => setDeleteTarget(item)}>删除</button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {registerCandidate && (

@@ -1089,6 +1089,11 @@ button:disabled:hover,
   gap: 10px;
 }
 
+.caseLibraryGrid {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
 .caseTile {
   text-align: left;
   display: grid;
@@ -1101,6 +1106,22 @@ button:disabled:hover,
   background: #fff;
 }
 
+.caseLibraryTile {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  box-shadow: 0 1px 2px rgba(32, 36, 42, 0.04);
+}
+
+.caseLibraryTile:hover {
+  border-color: #cbd3dc;
+}
+
 .caseTileMain {
   border: 0;
   padding: 0;
@@ -1111,27 +1132,55 @@ button:disabled:hover,
   align-items: start;
 }
 
+.caseLibraryTile .caseTileMain {
+  width: 100%;
+  color: inherit;
+  background: transparent;
+  justify-content: start;
+  justify-items: start;
+}
+
 .caseTileMain:hover {
   color: var(--ink);
 }
 
+.caseLibraryTile .caseTileMain:hover strong {
+  color: var(--blue);
+}
+
+.caseLibraryTile .caseTileMain:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
+  border-radius: 5px;
+}
+
 .caseTile strong {
   font-size: 16px;
+  line-height: 1.35;
 }
 
 .caseTile span {
   color: var(--muted);
+  line-height: 1.35;
 }
 
 .caseTile em {
   color: var(--orange);
   font-style: normal;
   font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .caseGap {
+  display: block;
+  padding: 6px 8px;
+  border: 1px solid #f6c8bf;
+  border-radius: 6px;
+  background: var(--red-soft);
   color: var(--red);
   font-weight: 700;
+  line-height: 1.4;
 }
 
 .caseTileActions {
@@ -1139,6 +1188,15 @@ button:disabled:hover,
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  width: 100%;
+  padding-top: 10px;
+  margin-top: auto;
+  border-top: 1px solid #edf0f3;
+}
+
+.caseTileActions .dangerButton,
+.cleanupHint .dangerButton {
+  margin-top: 0;
 }
 
 .cleanupHint {
@@ -1146,6 +1204,8 @@ button:disabled:hover,
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+  border-color: #d8dee6;
+  background: #fbfcfe;
 }
 
 .cleanupHint > div {

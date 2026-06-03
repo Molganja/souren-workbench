@@ -364,6 +364,10 @@ async function startupDemoCleanupSmoke() {
         sourceMaterialDir: realDir
       })
     }, cleanupBase);
+    const cleanupDb = new DatabaseSync(path.join(STARTUP_CLEANUP_ROOT_DIR, 'data', 'souren.sqlite'));
+    const demoSlotsBefore = cleanupDb.prepare('SELECT COUNT(*) AS count FROM plan_slots WHERE case_id = ?').get(demoCase.id).count;
+    const realSlotsBefore = cleanupDb.prepare('SELECT COUNT(*) AS count FROM plan_slots WHERE case_id = ?').get(realCase.id).count;
+    assert(demoSlotsBefore > 0 && realSlotsBefore > 0, 'startup demo cleanup smoke did not create schedule rows');
     const summary = await api('/maintenance/startup-demo-cases', {}, cleanupBase);
     assert(summary.count === 1 && summary.cases[0].id === demoCase.id && summary.confirmText === '清理测试账号', 'startup demo cleanup did not isolate demo account');
     let wrongCleanupRejected = false;
@@ -383,6 +387,11 @@ async function startupDemoCleanupSmoke() {
     assert(cleanup.deletedCount === 1 && cleanup.removed[0].id === demoCase.id, 'startup demo cleanup deleted wrong count');
     const remaining = await api('/cases', {}, cleanupBase);
     assert(remaining.length === 1 && remaining[0].id === realCase.id, 'startup demo cleanup removed a real account');
+    const demoSlotsAfter = cleanupDb.prepare('SELECT COUNT(*) AS count FROM plan_slots WHERE case_id = ?').get(demoCase.id).count;
+    const realSlotsAfter = cleanupDb.prepare('SELECT COUNT(*) AS count FROM plan_slots WHERE case_id = ?').get(realCase.id).count;
+    assert(demoSlotsAfter === 0, 'startup demo cleanup left demo schedule rows');
+    assert(realSlotsAfter === realSlotsBefore, 'startup demo cleanup removed real schedule rows');
+    cleanupDb.close();
     assert(!fs.existsSync(demoCase.localCaseDir), 'startup demo cleanup did not remove demo material directory');
     assert(fs.existsSync(realCase.localCaseDir), 'startup demo cleanup removed real material directory');
   } finally {

@@ -162,6 +162,7 @@ if (
   && mainSource.includes("request('/maintenance/startup-demo-cases/delete'")
   && smokeSource.includes('startup demo cleanup did not isolate demo account')
   && smokeSource.includes('startup demo cleanup removed a real account')
+  && smokeSource.includes('startup demo cleanup left demo schedule rows')
 ) ok('启动前测试/demo账号清理有本机和确认保护');
 else fail('测试/demo账号清理缺少本机限制、确认短语或真实账号保护');
 
