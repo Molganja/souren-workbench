@@ -52,12 +52,35 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function gitOutput(args) {
-  try {
-    return execFileSync('git', args, { cwd: ROOT_DIR, encoding: 'utf8' }).trim();
-  } catch {
-    return '';
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function gitOutput(args, options = {}) {
+  const attempts = Math.max(1, Number(options.attempts || 1));
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      return execFileSync('git', args, { cwd: ROOT_DIR, encoding: 'utf8' }).trim();
+    } catch {
+      if (index < attempts - 1) sleepSync(1000 * (index + 1));
+    }
   }
+  return '';
+}
+
+function githubHttpsRemote(remote) {
+  if (/^git@github\.com:/.test(remote)) return remote.replace(/^git@github\.com:/, 'https://github.com/');
+  if (/^ssh:\/\/git@github\.com\//.test(remote)) return remote.replace(/^ssh:\/\/git@github\.com\//, 'https://github.com/');
+  return '';
+}
+
+function remoteMainHead(remote) {
+  let output = gitOutput(['ls-remote', '--heads', 'origin', 'main'], { attempts: 3 });
+  if (!output) {
+    const httpsRemote = githubHttpsRemote(remote);
+    if (httpsRemote) output = gitOutput(['ls-remote', '--heads', httpsRemote, 'main'], { attempts: 2 });
+  }
+  return output.split(/\s+/)[0] || '';
 }
 
 function verifyGitHubSync() {
@@ -69,7 +92,7 @@ function verifyGitHubSync() {
     return;
   }
   const local = gitOutput(['rev-parse', 'HEAD']);
-  const remoteHead = gitOutput(['ls-remote', '--heads', 'origin', 'main']).split(/\s+/)[0] || '';
+  const remoteHead = remoteMainHead(remote);
   if (local && remoteHead && local === remoteHead) {
     console.log(`OK 远端主分支已同步 ${local.slice(0, 7)}`);
     return;
