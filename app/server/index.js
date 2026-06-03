@@ -107,6 +107,11 @@ app.use('/shared-files', requireWorkbenchAccess);
 
 const STAGES = ['起号期', '决策期', '术后恢复期', '成果期', '收尾期'];
 const CONTENT_KINDS = ['素人种草', '日常养号', '爆款提权'];
+const CONTENT_SEED_STAGES = ['通用', ...STAGES];
+const CONTENT_SEED_KINDS = ['素人种草', '日常养号'];
+const CONTENT_SEED_FORMATS = ['图文', '口播', '视频'];
+const MIN_CONTENT_SEED_WEIGHT = 1;
+const MAX_CONTENT_SEED_WEIGHT = 20;
 const PLAN_SLOT_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成', '异常', '已取消'];
 const ACTIVE_OPERATOR_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'];
 const PAUSE_CANCEL_SLOT_STATUSES = ACTIVE_OPERATOR_STATUSES;
@@ -525,6 +530,51 @@ function rowContentSeed(row) {
   };
 }
 
+function contentSeedValidationError(message, field) {
+  const error = new Error(message);
+  error.status = 400;
+  error.field = field;
+  return error;
+}
+
+function normalizeContentSeedTags(input) {
+  const raw = Array.isArray(input)
+    ? input
+    : String(input || '').split(/[,\s，、]+/);
+  return Array.from(new Set(raw.map((item) => String(item || '').trim()).filter(Boolean))).slice(0, 12);
+}
+
+function normalizeContentSeedInput(input = {}, existing = null) {
+  const project = String(input.project ?? existing?.project ?? '通用').trim();
+  const stage = String(input.stage ?? existing?.stage ?? '通用').trim();
+  const contentKind = String(input.contentKind ?? input.content_kind ?? existing?.contentKind ?? '日常养号').trim();
+  const format = String(input.format ?? existing?.format ?? '图文').trim();
+  const titleTemplate = String(input.titleTemplate ?? input.title_template ?? existing?.titleTemplate ?? '').trim();
+  const contentTemplate = String(input.contentTemplate ?? input.content_template ?? existing?.contentTemplate ?? '').trim();
+  const tags = input.tags === undefined ? (existing?.tags || []) : normalizeContentSeedTags(input.tags);
+  const baseWeightInput = input.baseWeight ?? input.base_weight ?? existing?.baseWeight ?? 1;
+  const baseWeight = Number(baseWeightInput);
+  if (!project) throw contentSeedValidationError('内容种子必须填写项目或通用', 'project');
+  if (!CONTENT_SEED_STAGES.includes(stage)) throw contentSeedValidationError('内容种子阶段只能选择通用或系统阶段', 'stage');
+  if (!CONTENT_SEED_KINDS.includes(contentKind)) throw contentSeedValidationError('内容种子只服务素人种草或日常养号，爆款提权走爆款链接分析', 'contentKind');
+  if (!CONTENT_SEED_FORMATS.includes(format)) throw contentSeedValidationError('内容种子格式只能是图文、口播或视频', 'format');
+  if (titleTemplate.length < 2) throw contentSeedValidationError('内容种子必须有标题配方', 'titleTemplate');
+  if (contentTemplate.length < 8) throw contentSeedValidationError('内容种子必须有可用正文配方，不能留空', 'contentTemplate');
+  if (!Number.isFinite(baseWeight) || baseWeight < MIN_CONTENT_SEED_WEIGHT || baseWeight > MAX_CONTENT_SEED_WEIGHT) {
+    throw contentSeedValidationError(`内容种子权重必须在 ${MIN_CONTENT_SEED_WEIGHT}-${MAX_CONTENT_SEED_WEIGHT} 之间`, 'baseWeight');
+  }
+  return {
+    project,
+    stage,
+    contentKind,
+    format,
+    titleTemplate,
+    contentTemplate,
+    tags,
+    baseWeight: Math.round(baseWeight)
+  };
+}
+
 function rowImageTask(row) {
   if (!row) return null;
   return {
@@ -853,7 +903,10 @@ function pickContentSeed(slot, caze) {
   const stagePool = projectPool.some((item) => item.stage === slot.stage)
     ? projectPool.filter((item) => item.stage === slot.stage)
     : projectPool;
-  const weighted = stagePool.flatMap((item) => Array(Math.max(1, Math.round(Number(item.baseWeight || 1)))).fill(item));
+  const weighted = stagePool.flatMap((item) => {
+    const weight = Math.max(MIN_CONTENT_SEED_WEIGHT, Math.min(MAX_CONTENT_SEED_WEIGHT, Math.round(Number(item.baseWeight || 1))));
+    return Array(weight).fill(item);
+  });
   return weighted[Math.floor(Math.random() * weighted.length)];
 }
 
@@ -5450,51 +5503,61 @@ app.get('/api/content-seeds', (_req, res) => {
 });
 
 app.post('/api/content-seeds', (req, res) => {
-  const body = req.body || {};
-  const id = uid('seed');
-  run(
-    `INSERT INTO content_seeds
-    (id, project, stage, content_kind, format, title_template, content_template, tags, base_weight, usage_count, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-    [
-      id,
-      body.project || '通用',
-      body.stage || '通用',
-      body.contentKind || '日常养号',
-      body.format || '图文',
-      body.titleTemplate || '未命名内容种子',
-      body.contentTemplate || '',
-      JSON.stringify(body.tags || []),
-      Number(body.baseWeight || 1),
-      now(),
-      now()
-    ]
-  );
-  res.json(rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [id])));
+  try {
+    const body = req.body || {};
+    const input = normalizeContentSeedInput(body);
+    const id = uid('seed');
+    run(
+      `INSERT INTO content_seeds
+      (id, project, stage, content_kind, format, title_template, content_template, tags, base_weight, usage_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      [
+        id,
+        input.project,
+        input.stage,
+        input.contentKind,
+        input.format,
+        input.titleTemplate,
+        input.contentTemplate,
+        JSON.stringify(input.tags),
+        input.baseWeight,
+        now(),
+        now()
+      ]
+    );
+    res.json(rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [id])));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message, field: error.field });
+  }
 });
 
 app.patch('/api/content-seeds/:id', (req, res) => {
-  const seed = rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [req.params.id]));
-  if (!seed) return res.status(404).json({ error: 'content seed not found' });
-  const body = req.body || {};
-  run(
-    `UPDATE content_seeds
-    SET project = ?, stage = ?, content_kind = ?, format = ?, title_template = ?, content_template = ?, tags = ?, base_weight = ?, updated_at = ?
-    WHERE id = ?`,
-    [
-      body.project ?? seed.project,
-      body.stage ?? seed.stage,
-      body.contentKind ?? seed.contentKind,
-      body.format ?? seed.format,
-      body.titleTemplate ?? seed.titleTemplate,
-      body.contentTemplate ?? seed.contentTemplate,
-      JSON.stringify(body.tags ?? seed.tags),
-      Number(body.baseWeight ?? seed.baseWeight),
-      now(),
-      seed.id
-    ]
-  );
-  res.json(rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [seed.id])));
+  try {
+    const seed = rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [req.params.id]));
+    if (!seed) return res.status(404).json({ error: 'content seed not found' });
+    const body = req.body || {};
+    const input = normalizeContentSeedInput(body, seed);
+    run(
+      `UPDATE content_seeds
+      SET project = ?, stage = ?, content_kind = ?, format = ?, title_template = ?, content_template = ?, tags = ?, base_weight = ?, updated_at = ?
+      WHERE id = ?`,
+      [
+        input.project,
+        input.stage,
+        input.contentKind,
+        input.format,
+        input.titleTemplate,
+        input.contentTemplate,
+        JSON.stringify(input.tags),
+        input.baseWeight,
+        now(),
+        seed.id
+      ]
+    );
+    res.json(rowContentSeed(get('SELECT * FROM content_seeds WHERE id = ?', [seed.id])));
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message, field: error.field });
+  }
 });
 
 app.delete('/api/content-seeds/:id', (req, res) => {

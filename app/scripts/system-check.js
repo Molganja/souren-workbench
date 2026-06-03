@@ -99,6 +99,22 @@ if (
 else fail('爆款链接缺少专用分析写回接口，或普通入口仍可能手填半分析结果');
 
 if (
+  serverSource.includes('normalizeContentSeedInput')
+  && serverSource.includes("CONTENT_SEED_KINDS = ['素人种草', '日常养号']")
+  && serverSource.includes('MAX_CONTENT_SEED_WEIGHT = 20')
+  && serverSource.includes('内容种子必须有可用正文配方，不能留空')
+  && serverSource.includes('内容种子只服务素人种草或日常养号，爆款提权走爆款链接分析')
+  && serverSource.includes('Math.min(MAX_CONTENT_SEED_WEIGHT')
+  && !serverSource.includes("body.contentTemplate || ''")
+  && !serverSource.includes('Number(body.baseWeight || 1)')
+  && smokeSource.includes('content seed accepted an empty content template')
+  && smokeSource.includes('content seed accepted viral boost kind')
+  && smokeSource.includes('content seed accepted an extreme base weight')
+  && smokeSource.includes('content seed patch accepted an extreme base weight')
+) ok('内容种子只能作为稳定配方池，不能留空、混入爆款提权或设置极端权重');
+else fail('内容种子仍可能留空、混入爆款提权或用极端权重扰乱候选生成');
+
+if (
   serverSource.includes("app.get('/api/agent-work'")
   && serverSource.includes('function agentWorkQueue')
   && mainSource.includes('className="panel systemBackstage"')

@@ -491,6 +491,60 @@ async function main() {
     assert(viralDashboard.pendingViralTemplates.some((item) => item.id === linkOnlyViral.id), 'dashboard pending viral list missing link-only template');
     const agentWorkAfterViral = await api('/agent-work');
     assert(agentWorkAfterViral.counts.viralAnalysis >= 1 && agentWorkAfterViral.items.some((item) => item.kind === '爆款分析' && item.viralTemplateId === linkOnlyViral.id && item.endpoint.endsWith('/analysis-result')), 'agent work queue missing pending viral analysis');
+    let emptySeedRejected = false;
+    try {
+      await api('/content-seeds', {
+        method: 'POST',
+        body: JSON.stringify({
+          project: '吸脂',
+          stage: '起号期',
+          contentKind: '素人种草',
+          format: '图文',
+          titleTemplate: '空正文种子',
+          contentTemplate: '   ',
+          baseWeight: 1
+        })
+      });
+    } catch (error) {
+      emptySeedRejected = /正文配方/.test(error.message);
+    }
+    assert(emptySeedRejected, 'content seed accepted an empty content template');
+    let viralSeedRejected = false;
+    try {
+      await api('/content-seeds', {
+        method: 'POST',
+        body: JSON.stringify({
+          project: '吸脂',
+          stage: '起号期',
+          contentKind: '爆款提权',
+          format: '图文',
+          titleTemplate: '爆款提权种子',
+          contentTemplate: '爆款提权不应该走内容种子池',
+          baseWeight: 1
+        })
+      });
+    } catch (error) {
+      viralSeedRejected = /爆款链接分析/.test(error.message);
+    }
+    assert(viralSeedRejected, 'content seed accepted viral boost kind');
+    let seedWeightRejected = false;
+    try {
+      await api('/content-seeds', {
+        method: 'POST',
+        body: JSON.stringify({
+          project: '吸脂',
+          stage: '起号期',
+          contentKind: '日常养号',
+          format: '图文',
+          titleTemplate: '极端权重种子',
+          contentTemplate: '这条种子权重过高，不应该进入抽取池。',
+          baseWeight: 1000
+        })
+      });
+    } catch (error) {
+      seedWeightRejected = /权重/.test(error.message);
+    }
+    assert(seedWeightRejected, 'content seed accepted an extreme base weight');
     const seed = await api('/content-seeds', {
       method: 'POST',
       body: JSON.stringify({
@@ -505,6 +559,16 @@ async function main() {
       })
     });
     assert(seed.id, 'content seed not created');
+    let seedPatchWeightRejected = false;
+    try {
+      await api(`/content-seeds/${seed.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ baseWeight: 1000 })
+      });
+    } catch (error) {
+      seedPatchWeightRejected = /权重/.test(error.message);
+    }
+    assert(seedPatchWeightRejected, 'content seed patch accepted an extreme base weight');
     const videoSeed = await api('/content-seeds', {
       method: 'POST',
       body: JSON.stringify({
@@ -515,7 +579,7 @@ async function main() {
         titleTemplate: '验收视频：{城市}{occupation}',
         contentTemplate: '这是验收视频口播，{城市}{occupation}，{motivation}',
         tags: ['验收', '视频'],
-        baseWeight: 1000
+        baseWeight: 10
       })
     });
     assert(videoSeed.id, 'video content seed not created');
