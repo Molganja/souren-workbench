@@ -421,6 +421,9 @@ async function main() {
     await waitForServer(server);
     const initialDashboard = await api('/dashboard');
     assert(initialDashboard.today === localDate(), 'dashboard today should use local date');
+    assert(initialDashboard.dayClosure?.state === 'done', 'empty dashboard should report done day closure');
+    assert(initialDashboard.dayClosure.queueDone === true && initialDashboard.dayClosure.todoCount === 0, 'empty dashboard closure should have no todo');
+    assert(initialDashboard.dayClosure.waitingConfirmCount === 0 && initialDashboard.dayClosure.detail.includes('等待确认都清空'), 'empty dashboard closure should distinguish no waiting confirmations');
 
     let blankViralRejected = false;
     try {
@@ -1206,6 +1209,7 @@ async function main() {
     const lostDashboard = await api('/dashboard');
     assert(!lostDashboard.monitorActions.some((item) => item.kind === '失联处理' && item.case?.id === lostCase.id), 'lost account should not ask staff to confirm pause');
     assert(!lostDashboard.todaySlots.some((item) => item.case?.id === lostCase.id), 'lost account leaked into normal due slots');
+    assert(lostDashboard.dayClosure.pausedCount >= 1, 'day closure missing paused lost account count');
     const lostAfterPrune = await api(`/cases/${lostCase.id}`);
     assert(lostAfterPrune.case.healthStatus === '失联暂停', 'lost account case was not auto-paused');
     assert(!lostAfterPrune.slots.some((item) => ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '异常'].includes(item.status)), 'auto-paused lost account still has active slots');
@@ -1756,6 +1760,9 @@ async function main() {
     assert(deliveryDashboard.priorityActions.length > 0, 'dashboard priority action queue unexpectedly empty');
     assert(deliveryDashboard.queueHead?.id === deliveryDashboard.priorityActions[0].id, 'dashboard queueHead diverged from first priority action');
     assert(deliveryDashboard.queueHead.case?.weixinNick && deliveryDashboard.queueHead.title && deliveryDashboard.queueHead.detail && deliveryDashboard.queueHead.note, 'backend queue head missing display fields');
+    assert(deliveryDashboard.dayClosure?.todoCount === deliveryDashboard.priorityActions.length, 'day closure todo count diverged from priority queue');
+    assert(deliveryDashboard.dayClosure.queueDone === (deliveryDashboard.priorityActions.length === 0), 'day closure queueDone diverged from priority queue');
+    assert(deliveryDashboard.dayClosure.nextActionId === deliveryDashboard.queueHead?.id, 'day closure next action diverged from queue head');
 
     const complianceSeed = await api('/content-seeds', {
       method: 'POST',
@@ -1908,6 +1915,8 @@ async function main() {
     const sentDashboard = await api('/dashboard');
     assert(sentDashboard.sentWaitDone.some((item) => item.id === slot.id), 'sent slot should move to non-blocking wait confirmation list');
     assert(!sentDashboard.readyDelivery.some((item) => item.id === slot.id), 'sent slot should leave delivery queue');
+    assert(sentDashboard.dayClosure.waitingConfirmCount === sentDashboard.sentWaitDone.length, 'day closure waiting confirmation count diverged from dashboard');
+    assert(sentDashboard.dayClosure.todoCount === sentDashboard.priorityActions.length, 'day closure todo count changed after sent slot');
     let completionWithoutReplyRejected = false;
     try {
       await api(`/slots/${slot.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: '已完成' }) });
@@ -1939,6 +1948,7 @@ async function main() {
     const completedDashboard = await api('/dashboard');
     assert(!completedDashboard.todaySlots.some((item) => item.id === slot.id), 'completed slot should disappear from dashboard today queue');
     assert(!completedDashboard.readyDelivery.some((item) => item.id === slot.id), 'completed slot should disappear from delivery queue');
+    assert(completedDashboard.dayClosure.waitingConfirmCount === completedDashboard.sentWaitDone.length, 'completed dashboard day closure waiting count diverged');
     const pauseCleanupCase = await api('/cases', {
       method: 'POST',
       body: JSON.stringify({

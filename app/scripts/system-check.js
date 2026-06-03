@@ -405,13 +405,22 @@ if (pkg.scripts?.['client:verify']?.includes('client:mac') && pkg.scripts?.['cli
 else fail('客户端缺少一条命令打包验收脚本');
 
 if (
-  mainSource.includes('今天发完了，剩下只等对方回复，不算漏发。') &&
+  serverSource.includes('function dashboardDayClosure') &&
+  serverSource.includes('waiting_confirm') &&
+  serverSource.includes('queueDone: todoCount === 0') &&
+  mainSource.includes('dayClosure={dayClosure}') &&
+  mainSource.includes('fallbackDayClosure') &&
+  mainSource.includes('今天任务清空') &&
+  mainSource.includes('今日操作队列已清空') &&
   mainSource.includes('当前微信：{activeItem.case.weixinNick}') &&
   mainSource.includes('后面已锁住 {queuedItems.length} 条') &&
   mainSource.includes('不用提前检查，也不能跳做') &&
+  smokeSource.includes('empty dashboard should report done day closure') &&
+  smokeSource.includes('day closure waiting confirmation count diverged from dashboard') &&
+  smokeSource.includes('day closure missing paused lost account count') &&
   !mainSource.includes('summarizeQueuedKinds') &&
   !mainSource.includes('今天没有必须处理的动作')
-) ok('今日队列清空后有明确完工状态，队首只聚焦当前微信');
+) ok('今日队列清空后有后端日结状态，队首只聚焦当前微信');
 else fail('今日队列清空状态仍不明确');
 
 if (serverSource.includes('ACTIVE_OPERATOR_STATUSES') && serverSource.includes("'已派发', '异常'") && !serverSource.includes("ACTIVE_OPERATOR_STATUSES = ['待生成', '候选待选', '已锁定', '素材阻塞', '可交付', '已派发', '已完成'")) ok('已完成任务不再留在今日操作队列');

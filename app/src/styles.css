@@ -1068,6 +1068,21 @@ button:disabled:hover,
   background: #fafbfc;
 }
 
+.doneEmpty {
+  display: grid;
+  gap: 6px;
+}
+
+.doneEmpty strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.doneEmpty span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .caseGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));

@@ -355,6 +355,7 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask }) {
   const accountGroups = groupQueueByAccount(priorityActions);
   const dashboardStats = buildDashboardStats(data, priorityActions, waitingConfirm);
   const activeCaseId = priorityActions[0]?.case?.id || null;
+  const dayClosure = data.dayClosure || fallbackDayClosure(priorityActions, waitingConfirm);
   return (
     <div className="stack">
       <section className="hero">
@@ -370,6 +371,7 @@ function Dashboard({ data, onOpenCase, onAct, onDelivery, onClipTask }) {
 
       <PriorityActionSection
         items={priorityActions}
+        dayClosure={dayClosure}
         onOpenCase={onOpenCase}
         onAct={onAct}
         onDelivery={onDelivery}
@@ -492,7 +494,41 @@ function buildWaitingConfirmActions(data = {}) {
     }));
 }
 
-function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTask }) {
+function fallbackDayClosure(priorityActions = [], waitingConfirm = []) {
+  const todoCount = priorityActions.length;
+  const waitingConfirmCount = waitingConfirm.length;
+  const next = priorityActions[0] || null;
+  if (todoCount > 0) {
+    return {
+      state: 'working',
+      queueDone: false,
+      todoCount,
+      waitingConfirmCount,
+      title: '今天还没收口',
+      detail: next ? `先做队首：${next.kind}｜${next.title}` : '继续按今日操作队列处理。'
+    };
+  }
+  if (waitingConfirmCount > 0) {
+    return {
+      state: 'waiting_confirm',
+      queueDone: true,
+      todoCount,
+      waitingConfirmCount,
+      title: '今天发完了',
+      detail: `今日操作队列已清空，剩下 ${waitingConfirmCount} 条只等对方回复，不算漏发。`
+    };
+  }
+  return {
+    state: 'done',
+    queueDone: true,
+    todoCount,
+    waitingConfirmCount,
+    title: '今天任务清空',
+    detail: '今日操作队列和等待确认都清空，没有漏发项。'
+  };
+}
+
+function PriorityActionSection({ items, dayClosure, onOpenCase, onAct, onDelivery, onClipTask }) {
   const activeItem = items[0];
   const queuedItems = items.slice(1);
   return (
@@ -501,7 +537,12 @@ function PriorityActionSection({ items, onOpenCase, onAct, onDelivery, onClipTas
         <h2>今日操作队列</h2>
         <span>{items.length ? `当前 1 / ${items.length}` : '已清空'}</span>
       </div>
-      {items.length === 0 ? <div className="empty doneEmpty">今天发完了，剩下只等对方回复，不算漏发。</div> : (
+      {items.length === 0 ? (
+        <div className={`empty doneEmpty done-${dayClosure?.state || 'done'}`}>
+          <strong>{dayClosure?.title || '今天发完了'}</strong>
+          <span>{dayClosure?.detail || '剩下只等对方回复，不算漏发。'}</span>
+        </div>
+      ) : (
         <div className="priorityList">
           <div className="priorityRow activePriority" key={activeItem.id}>
             <div className="priorityBadge">

@@ -4165,6 +4165,44 @@ function dashboardPriorityActions(data = {}) {
   });
 }
 
+function dashboardDayClosure(data = {}, priorityActions = []) {
+  const todoCount = priorityActions.length;
+  const waitingConfirmCount = Array.isArray(data.sentWaitDone)
+    ? data.sentWaitDone.length
+    : Number(data.counts?.sentWaitDone || 0);
+  const pausedCount = (data.monitor?.accounts || [])
+    .filter((item) => item.activityTier === '失联暂停' || item.lostContact?.active || item.lostContact?.paused)
+    .length;
+  const blockedCount = Number(data.counts?.blocked || 0)
+    + Number(data.counts?.materialSync || 0)
+    + Number(data.counts?.requiredMaterialGaps || 0)
+    + Number(data.counts?.intakeIssues || 0);
+  const next = priorityActions[0] || null;
+  const state = todoCount > 0 ? 'working' : (waitingConfirmCount > 0 ? 'waiting_confirm' : 'done');
+  const titles = {
+    working: '今天还没收口',
+    waiting_confirm: '今天发完了',
+    done: '今天任务清空'
+  };
+  const details = {
+    working: next ? `先做队首：${next.kind}｜${next.title}` : '继续按今日操作队列处理。',
+    waiting_confirm: `今日操作队列已清空，剩下 ${waitingConfirmCount} 条只等对方回复，不算漏发。`,
+    done: '今日操作队列和等待确认都清空，没有漏发项。'
+  };
+  return {
+    state,
+    queueDone: todoCount === 0,
+    todoCount,
+    waitingConfirmCount,
+    blockedCount,
+    pausedCount,
+    nextActionId: next?.id || null,
+    nextActionKind: next?.kind || null,
+    title: titles[state],
+    detail: details[state]
+  };
+}
+
 function dashboard() {
   const cases = all('SELECT * FROM cases ORDER BY created_at DESC').map(rowCase);
   const rollingSchedule = maintainRollingSchedule(cases);
@@ -4291,10 +4329,12 @@ function dashboard() {
       .sort((a, b) => ((b.activeViralAlerts.length * 4) + b.requiredGapCount + b.materialGaps.length + b.reasons.length) - ((a.activeViralAlerts.length * 4) + a.requiredGapCount + a.materialGaps.length + a.reasons.length))
   };
   const priorityActions = dashboardPriorityActions(result);
+  const dayClosure = dashboardDayClosure(result, priorityActions);
   return {
     ...result,
     priorityActions,
-    queueHead: priorityActions[0] || null
+    queueHead: priorityActions[0] || null,
+    dayClosure
   };
 }
 
