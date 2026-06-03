@@ -1532,6 +1532,7 @@ async function main() {
     const clipColumns = clipSchemaDb.prepare('PRAGMA table_info(clip_tasks)').all().map((item) => item.name);
     clipSchemaDb.close();
     assert(!clipColumns.includes('output_dir') && !clipColumns.includes('final_video_path'), 'clip task table still keeps local output columns');
+    assert(clipColumns.includes('recipe_viewed_at'), 'clip task table missing persisted recipe view column');
     let clipReviewStatusRejected = false;
     try {
       await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'review' }) });
@@ -1560,10 +1561,19 @@ async function main() {
       clipCompletedWithoutRecipeRejected = /固定剪辑配方/.test(error.message);
     }
     assert(clipCompletedWithoutRecipeRejected, 'clip task completed without viewing fixed recipe');
+    let forgedClipRecipeRejected = false;
+    try {
+      await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed', recipeConfirmed: true }) });
+    } catch (error) {
+      forgedClipRecipeRejected = /不能夹在完成请求/.test(error.message);
+    }
+    assert(forgedClipRecipeRejected, 'clip completion accepted a forged recipe confirmation');
     const clipDashboard = await api('/dashboard');
     assert(clipDashboard.counts.clipTasks >= 1, 'dashboard clip task count missing');
     assert(clipDashboard.clipTasks.some((item) => item.id === clip.id && item.case?.id === caze.id), 'dashboard clip task list missing case task');
-    const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed', recipeConfirmed: true }) });
+    const viewedClip = await api(`/clip-tasks/${clip.id}/recipe-viewed`, { method: 'POST' });
+    assert(viewedClip.recipeViewedAt, 'clip recipe view did not persist before completion');
+    const reviewedClip = await api(`/clip-tasks/${clip.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) });
     assert(reviewedClip.status === 'completed', 'clip status update failed');
     const clipDashboardAfter = await api('/dashboard');
     assert(!clipDashboardAfter.clipTasks.some((item) => item.id === clip.id), 'completed clip task still shown as pending');

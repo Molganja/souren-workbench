@@ -735,11 +735,15 @@ else fail('同一排期仍可能重复创建剪辑任务');
 if (
   mainSource.includes('ClipTaskModal') &&
   mainSource.includes('我已看完固定配方') &&
-  mainSource.includes('recipeConfirmed: true') &&
+  mainSource.includes('/clip-tasks/${task.id}/recipe-viewed') &&
+  !mainSource.includes('recipeConfirmed: true') &&
   !mainSource.includes('CLIP_ACTIONS') &&
   !mainSource.includes("patchClipStatus('review')") &&
   !mainSource.includes("patchClipStatus('rejected')") &&
-  serverSource.includes('完成剪辑前必须先确认已看完固定剪辑配方') &&
+  serverSource.includes("app.post('/api/clip-tasks/:id/recipe-viewed'") &&
+  serverSource.includes('recipe_viewed_at') &&
+  serverSource.includes('不能夹在完成请求里') &&
+  serverSource.includes('完成剪辑前必须先打开完整剪辑要求并确认看完固定剪辑配方') &&
   serverSource.includes("OPEN_CLIP_STATUSES = ['waiting_edit', 'draft']") &&
   serverSource.includes('剪辑任务创建后只能进入待剪辑，不能手动指定状态') &&
   serverSource.includes('剪辑任务只需要标记已完成') &&
@@ -748,11 +752,14 @@ if (
   !serverSource.includes('body.brief ?') &&
   !serverSource.includes('body.brief ?? task.brief') &&
   dbSource.includes("WHERE status IN ('review', 'rejected')") &&
+  dbSource.includes('recipe_viewed_at TEXT') &&
   smokeSource.includes('clip task accepted a custom brief instead of the fixed recipe') &&
   smokeSource.includes('clip task creation accepted a manual status') &&
   smokeSource.includes('clip task did not start as waiting edit') &&
   smokeSource.includes('clip task allowed patching the fixed recipe brief') &&
   smokeSource.includes('clipCompletedWithoutRecipeRejected') &&
+  smokeSource.includes('clip completion accepted a forged recipe confirmation') &&
+  smokeSource.includes('clip recipe view did not persist before completion') &&
   smokeSource.includes('clip task allowed a waiting-confirm status') &&
   smokeSource.includes('clip task allowed a rework status instead of staying pending')
 ) ok('剪辑任务只使用固定配方，不能塞临时说明，且看完配方后才能完成');

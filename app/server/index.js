@@ -632,6 +632,7 @@ function rowClipTask(row) {
     title: row.title,
     brief: row.brief,
     status: row.status,
+    recipeViewedAt: row.recipe_viewed_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -5523,11 +5524,28 @@ app.post('/api/clip-tasks', (req, res) => {
   res.json({ ...rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [id])), alreadyExisting: false });
 });
 
+app.post('/api/clip-tasks/:id/recipe-viewed', (req, res) => {
+  const task = rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [req.params.id]));
+  if (!task) return res.status(404).json({ error: 'clip task not found' });
+  if (task.status === 'completed') return res.json(task);
+  try {
+    requireQueueHeadForClipTask(req, task, '确认看完配方');
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message });
+  }
+  const viewedAt = task.recipeViewedAt || now();
+  run('UPDATE clip_tasks SET recipe_viewed_at = ?, updated_at = ? WHERE id = ?', [viewedAt, now(), task.id]);
+  res.json(rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [task.id])));
+});
+
 app.patch('/api/clip-tasks/:id', (req, res) => {
   const task = rowClipTask(get('SELECT * FROM clip_tasks WHERE id = ?', [req.params.id]));
   if (!task) return res.status(404).json({ error: 'clip task not found' });
   const body = req.body || {};
   if (Object.prototype.hasOwnProperty.call(body, 'brief')) return res.status(400).json({ error: '剪辑任务使用固定剪辑配方，不接受临时剪辑要求' });
+  if (Object.prototype.hasOwnProperty.call(body, 'recipeConfirmed')) {
+    return res.status(400).json({ error: '固定剪辑配方确认必须先保存到流程里，不能夹在完成请求里' });
+  }
   const nextStatus = body.status ?? task.status;
   if (!ALLOWED_CLIP_STATUSES.includes(nextStatus)) {
     return res.status(400).json({ error: '剪辑任务只需要标记已完成；未完成时保持待剪辑，不再设置中间确认状态。' });
@@ -5537,8 +5555,8 @@ app.patch('/api/clip-tasks/:id', (req, res) => {
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message });
   }
-  if (nextStatus === 'completed' && task.status !== 'completed' && body.recipeConfirmed !== true) {
-    return res.status(409).json({ error: '完成剪辑前必须先确认已看完固定剪辑配方' });
+  if (nextStatus === 'completed' && task.status !== 'completed' && !task.recipeViewedAt) {
+    return res.status(409).json({ error: '完成剪辑前必须先打开完整剪辑要求并确认看完固定剪辑配方' });
   }
   run(
     `UPDATE clip_tasks SET title = ?, brief = ?, status = ?, updated_at = ? WHERE id = ?`,

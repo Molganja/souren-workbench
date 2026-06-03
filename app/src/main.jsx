@@ -1563,11 +1563,15 @@ function ClipTaskRow({ task, onClipTask, activeQueueItem }) {
 }
 
 function ClipTaskModal({ task, onClose, onAct, activeQueueItem }) {
-  const [recipeViewed, setRecipeViewed] = useState(false);
+  const [recipeViewed, setRecipeViewed] = useState(Boolean(task.recipeViewedAt));
   const isActiveQueueClip = activeQueueMatchesClip(activeQueueItem, task);
   const brief = task.brief || '暂无剪辑要求';
   const caze = task.case || {};
   const completeReady = isActiveQueueClip && recipeViewed;
+  const markRecipeViewed = () => onAct(async () => {
+    await request(`/clip-tasks/${task.id}/recipe-viewed`, { method: 'POST' });
+    setRecipeViewed(true);
+  }, '已确认看完固定配方');
   const patchClipStatus = (status, payload = {}) => onAct(async () => {
     const result = await request(`/clip-tasks/${task.id}`, {
       method: 'PATCH',
@@ -1592,7 +1596,7 @@ function ClipTaskModal({ task, onClose, onAct, activeQueueItem }) {
       <div className="textPanel clipBriefPanel">
         <div className="rowTitle">
           <strong>固定剪辑配方和素材说明</strong>
-          {isActiveQueueClip && <button className={recipeViewed ? 'activeSmall' : ''} onClick={() => setRecipeViewed(true)}>{recipeViewed ? '已看完配方' : '我已看完固定配方'}</button>}
+          {isActiveQueueClip && <button className={recipeViewed ? 'activeSmall' : ''} onClick={markRecipeViewed}>{recipeViewed ? '已看完配方' : '我已看完固定配方'}</button>}
         </div>
         <pre>{brief}</pre>
       </div>
@@ -1603,7 +1607,7 @@ function ClipTaskModal({ task, onClose, onAct, activeQueueItem }) {
       )}
       <div className="modalActions">
         <button onClick={onClose}>关闭</button>
-        {isActiveQueueClip && <button className="primary" disabled={!completeReady} onClick={() => patchClipStatus('completed', { recipeConfirmed: true })}>剪辑已完成</button>}
+        {isActiveQueueClip && <button className="primary" disabled={!completeReady} onClick={() => patchClipStatus('completed')}>剪辑已完成</button>}
       </div>
     </Modal>
   );
